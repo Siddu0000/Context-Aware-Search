@@ -1,37 +1,105 @@
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+"""Embedding layer.
+
+Supports multiple backends behind a single interface so the eval harness can
+compare models on the same data without code changes elsewhere:
+- sentence-transformers (default, CPU-friendly, free)
+- OpenAI text-embedding-3-* (optional, requires OPENAI_API_KEY)
+
+The backend is selected by name. Anything starting with 'text-embedding-' is
+treated as OpenAI; everything else is treated as a sentence-transformers
+model name.
+"""
+
+import logging
+import os
+from typing import List
+
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
-# Global model holder (lazy loaded)
-_model = None
-
-
-def get_model():
-    """
-    Load the SentenceTransformer model only once.
-    This prevents FastAPI startup from blocking,
-    especially when using uvicorn --reload on Windows.
-    """
-    global _model
-    if _model is None:
-        print("⏳ Loading SentenceTransformer model...")
-        _model = SentenceTransformer("all-MiniLM-L6-v2")
-        print("✅ SentenceTransformer model loaded")
-    return _model
+logger = logging.getLogger(__name__)
 
 
-def embed_text(texts):
-    """
-    Generate embeddings for a list of texts.
-    """
-    model = get_model()
-    return model.encode(texts)
+class Embedder:
+    """Single object that owns one embedding backend, loaded lazily."""
+
+    def __init__(self, model_name: str):
+        self.model_name = model_name
+        self._st_model = None  # sentence-transformers handle
+        self._openai_client = None  # openai client handle
+
+    @property
+    def is_openai(self) -> bool:
+        return self.model_name.startswith("text-embedding-")
+
+    def _ensure_loaded(self):
+        if self.is_openai:
+            if self._openai_client is None:
+                try:
+                    from openai import OpenAI  # imported lazily
+                except ImportError as e:
+                    raise RuntimeError(
+                        "openai package not installed. Run `pip install openai` "
+                        "or set EMBEDDING_MODEL to a sentence-transformers model."
+                    ) from e
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise RuntimeError(
+                        "OPENAI_API_KEY is required for OpenAI embedding models."
+                    )
+                self._openai_client = OpenAI(api_key=api_key)
+                logger.info("OpenAI embedding client ready: %s", self.model_name)
+        else:
+            if self._st_model is None:
+                from sentence_transformers import SentenceTransformer
+
+                logger.info("Loading sentence-transformer: %s", self.model_name)
+                self._st_model = SentenceTransformer(self.model_name)
+                logger.info("Sentence-transformer loaded.")
+
+    def encode(self, texts: List[str]) -> np.ndarray:
+        """Encode a list of texts into a (N, D) float32 array."""
+        self._ensure_loaded()
+        if not texts:
+            return np.zeros((0, 384), dtype=np.float32)
+
+        if self.is_openai:
+            # OpenAI has a per-request size limit; batch defensively.
+            batch_size = 100
+            chunks = []
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i : i + batch_size]
+                resp = self._openai_client.embeddings.create(
+                    model=self.model_name, input=batch
+                )
+                chunks.extend(d.embedding for d in resp.data)
+            return np.asarray(chunks, dtype=np.float32)
+
+        return self._st_model.encode(
+            texts, show_progress_bar=False, convert_to_numpy=True
+        ).astype(np.float32)
 
 
-def search_vectors(query_embedding, product_embeddings, top_k=5):
-    """
-    Perform cosine similarity search and return top matches.
-    """
+# Module-level default embedder. Swap by reassigning in eval scripts.
+_default_embedder: Embedder | None = None
+
+
+def get_default_embedder() -> Embedder:
+    global _default_embedder
+    if _default_embedder is None:
+        from app.config import EMBEDDING_MODEL
+
+        _default_embedder = Embedder(EMBEDDING_MODEL)
+    return _default_embedder
+
+
+def embed_text(texts: List[str]) -> np.ndarray:
+    """Convenience wrapper that uses the default embedder."""
+    return get_default_embedder().encode(texts)
+
+
+def search_vectors(query_embedding, product_embeddings, top_k: int = 10):
+    """Cosine-similarity top-K. Returns (indices, scores)."""
     similarities = cosine_similarity([query_embedding], product_embeddings)[0]
     top_indices = similarities.argsort()[::-1][:top_k]
     return top_indices, similarities[top_indices]

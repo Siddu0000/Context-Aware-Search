@@ -1,11 +1,13 @@
-fastapi
-uvicorn
-pandas
-numpy
-sentence-transformers
-scikit-learn
-python-dotenv
-openai
-google-genai
-streamlit
-requests
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+pandas>=2.0.0
+numpy>=1.24.0
+sentence-transformers>=2.7.0
+scikit-learn>=1.3.0
+python-dotenv>=1.0.0
+google-genai>=0.3.0
+streamlit>=1.32.0
+requests>=2.31.0
+
+# Optional: only needed if you run eval/compare_embeddings.py with --model openai
+# openai>=1.30.0
