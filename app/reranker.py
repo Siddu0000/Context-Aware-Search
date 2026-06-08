@@ -1,28 +1,24 @@
-"""LLM-based reranker.
+"""LLM-based reranker with reasoning + cache.
 
-Solves the well-known HyDE failure mode where one drifted hypothetical
-document pulls in irrelevant products that the embedding-score sort cannot
-filter out. The reranker is the only stage that sees the user's *original*
-query, so it acts as a coherence check against the entire candidate pool.
+Sees the user's ORIGINAL query and reorders the candidate pool, attaching
+a one-sentence justification to each result.
 
-It also produces a one-line `reason` per result — used in the UI and exposed
-in the API response.
+Cache: keyed by (provider, query, candidate-titles, top_k). Identical
+inputs return identical outputs within the session — supports Niharika's
+determinism requirement.
 
-Falls back to embedding-score order on any failure: the demo never breaks
-because the rerank failed.
+Fallback: on any LLM failure (quota, parse, all keys cooling), returns
+the embedding-score order with a sentinel reason. The demo stays usable.
 """
 
-import json
 import logging
 from typing import List
 
-from google import genai
-
-from app.config import GEMINI_MODEL, GOOGLE_API_KEY
+from app.cache import make_key, reranker_cache
+from app.config import LLM_PROVIDER
+from app.llm_client import LLMError, generate_json
 
 logger = logging.getLogger(__name__)
-
-client = genai.Client(api_key=GOOGLE_API_KEY)
 
 
 RERANK_PROMPT_TEMPLATE = """\
@@ -30,34 +26,30 @@ You are a retail search quality expert.
 
 The user searched for: "{query}"
 
-Below are {n_candidates} candidate products retrieved from the catalog.
-Rank them by how well each one matches the user's ORIGINAL intent.
-
-When scoring, consider:
+Below are {n_candidates} candidate products from the catalog. Rank them by
+how well each matches the user's ORIGINAL intent. Use these factors:
 - Semantic relevance to the query
 - Price appropriateness if a budget is implied
-- Occasion / use-case fit (each product has an explicit `occasion` attribute)
-- Material fit if mentioned in the query (each product has a `material` attribute)
+- Occasion / use-case fit (each product has an `occasion` attribute)
+- Material fit if mentioned (each product has a `material` attribute)
 - Specificity (color, size, style if specified)
 
 Return JSON only. Score is integer 0-100. Include only the TOP {top_k}.
 Order the array by score descending.
 
-Candidates (use the 'idx' value as the index):
+Candidates (use the `idx` field):
 {candidates_block}
 
 JSON format:
 {{
   "ranked": [
-    {{"idx": <int>, "score": <int>, "reason": "<one short sentence>"}},
-    ...
+    {{"idx": <int>, "score": <int>, "reason": "<one short sentence>"}}
   ]
 }}
 """
 
 
 def _format_candidate(i: int, product: dict) -> str:
-    """Compact one-line representation of a candidate for the prompt."""
     title = product.get("Product_title", "")
     price = product.get("price")
     color = product.get("color", "")
@@ -72,16 +64,18 @@ def _format_candidate(i: int, product: dict) -> str:
 
 
 def rerank(query: str, candidates: List[dict], top_k: int) -> List[dict]:
-    """Return up to top_k candidates re-scored and annotated with reasons.
-
-    On any LLM/JSON failure, returns the candidates' first top_k items
-    unchanged (i.e. embedding-score order) so the API stays useful.
-    """
     if not candidates:
         return []
 
-    # Cap the number of candidates sent to the LLM for cost/latency control.
+    # Cap candidates sent to the LLM for cost + latency.
     candidates = candidates[: max(top_k * 3, 30)]
+    titles = tuple(c.get("Product_title", "") for c in candidates)
+
+    key = make_key("rerank", LLM_PROVIDER, query, titles, top_k)
+    cached = reranker_cache.get(key)
+    if cached is not None:
+        logger.info("Reranker cache hit q=%r", query)
+        return [dict(p) for p in cached]
 
     candidates_block = "\n".join(
         _format_candidate(i, p) for i, p in enumerate(candidates)
@@ -94,41 +88,26 @@ def rerank(query: str, candidates: List[dict], top_k: int) -> List[dict]:
     )
 
     try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config={
-                "temperature": 0.1,
-                "response_mime_type": "application/json",
-            },
-        )
-        text = (
-            response.text.strip()
-            .removeprefix("```json")
-            .removesuffix("```")
-            .strip()
-        )
-        parsed = json.loads(text)
+        parsed = generate_json(prompt, temperature=0.1)
         ranked = parsed.get("ranked", [])
         if not isinstance(ranked, list) or not ranked:
-            raise ValueError(f"Bad shape: {parsed!r}")
+            raise LLMError(f"Bad shape: {parsed!r}")
 
         results = []
         for entry in ranked[:top_k]:
             idx = int(entry.get("idx", -1))
             if 0 <= idx < len(candidates):
-                product = dict(candidates[idx])  # copy
+                product = dict(candidates[idx])
                 product["rerank_score"] = int(entry.get("score", 0))
                 product["reason"] = str(entry.get("reason", "")).strip()
                 results.append(product)
         if not results:
-            raise ValueError("Reranker returned no valid indices.")
+            raise LLMError("Reranker returned no valid indices.")
+        reranker_cache.set(key, results)
         return results
 
     except Exception as e:
-        logger.warning(
-            "Rerank failed (%s). Falling back to embedding-score order.", repr(e)
-        )
+        logger.warning("Rerank failed (%s). Embedding-order fallback.", repr(e))
         fallback = []
         for product in candidates[:top_k]:
             product = dict(product)

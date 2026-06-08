@@ -1,11 +1,10 @@
 """FastAPI service.
 
-End-to-end pipeline:
-    /search?query=...        translate -> retrieve -> (optional) rerank
-    /feedback                record a thumbs-up / thumbs-down
-    /healthz                 readiness probe
-
-Every successful /search response carries per-stage latency.
+Endpoints:
+    GET  /search?query=...    translate -> retrieve -> (optional) rerank
+    POST /feedback            record thumbs-up / thumbs-down
+    GET  /healthz             readiness probe
+    GET  /stats               cache + key-rotator stats (debug)
 """
 
 import logging
@@ -15,7 +14,14 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.config import FINAL_TOP_K, RERANK_ENABLED, RETRIEVAL_TOP_K
+from app.cache import reranker_cache, translator_cache
+from app.config import (
+    FINAL_TOP_K,
+    LLM_PROVIDER,
+    RERANK_ENABLED,
+    RETRIEVAL_TOP_K,
+    TRANSLATOR_MODE,
+)
 from app.feedback import record_feedback
 from app.metrics import StageTimings
 from app.reranker import rerank as llm_rerank
@@ -31,8 +37,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Warm up the index BEFORE accepting traffic. First user pays nothing extra."""
-    logger.info("Warming up index ...")
+    logger.info(
+        "Warming up: provider=%s, translator_mode=%s",
+        LLM_PROVIDER,
+        TRANSLATOR_MODE,
+    )
     load_index()
     logger.info("Service ready.")
     yield
@@ -46,28 +55,56 @@ def healthz():
     return {"status": "ok"}
 
 
+@app.get("/stats")
+def stats():
+    """Quick visibility into cache hit rates and key-rotator state."""
+    out = {
+        "llm_provider": LLM_PROVIDER,
+        "translator_mode": TRANSLATOR_MODE,
+        "translator_cache": translator_cache.stats(),
+        "reranker_cache": reranker_cache.stats(),
+    }
+    # Key rotator stats only meaningful for Gemini.
+    if LLM_PROVIDER == "gemini":
+        try:
+            from app.llm_client import get_llm_client
+
+            backend = get_llm_client()
+            if hasattr(backend, "rotator"):
+                out["gemini_keys"] = backend.rotator.stats()
+        except Exception as e:  # noqa: BLE001
+            out["gemini_keys"] = {"error": repr(e)}
+    return out
+
+
 @app.get("/search")
 def search(
     query: str = Query(..., min_length=1, max_length=300),
     top_k: int = Query(FINAL_TOP_K, ge=1, le=50),
     rerank: bool = Query(RERANK_ENABLED, description="Toggle the LLM rerank stage."),
+    translator_mode: Optional[str] = Query(
+        None,
+        description="Override TRANSLATOR_MODE for this request: query_expansion | hyde | hybrid",
+    ),
 ):
     """Translate -> retrieve -> rerank pipeline."""
     timings = StageTimings()
     try:
         with timings.stage("translate"):
-            intents = translate_query(query)
+            intents = translate_query(query, mode=translator_mode)
 
         with timings.stage("retrieve"):
-            # Pull a wider candidate pool than the final K so the reranker has
-            # something to work with. RETRIEVAL_TOP_K is per intent.
             candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
 
+        rerank_actually_ran = False
         if rerank and candidates:
             with timings.stage("rerank"):
                 results = llm_rerank(query, candidates, top_k=top_k)
+            # Heuristic: if any result has rerank_score=None, fallback was used.
+            rerank_actually_ran = any(
+                r.get("rerank_score") is not None for r in results
+            )
         else:
-            # No rerank — just trim to top_k and tag the reason field for UI parity.
             results = []
             for p in candidates[:top_k]:
                 p = dict(p)
@@ -78,12 +115,14 @@ def search(
         return {
             "user_query": query,
             "interpreted_as": intents,
-            "rerank_enabled": rerank and bool(candidates),
+            "translator_mode": translator_mode or TRANSLATOR_MODE,
+            "rerank_requested": rerank,
+            "rerank_succeeded": rerank_actually_ran,
             "results": results,
             "latency_ms": timings.to_dict(),
         }
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.exception("Search failed for query=%r", query)
         raise HTTPException(status_code=500, detail=str(e))
 

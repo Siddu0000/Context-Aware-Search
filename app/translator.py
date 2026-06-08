@@ -1,91 +1,160 @@
-"""Query translator implementing a multi-intent HyDE pattern.
+"""Query translator with three pluggable strategies.
 
-HyDE (Hypothetical Document Embeddings, Gao et al. 2022) generates a
-hypothetical answer document for a query, then embeds the answer instead of
-the query. We extend this to N=3 hypothetical product search intents so a
-single bad generation doesn't dominate retrieval.
+Strategies (selected via TRANSLATOR_MODE env var):
 
-The LLM call is always wrapped in try/except with a fallback to the raw
-query. The API must stay responsive even when the LLM is degraded.
+  query_expansion  - N short product-search phrases. Each is embedded
+                     independently, then scatter-gather retrieval.
+                     Recommended for short queries and retail catalogs
+                     where titles are short.
+
+  hyde             - One longer hypothetical product listing. Classical
+                     HyDE (Gao et al. 2022). Single embedding, simpler
+                     retrieval. Better when queries are descriptive /
+                     conversational.
+
+  hybrid           - 1 hypothetical document + (N-1) short phrases.
+                     Diversity + depth at extra LLM token cost.
+
+All three return a list of strings that downstream search treats uniformly.
+
+Determinism: when DETERMINISTIC=true, temperature is 0 and outputs are
+cached, so the same input gives bit-identical results within a session.
 """
 
-import json
 import logging
 from typing import List
 
-from google import genai
-
-from app.config import GEMINI_MODEL, GOOGLE_API_KEY, NUM_INTENTS
+from app.cache import make_key, translator_cache
+from app.config import LLM_PROVIDER, NUM_INTENTS, TRANSLATOR_MODE
+from app.llm_client import LLMError, generate_json
 
 logger = logging.getLogger(__name__)
 
-if not GOOGLE_API_KEY:
-    raise RuntimeError(
-        "GOOGLE_API_KEY missing. Copy .env.example to .env and fill in the key."
-    )
 
-client = genai.Client(api_key=GOOGLE_API_KEY)
+QUERY_EXPANSION_PROMPT = f"""\
+You are a retail search translator using the multi-intent query expansion pattern.
 
-SYSTEM_PROMPT = f"""
-You are an intelligent retail search translator implementing the HyDE
-(Hypothetical Document Embeddings) pattern.
-
-Task: convert the user's free-form query into EXACTLY {NUM_INTENTS} concise
-product search intents. Each intent should read like a short product listing,
-not advice. These intents will be embedded and used to retrieve real products
-from a catalog.
+Convert the user's query into EXACTLY {NUM_INTENTS} concise product search intents.
+Each intent reads like a short product listing, not advice.
 
 Rules:
-- Infer category from the query (do NOT restrict to any fixed list of categories)
+- Infer category from the query; do NOT restrict to any fixed list
 - Use product-focused language
-- Include brand/type/spec/color where appropriate
-- Do NOT assume gender unless explicitly mentioned
-- Do NOT over-generalize; stay close to the user's intent
-- Do NOT explain anything
+- Include type/spec/color where appropriate
+- Do NOT assume gender unless stated
 - Output ONLY valid JSON
 
 JSON format:
+{{"search_terms": ["...", "...", "..."]}}
+"""
+
+
+HYDE_PROMPT = """\
+You are a retail search assistant implementing the HyDE
+(Hypothetical Document Embeddings, Gao et al. 2022) pattern.
+
+For the user's query, write ONE hypothetical product listing — 2 to 4
+sentences — that would be an ideal match. Include type, key attributes
+(material, color, occasion), and a short description. This hypothetical
+listing will be embedded and used to retrieve real catalog products.
+
+Do NOT recommend a specific brand or invent a price.
+
+Output ONLY valid JSON.
+JSON format:
+{"hypothetical_listing": "..."}
+"""
+
+
+HYBRID_PROMPT = f"""\
+You are a retail search translator combining classical HyDE with multi-intent expansion.
+
+Produce:
+1. ONE hypothetical product listing (2-4 sentences) describing an ideal match.
+2. {NUM_INTENTS - 1} short search phrases that would also retrieve relevant products.
+
+Output ONLY valid JSON.
+JSON format:
 {{
-  "search_terms": ["...", "...", "..."]
+  "hypothetical_listing": "...",
+  "search_terms": [{", ".join(['"..."'] * (NUM_INTENTS - 1))}]
 }}
 """
 
 
-def translate_query(user_query: str) -> List[str]:
-    """Generate N hypothetical product intents from a free-form query.
+def _query_expansion(user_query: str) -> List[str]:
+    prompt = QUERY_EXPANSION_PROMPT + f'\nUser query: "{user_query}"'
+    parsed = generate_json(prompt, temperature=0.2)
+    terms = parsed.get("search_terms", [])
+    if not isinstance(terms, list) or not terms:
+        raise LLMError(f"Bad query_expansion shape: {parsed!r}")
+    return _dedupe([str(t).strip() for t in terms])
 
-    Falls back to `[user_query]` on ANY failure (LLM down, malformed JSON,
-    empty list). The API never 500s because the translator hiccupped.
+
+def _hyde(user_query: str) -> List[str]:
+    prompt = HYDE_PROMPT + f'\nUser query: "{user_query}"'
+    parsed = generate_json(prompt, temperature=0.2)
+    listing = parsed.get("hypothetical_listing", "")
+    if not isinstance(listing, str) or not listing.strip():
+        raise LLMError(f"Bad hyde shape: {parsed!r}")
+    return [listing.strip()]
+
+
+def _hybrid(user_query: str) -> List[str]:
+    prompt = HYBRID_PROMPT + f'\nUser query: "{user_query}"'
+    parsed = generate_json(prompt, temperature=0.2)
+    listing = (parsed.get("hypothetical_listing") or "").strip()
+    terms = parsed.get("search_terms", []) or []
+    if not listing and not terms:
+        raise LLMError(f"Bad hybrid shape: {parsed!r}")
+    intents: List[str] = []
+    if listing:
+        intents.append(listing)
+    intents.extend(str(t).strip() for t in terms if str(t).strip())
+    return _dedupe(intents)
+
+
+def _dedupe(items: List[str]) -> List[str]:
+    seen, out = set(), []
+    for item in items:
+        if item and item.lower() not in seen:
+            seen.add(item.lower())
+            out.append(item)
+    return out
+
+
+_STRATEGIES = {
+    "query_expansion": _query_expansion,
+    "hyde": _hyde,
+    "hybrid": _hybrid,
+}
+
+
+def translate_query(user_query: str, mode: str | None = None) -> List[str]:
+    """Return a list of intents/documents to embed for retrieval.
+
+    On ANY failure (LLM down, bad JSON, all keys exhausted), falls back to
+    [user_query] so the search API stays responsive. Fallback results are
+    NOT cached — the next call retries the real LLM.
     """
-    prompt = SYSTEM_PROMPT + f'\nUser query: "{user_query}"'
+    mode = (mode or TRANSLATOR_MODE).lower()
+    if mode not in _STRATEGIES:
+        logger.warning("Unknown TRANSLATOR_MODE=%r; using query_expansion.", mode)
+        mode = "query_expansion"
+
+    # Cache key includes mode + provider so different configs don't collide.
+    key = make_key("translate", LLM_PROVIDER, mode, user_query)
+    cached = translator_cache.get(key)
+    if cached is not None:
+        logger.info("Translator cache hit [mode=%s] q=%r", mode, user_query)
+        return list(cached)
+
     try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config={
-                "temperature": 0.2,
-                "response_mime_type": "application/json",
-            },
-        )
-        text = (
-            response.text.strip()
-            .removeprefix("```json")
-            .removesuffix("```")
-            .strip()
-        )
-        parsed = json.loads(text)
-        terms = parsed.get("search_terms", [])
-        if not isinstance(terms, list) or not terms:
-            raise ValueError(f"Bad shape: {parsed!r}")
-
-        seen, clean = set(), []
-        for t in terms:
-            t = str(t).strip()
-            if t and t.lower() not in seen:
-                seen.add(t.lower())
-                clean.append(t)
-        return clean or [user_query]
-
+        result = _STRATEGIES[mode](user_query) or [user_query]
+        translator_cache.set(key, result)
+        return result
     except Exception as e:
-        logger.warning("Translator failed (%s). Using raw query.", repr(e))
+        logger.warning(
+            "Translator failed [mode=%s] (%s). Using raw query.", mode, repr(e)
+        )
         return [user_query]
