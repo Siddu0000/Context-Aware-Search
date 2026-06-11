@@ -6,6 +6,7 @@ Adds three things over the original:
   3. Captures thumbs-up / thumbs-down feedback, posted to /feedback.
 """
 
+import math
 import os
 
 import requests
@@ -14,6 +15,14 @@ import streamlit as st
 BACKEND = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 SEARCH_URL = f"{BACKEND}/search"
 FEEDBACK_URL = f"{BACKEND}/feedback"
+
+
+def _is_nan(x) -> bool:
+    """True if x is float NaN. None and other types return False."""
+    try:
+        return isinstance(x, float) and math.isnan(x)
+    except (TypeError, ValueError):
+        return False
 
 st.set_page_config(
     page_title="Context-Aware Agentic Search",
@@ -31,8 +40,26 @@ with st.sidebar:
     st.header("Settings")
     top_k = st.slider("Number of results", 3, 30, 10)
     rerank = st.toggle("Enable LLM rerank", value=True)
+    use_cache = st.toggle(
+        "Use response cache",
+        value=True,
+        help="When off, every search forces a fresh LLM call. "
+        "Use to test variance across identical queries. "
+        "Note: results may still be identical if DETERMINISTIC=true in .env.",
+    )
     st.divider()
-    st.caption("Toggle rerank off to see raw HyDE retrieval.")
+    if st.button("🗑️ Clear cache", help="Wipes both translator and reranker caches."):
+        try:
+            r = requests.post(f"{BACKEND}/cache/clear", timeout=5)
+            r.raise_for_status()
+            info = r.json()
+            st.success(
+                f"Cleared. translator had {info['translator']['prev_size']} entries, "
+                f"reranker had {info['reranker']['prev_size']}."
+            )
+        except requests.RequestException as e:
+            st.warning(f"Could not clear cache: {e}")
+    st.caption("Toggle rerank off to see raw retrieval.")
 
 
 def _post_feedback(query: str, product_title: str, rating: int, rank: int, reason: str):
@@ -62,7 +89,12 @@ if st.button("🔍 Search", type="primary") and query:
         try:
             r = requests.get(
                 SEARCH_URL,
-                params={"query": query, "top_k": top_k, "rerank": str(rerank).lower()},
+                params={
+                    "query": query,
+                    "top_k": top_k,
+                    "rerank": str(rerank).lower(),
+                    "use_cache": str(use_cache).lower(),
+                },
                 timeout=60,
             )
             r.raise_for_status()
@@ -83,7 +115,23 @@ if "last_response" in st.session_state:
         for c, (stage, ms) in zip(cols, timings.items()):
             c.metric(label=stage, value=f"{ms} ms")
 
-    st.subheader("🧠 Interpreted Intents (HyDE)")
+    # Status badges so the user can verify what the request actually did.
+    badges = []
+    if data.get("cache_used"):
+        # Cache was allowed. Total <100ms = almost certainly a cache hit.
+        total = sum(timings.values()) if timings else 0
+        if total < 100:
+            badges.append("🟢 cache HIT (fast)")
+        else:
+            badges.append("🟡 cache miss (fresh LLM call, result saved)")
+    else:
+        badges.append("⚡ cache BYPASSED (forced fresh LLM call, not saved)")
+    if data.get("rerank_succeeded") is False and data.get("rerank_requested"):
+        badges.append("⚠️ rerank fell back (LLM unavailable)")
+    if badges:
+        st.caption(" · ".join(badges))
+
+    st.subheader("🧠 Interpreted Intents")
     for intent in data.get("interpreted_as", []):
         st.markdown(f"- {intent}")
 
@@ -108,19 +156,57 @@ if "last_response" in st.session_state:
                     meta = []
                     if product.get("bsns_vrtcl_name"):
                         meta.append(f"**{product['bsns_vrtcl_name']}**")
+                    if product.get("categ_lvl2_name"):
+                        meta.append(product["categ_lvl2_name"])
+                    if product.get("store"):
+                        meta.append(f"by {product['store']}")
                     if product.get("color"):
                         meta.append(f"Color: {product['color']}")
-                    if product.get("price") is not None:
-                        meta.append(f"Price: ${product['price']}")
+                    if product.get("price") is not None and not _is_nan(product.get("price")):
+                        meta.append(f"**${product['price']}**")
                     st.markdown(" · ".join(meta))
 
-                    if product.get("rerank_score") is not None:
+                    # --- Rating: dedicated line, NaN-safe -----------------
+                    # Use pd.isna() so NaN doesn't slip past the None check.
+                    rating = product.get("average_rating")
+                    rating_n = product.get("rating_number")
+                    rating_valid = rating is not None and not _is_nan(rating)
+                    count_valid = rating_n is not None and not _is_nan(rating_n)
+                    if rating_valid:
+                        try:
+                            rating_val = float(rating)
+                            if 0 <= rating_val <= 5:
+                                stars = "⭐" * int(round(rating_val))
+                                line = f"{stars} **{rating_val:.1f}/5**"
+                                if count_valid:
+                                    n = int(float(rating_n))
+                                    line += f" — based on **{n:,}** ratings"
+                                else:
+                                    line += " — no rating count available"
+                                st.markdown(line)
+                        except (TypeError, ValueError):
+                            pass
+                    elif count_valid:
+                        # Edge case: count present but average missing
+                        st.markdown(f"_{int(float(rating_n)):,} ratings (no average)_")
+
+                    # --- Scores -----------------------------------------------
+                    final = product.get("final_score")
+                    rerank = product.get("rerank_score")
+                    embed = product.get("score", 0)
+                    if final is not None and not _is_nan(final):
+                        bayes = product.get("bayesian_rating")
+                        bayes_str = f" · Bayes rating: {bayes}" if bayes else ""
                         st.caption(
-                            f"Rerank score: {product['rerank_score']}/100"
-                            f" · embedding sim: {product.get('score', 0):.3f}"
+                            f"**Final score: {final}/100**  "
+                            f"(Rerank: {rerank}/100{bayes_str} · embed: {embed:.3f})"
+                        )
+                    elif rerank is not None:
+                        st.caption(
+                            f"Rerank: {rerank}/100 · embed: {embed:.3f}"
                         )
                     else:
-                        st.caption(f"Embedding sim: {product.get('score', 0):.3f}")
+                        st.caption(f"Embedding sim: {embed:.3f}")
 
                     if product.get("reason"):
                         st.markdown(f"💡 _{product['reason']}_")

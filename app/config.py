@@ -76,5 +76,21 @@ RERANK_ENABLED = os.getenv("RERANK_ENABLED", "true").lower() in {"1", "true", "y
 DETERMINISTIC = os.getenv("DETERMINISTIC", "true").lower() in {"1", "true", "yes"}
 LLM_SEED = int(os.getenv("LLM_SEED", "42"))
 
+# --- LLM response caching ------------------------------------------------
+# When true, translator + reranker outputs are cached in-process by their
+# input hash. Saves quota and stabilizes results within a session.
+# Set false to force every request to hit the real LLM — useful for
+# observing actual variance between runs (combine with DETERMINISTIC=false
+# to see non-deterministic LLM behaviour). Default true.
+CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() in {"1", "true", "yes"}
+
+# --- Rating-aware scoring ------------------------------------------------
+# How much weight the Bayesian-adjusted rating gets in the final ranking,
+# relative to the LLM's semantic relevance score. Range [0, 1].
+# 0.0 = pure relevance (rating ignored).
+# 0.15 = relevance dominates (85%), rating nudges 15%. Sensible default.
+# 0.5 = rating equally weighted with relevance. Unusual.
+RATING_BOOST_WEIGHT = float(os.getenv("RATING_BOOST_WEIGHT", "0.15"))
+
 # --- Networking ----------------------------------------------------------
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")

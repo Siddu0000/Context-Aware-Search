@@ -130,8 +130,15 @@ _STRATEGIES = {
 }
 
 
-def translate_query(user_query: str, mode: str | None = None) -> List[str]:
+def translate_query(
+    user_query: str,
+    mode: str | None = None,
+    use_cache: bool = True,
+) -> List[str]:
     """Return a list of intents/documents to embed for retrieval.
+
+    use_cache=False forces a fresh LLM call (won't read from cache, won't
+    write to it either). Useful for testing actual response variance.
 
     On ANY failure (LLM down, bad JSON, all keys exhausted), falls back to
     [user_query] so the search API stays responsive. Fallback results are
@@ -144,14 +151,18 @@ def translate_query(user_query: str, mode: str | None = None) -> List[str]:
 
     # Cache key includes mode + provider so different configs don't collide.
     key = make_key("translate", LLM_PROVIDER, mode, user_query)
-    cached = translator_cache.get(key)
-    if cached is not None:
-        logger.info("Translator cache hit [mode=%s] q=%r", mode, user_query)
-        return list(cached)
+    if use_cache:
+        cached = translator_cache.get(key)
+        if cached is not None:
+            logger.info("Translator cache hit [mode=%s] q=%r", mode, user_query)
+            return list(cached)
+    else:
+        logger.info("Translator cache BYPASSED [mode=%s] q=%r", mode, user_query)
 
     try:
         result = _STRATEGIES[mode](user_query) or [user_query]
-        translator_cache.set(key, result)
+        if use_cache:
+            translator_cache.set(key, result)
         return result
     except Exception as e:
         logger.warning(

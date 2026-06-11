@@ -1,22 +1,22 @@
-"""LLM-based reranker with reasoning + cache.
+"""LLM-based reranker with reasoning + rating-aware scoring.
 
-Sees the user's ORIGINAL query and reorders the candidate pool, attaching
-a one-sentence justification to each result.
+Pipeline per request:
+  1. Format candidates (incl. rating confidence tag).
+  2. Send to LLM with original query; LLM returns ranked list of top_k with reasons.
+  3. Apply Bayesian rating blend: final_score = (1-w)*rerank + w*rating_signal.
+  4. Re-sort by final_score (which may differ slightly from LLM's order when
+     two candidates have similar relevance but different rating reliability).
 
-Cache: keyed by (provider, query, candidate-titles, top_k). Identical
-inputs return identical outputs within the session — supports Niharika's
-determinism requirement.
-
-Fallback: on any LLM failure (quota, parse, all keys cooling), returns
-the embedding-score order with a sentinel reason. The demo stays usable.
+Cached. Falls back to embedding-score order if the LLM call fails.
 """
 
 import logging
 from typing import List
 
 from app.cache import make_key, reranker_cache
-from app.config import LLM_PROVIDER
+from app.config import LLM_PROVIDER, RATING_BOOST_WEIGHT
 from app.llm_client import LLMError, generate_json
+from app.scoring import bayesian_rating, blend_score, rating_quality_tag
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +28,20 @@ The user searched for: "{query}"
 
 Below are {n_candidates} candidate products from the catalog. Rank them by
 how well each matches the user's ORIGINAL intent. Use these factors:
-- Semantic relevance to the query
+- Semantic relevance to the query (PRIMARY — outweighs everything else)
 - Price appropriateness if a budget is implied
 - Occasion / use-case fit (each product has an `occasion` attribute)
 - Material fit if mentioned (each product has a `material` attribute)
 - Specificity (color, size, style if specified)
+
+About rating data (shown as e.g. `rating=4.3/5 confidence=high_confidence`):
+- `confidence=high_confidence` (100+ ratings) = trustworthy signal
+- `confidence=medium_confidence` (10-99 ratings) = moderate signal
+- `confidence=low_confidence` (<10 ratings) = unreliable; mostly ignore
+- `confidence=no_ratings` = treat as unrated
+A high rating with low confidence should NOT outrank a slightly lower
+rating with high confidence. We apply a deterministic Bayesian blend
+AFTER your scoring, so you can focus on relevance.
 
 Return JSON only. Score is integer 0-100. Include only the TOP {top_k}.
 Order the array by score descending.
@@ -55,27 +64,49 @@ def _format_candidate(i: int, product: dict) -> str:
     color = product.get("color", "")
     material = product.get("material", "")
     occasion = product.get("occasion", "")
+    rating = product.get("average_rating")
+    rating_n = product.get("rating_number")
     desc = (product.get("prod_description") or "")[:100]
+
     price_str = f"${price}" if price is not None else "?"
+    confidence = rating_quality_tag(rating_n)
+    if confidence == "no_ratings":
+        rating_str = "rating=none"
+    else:
+        rating_str = f"rating={rating}/5 confidence={confidence}"
+
     return (
         f"  idx={i} | {title} | color={color} | material={material} "
-        f"| occasion={occasion} | {price_str} | {desc}"
+        f"| occasion={occasion} | {price_str} | {rating_str} | {desc}"
     )
 
 
-def rerank(query: str, candidates: List[dict], top_k: int) -> List[dict]:
+def rerank(
+    query: str,
+    candidates: List[dict],
+    top_k: int,
+    use_cache: bool = True,
+) -> List[dict]:
+    """Return up to top_k candidates re-scored with reasoning + rating blend.
+
+    use_cache=False forces a fresh LLM call (won't read from or write to
+    the in-process cache). Useful for variance testing.
+    """
     if not candidates:
         return []
 
-    # Cap candidates sent to the LLM for cost + latency.
+    # Cap the candidate pool sent to the LLM for cost/latency.
     candidates = candidates[: max(top_k * 3, 30)]
     titles = tuple(c.get("Product_title", "") for c in candidates)
 
-    key = make_key("rerank", LLM_PROVIDER, query, titles, top_k)
-    cached = reranker_cache.get(key)
-    if cached is not None:
-        logger.info("Reranker cache hit q=%r", query)
-        return [dict(p) for p in cached]
+    key = make_key("rerank", LLM_PROVIDER, query, titles, top_k, RATING_BOOST_WEIGHT)
+    if use_cache:
+        cached = reranker_cache.get(key)
+        if cached is not None:
+            logger.info("Reranker cache hit q=%r", query)
+            return [dict(p) for p in cached]
+    else:
+        logger.info("Reranker cache BYPASSED q=%r", query)
 
     candidates_block = "\n".join(
         _format_candidate(i, p) for i, p in enumerate(candidates)
@@ -93,25 +124,44 @@ def rerank(query: str, candidates: List[dict], top_k: int) -> List[dict]:
         if not isinstance(ranked, list) or not ranked:
             raise LLMError(f"Bad shape: {parsed!r}")
 
-        results = []
-        for entry in ranked[:top_k]:
+        # Build candidate list with rerank_score + Bayesian rating + blended.
+        scored: list[tuple[float, dict]] = []
+        for entry in ranked:
             idx = int(entry.get("idx", -1))
-            if 0 <= idx < len(candidates):
-                product = dict(candidates[idx])
-                product["rerank_score"] = int(entry.get("score", 0))
-                product["reason"] = str(entry.get("reason", "")).strip()
-                results.append(product)
-        if not results:
+            if not (0 <= idx < len(candidates)):
+                continue
+            product = dict(candidates[idx])
+            rerank_score = int(entry.get("score", 0))
+            bayes = bayesian_rating(
+                product.get("average_rating"), product.get("rating_number")
+            )
+            final = blend_score(rerank_score, bayes, weight=RATING_BOOST_WEIGHT)
+
+            product["rerank_score"] = rerank_score
+            product["bayesian_rating"] = round(bayes, 3)
+            product["final_score"] = round(final, 2)
+            product["reason"] = str(entry.get("reason", "")).strip()
+            scored.append((final, product))
+
+        if not scored:
             raise LLMError("Reranker returned no valid indices.")
-        reranker_cache.set(key, results)
+
+        # Re-sort by blended final_score, then take top_k.
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        results = [p for _, p in scored[:top_k]]
+
+        if use_cache:
+            reranker_cache.set(key, results)
         return results
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning("Rerank failed (%s). Embedding-order fallback.", repr(e))
         fallback = []
         for product in candidates[:top_k]:
             product = dict(product)
             product["rerank_score"] = None
+            product["bayesian_rating"] = None
+            product["final_score"] = None
             product["reason"] = "(rerank unavailable — embedding score only)"
             fallback.append(product)
         return fallback

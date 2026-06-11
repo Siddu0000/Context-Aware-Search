@@ -75,9 +75,30 @@ class Embedder:
                 chunks.extend(d.embedding for d in resp.data)
             return np.asarray(chunks, dtype=np.float32)
 
-        return self._st_model.encode(
-            texts, show_progress_bar=False, convert_to_numpy=True
+        # Show progress bar for large batches (catalog build) but not for
+        # small ones (a few query intents at search time would flash up).
+        n = len(texts)
+        show_progress = n >= 500
+        if show_progress:
+            import time as _time
+            t0 = _time.perf_counter()
+            logger.info("Encoding %s texts with %s ...", f"{n:,}", self.model_name)
+
+        out = self._st_model.encode(
+            texts,
+            show_progress_bar=show_progress,
+            convert_to_numpy=True,
+            batch_size=64,
         ).astype(np.float32)
+
+        if show_progress:
+            elapsed = _time.perf_counter() - t0
+            rate = n / elapsed if elapsed > 0 else 0
+            logger.info(
+                "Encoded %s texts in %.1fs (%.0f texts/sec).",
+                f"{n:,}", elapsed, rate,
+            )
+        return out
 
 
 # Module-level default embedder. Swap by reassigning in eval scripts.
