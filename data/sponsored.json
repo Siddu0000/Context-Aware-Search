@@ -1,0 +1,47 @@
+{
+  "_comment": "Curated paid-ad inventory for the PoC. No real ad data exists in the Amazon Reviews 2023 dump, so sponsored placements are defined here by parent_asin. Targeting: an ad shows if any of its keywords appears in the query, or (failing that) if its vertical matches the organic results' vertical. 'bid' only orders competing ads — it never enters the organic relevance score. See app/sponsored.py and .claude/rules/safety.md.",
+  "sponsored": [
+    {
+      "parent_asin": "B00XA97LGY",
+      "sponsor": "Twinings",
+      "bid": 0.90,
+      "verticals": ["grocery"],
+      "keywords": ["tea", "peppermint", "herbal", "beverage", "drink", "infusion", "brew"]
+    },
+    {
+      "parent_asin": "B099TYMZ8S",
+      "sponsor": "Jordan's Skinny Mixes",
+      "bid": 0.70,
+      "verticals": ["grocery"],
+      "keywords": ["syrup", "vanilla", "coffee", "sweetener", "sugar free", "latte", "flavoring"]
+    },
+    {
+      "parent_asin": "B071J1TZWX",
+      "sponsor": "Topdress",
+      "bid": 0.85,
+      "verticals": ["fashion"],
+      "keywords": ["dress", "summer", "party", "vintage", "women", "outfit", "wedding", "evening"]
+    },
+    {
+      "parent_asin": "B08QV15SZ8",
+      "sponsor": "Ekouaer",
+      "bid": 0.60,
+      "verticals": ["fashion"],
+      "keywords": ["nightgown", "sleepwear", "pajama", "pyjama", "nightshirt", "loungewear", "sleep"]
+    },
+    {
+      "parent_asin": "B0BM2YG2K7",
+      "sponsor": "Blink",
+      "bid": 0.95,
+      "verticals": ["electronics"],
+      "keywords": ["doorbell", "camera", "security", "smart home", "video", "surveillance", "monitor"]
+    },
+    {
+      "parent_asin": "B08JV686JR",
+      "sponsor": "Filoto",
+      "bid": 0.55,
+      "verticals": ["electronics"],
+      "keywords": ["airpods", "case", "earbuds", "cover", "headphone", "earphone", "wireless"]
+    }
+  ]
+}

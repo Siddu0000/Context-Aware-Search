@@ -27,6 +27,7 @@ Usage:
 import argparse
 import json
 import logging
+import sys
 import time
 
 import pandas as pd
@@ -36,6 +37,16 @@ from app.search import load_index, search_products
 from app.translator import translate_query
 
 logging.basicConfig(level=logging.ERROR)  # quiet; we report per-query ourselves
+
+# Some stress queries are emoji / CJK / accented on purpose (unicode handling
+# IS part of the test). The Windows console defaults to cp1252 and would raise
+# UnicodeEncodeError when we print those query strings back — crashing the
+# harness even though the PIPELINE handled them fine. Force UTF-8 on stdout so
+# the report always completes. (The saved CSV is UTF-8 regardless.)
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:  # noqa: BLE001 — non-reconfigurable stream; best-effort only
+    pass
 
 STRESS_FILE = DATA_DIR / "stress_queries.json"
 
