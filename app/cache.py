@@ -1,5 +1,12 @@
 """Process-local LRU cache for LLM responses.
 
+  ============================================================================
+  NOT CURRENTLY WIRED IN. Translator and reranker bypass this module entirely
+  during the early-stage development phase. See app/config.py for the
+  rationale and the locations of the commented-out integration points.
+  This file is kept as a working implementation for the re-enable path.
+  ============================================================================
+
 Why this exists:
 - Each /search makes 2 LLM calls (translator + reranker).
 - Free-tier daily quotas are tight. Identical inputs should not hit the API twice.

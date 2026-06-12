@@ -7,13 +7,17 @@ Pipeline per request:
   4. Re-sort by final_score (which may differ slightly from LLM's order when
      two candidates have similar relevance but different rating reliability).
 
-Cached. Falls back to embedding-score order if the LLM call fails.
+Caching DISABLED during early-stage development (see app/config.py). Every
+call hits the real LLM. Falls back to embedding-score order if the LLM call
+fails.
 """
 
 import logging
 from typing import List
 
-from app.cache import make_key, reranker_cache
+# CACHE DISABLED — early-stage development. See app/config.py for context.
+# To re-enable, uncomment this import and the cache blocks in rerank().
+# from app.cache import make_key, reranker_cache
 from app.config import LLM_PROVIDER, RATING_BOOST_WEIGHT
 from app.llm_client import LLMError, generate_json
 from app.scoring import bayesian_rating, blend_score, rating_quality_tag
@@ -85,12 +89,10 @@ def rerank(
     query: str,
     candidates: List[dict],
     top_k: int,
-    use_cache: bool = True,
 ) -> List[dict]:
     """Return up to top_k candidates re-scored with reasoning + rating blend.
 
-    use_cache=False forces a fresh LLM call (won't read from or write to
-    the in-process cache). Useful for variance testing.
+    Every call hits the LLM directly — caching disabled during early dev.
     """
     if not candidates:
         return []
@@ -99,14 +101,12 @@ def rerank(
     candidates = candidates[: max(top_k * 3, 30)]
     titles = tuple(c.get("Product_title", "") for c in candidates)
 
-    key = make_key("rerank", LLM_PROVIDER, query, titles, top_k, RATING_BOOST_WEIGHT)
-    if use_cache:
-        cached = reranker_cache.get(key)
-        if cached is not None:
-            logger.info("Reranker cache hit q=%r", query)
-            return [dict(p) for p in cached]
-    else:
-        logger.info("Reranker cache BYPASSED q=%r", query)
+    # # CACHE DISABLED — early-stage dev. Uncomment to re-enable.
+    # key = make_key("rerank", LLM_PROVIDER, query, titles, top_k, RATING_BOOST_WEIGHT)
+    # cached = reranker_cache.get(key)
+    # if cached is not None:
+    #     logger.info("Reranker cache hit q=%r", query)
+    #     return [dict(p) for p in cached]
 
     candidates_block = "\n".join(
         _format_candidate(i, p) for i, p in enumerate(candidates)
@@ -150,8 +150,8 @@ def rerank(
         scored.sort(key=lambda pair: pair[0], reverse=True)
         results = [p for _, p in scored[:top_k]]
 
-        if use_cache:
-            reranker_cache.set(key, results)
+        # # CACHE DISABLED — early-stage dev. Uncomment to re-enable.
+        # reranker_cache.set(key, results)
         return results
 
     except Exception as e:  # noqa: BLE001

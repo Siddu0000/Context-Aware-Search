@@ -24,7 +24,9 @@ cached, so the same input gives bit-identical results within a session.
 import logging
 from typing import List
 
-from app.cache import make_key, translator_cache
+# CACHE DISABLED — early-stage development. See app/config.py for context.
+# To re-enable, uncomment this import and the cache blocks in translate_query().
+# from app.cache import make_key, translator_cache
 from app.config import LLM_PROVIDER, NUM_INTENTS, TRANSLATOR_MODE
 from app.llm_client import LLMError, generate_json
 
@@ -133,36 +135,31 @@ _STRATEGIES = {
 def translate_query(
     user_query: str,
     mode: str | None = None,
-    use_cache: bool = True,
 ) -> List[str]:
     """Return a list of intents/documents to embed for retrieval.
 
-    use_cache=False forces a fresh LLM call (won't read from cache, won't
-    write to it either). Useful for testing actual response variance.
+    Every call hits the LLM directly — caching is disabled during the early
+    development phase (see app/config.py for the rationale).
 
     On ANY failure (LLM down, bad JSON, all keys exhausted), falls back to
-    [user_query] so the search API stays responsive. Fallback results are
-    NOT cached — the next call retries the real LLM.
+    [user_query] so the search API stays responsive.
     """
     mode = (mode or TRANSLATOR_MODE).lower()
     if mode not in _STRATEGIES:
         logger.warning("Unknown TRANSLATOR_MODE=%r; using query_expansion.", mode)
         mode = "query_expansion"
 
-    # Cache key includes mode + provider so different configs don't collide.
-    key = make_key("translate", LLM_PROVIDER, mode, user_query)
-    if use_cache:
-        cached = translator_cache.get(key)
-        if cached is not None:
-            logger.info("Translator cache hit [mode=%s] q=%r", mode, user_query)
-            return list(cached)
-    else:
-        logger.info("Translator cache BYPASSED [mode=%s] q=%r", mode, user_query)
+    # # CACHE DISABLED — early-stage dev. Uncomment to re-enable.
+    # key = make_key("translate", LLM_PROVIDER, mode, user_query)
+    # cached = translator_cache.get(key)
+    # if cached is not None:
+    #     logger.info("Translator cache hit [mode=%s] q=%r", mode, user_query)
+    #     return list(cached)
 
     try:
         result = _STRATEGIES[mode](user_query) or [user_query]
-        if use_cache:
-            translator_cache.set(key, result)
+        # # CACHE DISABLED — early-stage dev. Uncomment to re-enable.
+        # translator_cache.set(key, result)
         return result
     except Exception as e:
         logger.warning(

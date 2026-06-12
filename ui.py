@@ -40,25 +40,13 @@ with st.sidebar:
     st.header("Settings")
     top_k = st.slider("Number of results", 3, 30, 10)
     rerank = st.toggle("Enable LLM rerank", value=True)
-    use_cache = st.toggle(
-        "Use response cache",
-        value=True,
-        help="When off, every search forces a fresh LLM call. "
-        "Use to test variance across identical queries. "
-        "Note: results may still be identical if DETERMINISTIC=true in .env.",
+    show_debug = st.toggle(
+        "Show debug metrics",
+        value=False,
+        help="Per-stage latency and pipeline diagnostics. Off by default so "
+        "they don't clutter the results during a demo.",
     )
-    st.divider()
-    if st.button("🗑️ Clear cache", help="Wipes both translator and reranker caches."):
-        try:
-            r = requests.post(f"{BACKEND}/cache/clear", timeout=5)
-            r.raise_for_status()
-            info = r.json()
-            st.success(
-                f"Cleared. translator had {info['translator']['prev_size']} entries, "
-                f"reranker had {info['reranker']['prev_size']}."
-            )
-        except requests.RequestException as e:
-            st.warning(f"Could not clear cache: {e}")
+    st.caption("Cache is disabled — every search hits the LLM directly.")
     st.caption("Toggle rerank off to see raw retrieval.")
 
 
@@ -93,7 +81,6 @@ if st.button("🔍 Search", type="primary") and query:
                     "query": query,
                     "top_k": top_k,
                     "rerank": str(rerank).lower(),
-                    "use_cache": str(use_cache).lower(),
                 },
                 timeout=60,
             )
@@ -108,30 +95,27 @@ if st.button("🔍 Search", type="primary") and query:
 if "last_response" in st.session_state:
     data = st.session_state["last_response"]
 
-    # Latency strip
+    # Debug metrics moved OFF the results panel (Niharika 2026-06-11: "push
+    # them to the left / discard them"). Now they only render in the sidebar
+    # when the developer flips the debug toggle — invisible during a demo.
     timings = data.get("latency_ms", {})
-    if timings:
-        cols = st.columns(len(timings))
-        for c, (stage, ms) in zip(cols, timings.items()):
-            c.metric(label=stage, value=f"{ms} ms")
+    if show_debug:
+        with st.sidebar:
+            st.divider()
+            st.caption("**Debug — last request**")
+            for stage, ms in timings.items():
+                st.caption(f"{stage}: {ms} ms")
+            if timings:
+                st.caption(f"total: {sum(timings.values())} ms")
+            if data.get("rerank_succeeded") is False and data.get("rerank_requested"):
+                st.caption("⚠️ rerank fell back (LLM unavailable)")
 
-    # Status badges so the user can verify what the request actually did.
-    badges = []
-    if data.get("cache_used"):
-        # Cache was allowed. Total <100ms = almost certainly a cache hit.
-        total = sum(timings.values()) if timings else 0
-        if total < 100:
-            badges.append("🟢 cache HIT (fast)")
-        else:
-            badges.append("🟡 cache miss (fresh LLM call, result saved)")
-    else:
-        badges.append("⚡ cache BYPASSED (forced fresh LLM call, not saved)")
+    # A single subtle warning stays in the main panel ONLY if rerank silently
+    # fell back — the user should know results are embedding-only in that case.
     if data.get("rerank_succeeded") is False and data.get("rerank_requested"):
-        badges.append("⚠️ rerank fell back (LLM unavailable)")
-    if badges:
-        st.caption(" · ".join(badges))
+        st.caption("⚠️ Showing embedding-ranked results (reranker was unavailable).")
 
-    st.subheader("🧠 Interpreted Intents")
+    st.subheader("🧠 Interpreted intents")
     for intent in data.get("interpreted_as", []):
         st.markdown(f"- {intent}")
 

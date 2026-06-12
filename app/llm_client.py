@@ -1,31 +1,27 @@
 """LLM provider abstraction.
 
 Single interface across Gemini, OpenAI, Anthropic. Eval scripts swap
-providers via the LLM_PROVIDER env var without touching translator or
-reranker code.
+providers (LLM_PROVIDER) and temperature (TEMPERATURE_OVERRIDE) at runtime
+without touching translator or reranker code.
+
+Why this module reads config dynamically (import app.config as cfg) instead
+of `from app.config import X`: a plain `from ... import X` binds a *copy* of
+the value at import time, so an eval script that sets `config.X = ...` later
+would have no effect here. Referencing cfg.X reads the live module attribute,
+so runtime overrides (provider switch, temperature sweep) work as expected.
 
 Lazy imports: a missing SDK (e.g. `openai` not installed) only errors when
 that provider is actually selected, not at import time.
 
-Determinism: when DETERMINISTIC=true, temperature is forced to 0 and seed
-is passed where the provider supports it.
+Determinism: when cfg.DETERMINISTIC is true, temperature resolves to 0 and a
+fixed seed is sent where the provider supports it. See cfg.effective_temperature.
 """
 
 import json
 import logging
 from typing import Optional
 
-from app.config import (
-    ANTHROPIC_API_KEY,
-    ANTHROPIC_MODEL,
-    DETERMINISTIC,
-    GEMINI_MODEL,
-    GOOGLE_API_KEYS,
-    LLM_PROVIDER,
-    LLM_SEED,
-    OPENAI_API_KEY,
-    OPENAI_MODEL,
-)
+import app.config as cfg
 
 logger = logging.getLogger(__name__)
 
@@ -34,29 +30,33 @@ class LLMError(Exception):
     """Raised when an LLM call fails after all retries / fallbacks."""
 
 
+def _use_seed() -> bool:
+    """Send a fixed seed only in true deterministic mode (not during a sweep)."""
+    return cfg.DETERMINISTIC and cfg.TEMPERATURE_OVERRIDE is None
+
+
 # ---------- Gemini ----------------------------------------------------------
 
 
 class _GeminiBackend:
     def __init__(self):
-        if not GOOGLE_API_KEYS:
+        if not cfg.GOOGLE_API_KEYS:
             raise LLMError(
                 "No Gemini API keys configured. Set GOOGLE_API_KEY in .env."
             )
         # Use the rotator even with one key — it gives uniform error handling.
         from app.key_rotator import GeminiKeyRotator
 
-        self.rotator = GeminiKeyRotator(GOOGLE_API_KEYS)
-        self.model = GEMINI_MODEL
+        self.rotator = GeminiKeyRotator(cfg.GOOGLE_API_KEYS)
+        self.model = cfg.GEMINI_MODEL
 
     def generate_json(self, prompt: str, temperature: float) -> str:
         config = {
-            "temperature": 0.0 if DETERMINISTIC else temperature,
+            "temperature": cfg.effective_temperature(temperature),
             "response_mime_type": "application/json",
         }
-        # Gemini SDK supports `seed` for determinism.
-        if DETERMINISTIC:
-            config["seed"] = LLM_SEED
+        if _use_seed():
+            config["seed"] = cfg.LLM_SEED
         response = self.rotator.generate_content(
             model=self.model, contents=prompt, config=config
         )
@@ -68,7 +68,7 @@ class _GeminiBackend:
 
 class _OpenAIBackend:
     def __init__(self):
-        if not OPENAI_API_KEY:
+        if not cfg.OPENAI_API_KEY:
             raise LLMError("OPENAI_API_KEY not set.")
         try:
             from openai import OpenAI
@@ -76,18 +76,18 @@ class _OpenAIBackend:
             raise LLMError(
                 "openai package not installed. `pip install openai`."
             ) from e
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
-        self.model = OPENAI_MODEL
+        self.client = OpenAI(api_key=cfg.OPENAI_API_KEY)
+        self.model = cfg.OPENAI_MODEL
 
     def generate_json(self, prompt: str, temperature: float) -> str:
         params = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0 if DETERMINISTIC else temperature,
+            "temperature": cfg.effective_temperature(temperature),
             "response_format": {"type": "json_object"},
         }
-        if DETERMINISTIC:
-            params["seed"] = LLM_SEED
+        if _use_seed():
+            params["seed"] = cfg.LLM_SEED
         resp = self.client.chat.completions.create(**params)
         return resp.choices[0].message.content
 
@@ -97,7 +97,7 @@ class _OpenAIBackend:
 
 class _AnthropicBackend:
     def __init__(self):
-        if not ANTHROPIC_API_KEY:
+        if not cfg.ANTHROPIC_API_KEY:
             raise LLMError("ANTHROPIC_API_KEY not set.")
         try:
             from anthropic import Anthropic
@@ -105,8 +105,8 @@ class _AnthropicBackend:
             raise LLMError(
                 "anthropic package not installed. `pip install anthropic`."
             ) from e
-        self.client = Anthropic(api_key=ANTHROPIC_API_KEY)
-        self.model = ANTHROPIC_MODEL
+        self.client = Anthropic(api_key=cfg.ANTHROPIC_API_KEY)
+        self.model = cfg.ANTHROPIC_MODEL
 
     def generate_json(self, prompt: str, temperature: float) -> str:
         # Anthropic does NOT have a strict JSON mode, so we instruct in the
@@ -114,7 +114,7 @@ class _AnthropicBackend:
         resp = self.client.messages.create(
             model=self.model,
             max_tokens=1024,
-            temperature=0.0 if DETERMINISTIC else temperature,
+            temperature=cfg.effective_temperature(temperature),
             messages=[
                 {
                     "role": "user",
@@ -135,35 +135,36 @@ _singleton_provider: Optional[str] = None
 def get_llm_client():
     """Return the configured backend (singleton per provider).
 
-    Lazy-initialized so the first call discovers config issues; later calls
-    just return the cached instance.
+    Reads cfg.LLM_PROVIDER dynamically so eval scripts can switch providers
+    at runtime (reset the singleton by setting _singleton = None).
     """
     global _singleton, _singleton_provider
-    if _singleton is not None and _singleton_provider == LLM_PROVIDER:
+    provider = cfg.LLM_PROVIDER
+    if _singleton is not None and _singleton_provider == provider:
         return _singleton
 
-    if LLM_PROVIDER == "gemini":
+    if provider == "gemini":
         _singleton = _GeminiBackend()
-    elif LLM_PROVIDER == "openai":
+    elif provider == "openai":
         _singleton = _OpenAIBackend()
-    elif LLM_PROVIDER == "anthropic":
+    elif provider == "anthropic":
         _singleton = _AnthropicBackend()
     else:
         raise LLMError(
-            f"Unknown LLM_PROVIDER={LLM_PROVIDER!r}. "
+            f"Unknown LLM_PROVIDER={provider!r}. "
             f"Expected one of: gemini, openai, anthropic."
         )
 
-    _singleton_provider = LLM_PROVIDER
-    logger.info("LLM provider initialized: %s", LLM_PROVIDER)
+    _singleton_provider = provider
+    logger.info("LLM provider initialized: %s", provider)
     return _singleton
 
 
 def generate_json(prompt: str, temperature: float = 0.2) -> dict:
     """Convenience wrapper that parses the response as JSON.
 
-    Strips common code-fence wrappers (\\`\\`\\`json ... \\`\\`\\`) some models add.
-    Raises LLMError if response can't be parsed.
+    Strips common code-fence wrappers some models add. Raises LLMError if
+    the response can't be parsed.
     """
     client = get_llm_client()
     raw = client.generate_json(prompt, temperature)

@@ -4,7 +4,9 @@ Endpoints:
     GET  /search?query=...    translate -> retrieve -> (optional) rerank
     POST /feedback            record thumbs-up / thumbs-down
     GET  /healthz             readiness probe
-    GET  /stats               cache + key-rotator stats (debug)
+    GET  /stats               provider + key-rotator state (debug)
+
+Note: in-process LLM caching is currently disabled. See app/config.py.
 """
 
 import logging
@@ -14,9 +16,9 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.cache import reranker_cache, translator_cache
+# CACHE DISABLED — early-stage dev. Uncomment to re-enable cache observability.
+# from app.cache import reranker_cache, translator_cache
 from app.config import (
-    CACHE_ENABLED,
     FINAL_TOP_K,
     LLM_PROVIDER,
     RERANK_ENABLED,
@@ -58,12 +60,11 @@ def healthz():
 
 @app.get("/stats")
 def stats():
-    """Quick visibility into cache hit rates and key-rotator state."""
+    """Quick visibility into provider state and (Gemini) key-rotator status."""
     out = {
         "llm_provider": LLM_PROVIDER,
         "translator_mode": TRANSLATOR_MODE,
-        "translator_cache": translator_cache.stats(),
-        "reranker_cache": reranker_cache.stats(),
+        "cache": "disabled",  # cache is hard-off; see app/config.py
     }
     # Key rotator stats only meaningful for Gemini.
     if LLM_PROVIDER == "gemini":
@@ -87,17 +88,12 @@ def search(
         None,
         description="Override TRANSLATOR_MODE for this request: query_expansion | hyde | hybrid",
     ),
-    use_cache: bool = Query(
-        CACHE_ENABLED,
-        description="If false, skip cache lookup AND skip cache writes. "
-        "Forces a fresh LLM call. Useful for variance testing.",
-    ),
 ):
-    """Translate -> retrieve -> rerank pipeline."""
+    """Translate -> retrieve -> rerank pipeline. Every call hits the real LLM."""
     timings = StageTimings()
     try:
         with timings.stage("translate"):
-            intents = translate_query(query, mode=translator_mode, use_cache=use_cache)
+            intents = translate_query(query, mode=translator_mode)
 
         with timings.stage("retrieve"):
             candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
@@ -105,7 +101,7 @@ def search(
         rerank_actually_ran = False
         if rerank and candidates:
             with timings.stage("rerank"):
-                results = llm_rerank(query, candidates, top_k=top_k, use_cache=use_cache)
+                results = llm_rerank(query, candidates, top_k=top_k)
             rerank_actually_ran = any(
                 r.get("rerank_score") is not None for r in results
             )
@@ -123,7 +119,6 @@ def search(
             "translator_mode": translator_mode or TRANSLATOR_MODE,
             "rerank_requested": rerank,
             "rerank_succeeded": rerank_actually_ran,
-            "cache_used": use_cache,
             "results": results,
             "latency_ms": timings.to_dict(),
         }
@@ -133,25 +128,22 @@ def search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/cache/clear")
-def clear_cache():
-    """Clear both translator and reranker in-process caches.
-
-    Useful when you want to ensure the next /search hits the real LLM
-    even if cached entries exist. Returns the previous sizes.
-    """
-    t_stats = translator_cache.stats()
-    r_stats = reranker_cache.stats()
-    # The LRUCache stores its data in an OrderedDict — reset it directly.
-    translator_cache._store.clear()
-    reranker_cache._store.clear()
-    translator_cache.hits = translator_cache.misses = 0
-    reranker_cache.hits = reranker_cache.misses = 0
-    return {
-        "status": "cleared",
-        "translator": {"prev_size": t_stats["size"]},
-        "reranker": {"prev_size": r_stats["size"]},
-    }
+# CACHE DISABLED — early-stage dev. Endpoint removed; cache is never populated.
+# To re-enable: restore cache imports above and uncomment this block.
+# @app.post("/cache/clear")
+# def clear_cache():
+#     """Clear both translator and reranker in-process caches."""
+#     t_stats = translator_cache.stats()
+#     r_stats = reranker_cache.stats()
+#     translator_cache._store.clear()
+#     reranker_cache._store.clear()
+#     translator_cache.hits = translator_cache.misses = 0
+#     reranker_cache.hits = reranker_cache.misses = 0
+#     return {
+#         "status": "cleared",
+#         "translator": {"prev_size": t_stats["size"]},
+#         "reranker": {"prev_size": r_stats["size"]},
+#     }
 
 
 # --- Feedback endpoint ----------------------------------------------------

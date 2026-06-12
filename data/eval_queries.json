@@ -1,0 +1,84 @@
+[
+  {
+    "query": "men's casual athletic socks",
+    "relevance": {
+      "title_any_of": ["socks", "sock"],
+      "category_in": ["men's clothing", "unisex clothing"]
+    }
+  },
+  {
+    "query": "women's blue casual dress",
+    "relevance": {
+      "title_any_of": ["dress"],
+      "category_in": ["women's clothing"],
+      "color_in": ["blue", "navy"]
+    }
+  },
+  {
+    "query": "compression sleeves for running",
+    "relevance": {
+      "title_any_of": ["compression", "sleeve"],
+      "occasion_in": ["sports"]
+    }
+  },
+  {
+    "query": "vintage style dress",
+    "relevance": {
+      "title_any_of": ["vintage", "retro"]
+    }
+  },
+  {
+    "query": "cotton sweater for women",
+    "relevance": {
+      "title_any_of": ["sweater", "cardigan", "pullover"],
+      "category_in": ["women's clothing"]
+    }
+  },
+  {
+    "query": "leather belt for men",
+    "relevance": {
+      "title_any_of": ["belt"],
+      "category_in": ["men's clothing"]
+    }
+  },
+  {
+    "query": "girls dress for kids",
+    "relevance": {
+      "title_any_of": ["dress", "outfit"],
+      "category_in": ["kids"]
+    }
+  },
+  {
+    "query": "ankle boots with heels",
+    "relevance": {
+      "title_any_of": ["boots", "boot", "heel"]
+    }
+  },
+  {
+    "query": "drop earrings gold",
+    "relevance": {
+      "title_any_of": ["earrings", "earring"],
+      "color_in": ["gold"]
+    }
+  },
+  {
+    "query": "comfortable lounge pants",
+    "relevance": {
+      "title_any_of": ["pants", "lounge", "palazzo"],
+      "occasion_in": ["casual"]
+    }
+  },
+  {
+    "query": "plus size women's clothing",
+    "relevance": {
+      "title_any_of": ["plus size", "plus", "xl", "xxl"],
+      "category_in": ["women's clothing"]
+    }
+  },
+  {
+    "query": "tie dye sweatshirt",
+    "relevance": {
+      "title_any_of": ["tie dye", "sweatshirt", "tie-dye"]
+    }
+  }
+]
