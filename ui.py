@@ -1,9 +1,14 @@
 """Streamlit UI.
 
-Adds three things over the original:
-  1. Shows each product's reason (from the reranker).
-  2. Shows per-stage latency for the request.
-  3. Captures thumbs-up / thumbs-down feedback, posted to /feedback.
+Over the bare results list this adds:
+  1. Each product's reason (from the reranker).
+  2. Per-stage latency for the request (debug toggle).
+  3. Thumbs-up / thumbs-down feedback, posted to /feedback.
+  4. Pagination (Prev/Next) over results beyond the first 10.
+  5. A clearly-labelled "Sponsored" section, kept visually separate from
+     organic results (paid placement must never look like earned placement).
+  6. A "Frequently bought together / You might prefer" cross-sell + upsell
+     panel under the results (page 1 only).
 """
 
 import math
@@ -24,6 +29,7 @@ def _is_nan(x) -> bool:
     except (TypeError, ValueError):
         return False
 
+
 st.set_page_config(
     page_title="Context-Aware Agentic Search",
     page_icon="🛒",
@@ -32,14 +38,20 @@ st.set_page_config(
 
 st.title("🛒 Context-Aware Agentic Search")
 st.caption(
-    "HyDE-style query expansion + LLM rerank with reasoning. "
+    "LLM query expansion + LLM rerank with reasoning. "
     "Searches what you *meant*, not what you typed."
 )
 
+# --- Session state ---------------------------------------------------------
+for _k, _v in {"query": "", "page": 1, "last_response": None}.items():
+    st.session_state.setdefault(_k, _v)
+
 with st.sidebar:
     st.header("Settings")
-    top_k = st.slider("Number of results", 3, 30, 10)
+    top_k = st.slider("Results per page", 3, 30, 10)
     rerank = st.toggle("Enable LLM rerank", value=True)
+    show_sponsored = st.toggle("Show sponsored", value=True)
+    show_recs = st.toggle("Show recommendations", value=True)
     show_debug = st.toggle(
         "Show debug metrics",
         value=False,
@@ -48,6 +60,31 @@ with st.sidebar:
     )
     st.caption("Cache is disabled — every search hits the LLM directly.")
     st.caption("Toggle rerank off to see raw retrieval.")
+
+
+def _fetch():
+    """Run a search for the current session query + page; store the response."""
+    q = st.session_state["query"]
+    if not q:
+        return
+    try:
+        r = requests.get(
+            SEARCH_URL,
+            params={
+                "query": q,
+                "top_k": top_k,
+                "page": st.session_state["page"],
+                "rerank": str(rerank).lower(),
+                "recommend": str(show_recs).lower(),
+                "sponsored": str(show_sponsored).lower(),
+            },
+            timeout=60,
+        )
+        r.raise_for_status()
+        st.session_state["last_response"] = r.json()
+    except requests.RequestException as e:
+        st.error(f"Backend error: {e}")
+        st.session_state["last_response"] = None
 
 
 def _post_feedback(query: str, product_title: str, rating: int, rank: int, reason: str):
@@ -67,37 +104,148 @@ def _post_feedback(query: str, product_title: str, rating: int, rank: int, reaso
         st.warning(f"Could not record feedback: {e}")
 
 
-query = st.text_input(
+def _rating_line(product: dict):
+    """Render the NaN-safe rating line for a product, if present."""
+    rating = product.get("average_rating")
+    rating_n = product.get("rating_number")
+    rating_valid = rating is not None and not _is_nan(rating)
+    count_valid = rating_n is not None and not _is_nan(rating_n)
+    if rating_valid:
+        try:
+            rating_val = float(rating)
+            if 0 <= rating_val <= 5:
+                stars = "⭐" * int(round(rating_val))
+                line = f"{stars} **{rating_val:.1f}/5**"
+                if count_valid:
+                    line += f" — based on **{int(float(rating_n)):,}** ratings"
+                else:
+                    line += " — no rating count available"
+                st.markdown(line)
+        except (TypeError, ValueError):
+            pass
+    elif count_valid:
+        st.markdown(f"_{int(float(rating_n)):,} ratings (no average)_")
+
+
+def _render_card(product: dict, rank: int, *, feedback: bool = True, sponsored: bool = False):
+    """Render one full-width product card."""
+    with st.container(border=True):
+        left, right = st.columns([2, 5])
+        with left:
+            if product.get("img_url"):
+                st.image(product["img_url"], width=200)
+        with right:
+            # Defensive: badge if the caller says so OR the item is flagged
+            # sponsored — paid placement must never render as organic.
+            if sponsored or product.get("is_sponsored"):
+                st.markdown(
+                    f":orange[**⭐ SPONSORED**] · _by {product.get('sponsor', 'a partner')}_"
+                )
+            st.markdown(f"### {rank}. {product.get('Product_title', 'Untitled')}")
+            meta = []
+            if product.get("bsns_vrtcl_name"):
+                meta.append(f"**{product['bsns_vrtcl_name']}**")
+            if product.get("categ_lvl2_name"):
+                meta.append(product["categ_lvl2_name"])
+            if product.get("store"):
+                meta.append(f"by {product['store']}")
+            if product.get("color"):
+                meta.append(f"Color: {product['color']}")
+            if product.get("price") is not None and not _is_nan(product.get("price")):
+                meta.append(f"**${product['price']}**")
+            st.markdown(" · ".join(meta))
+
+            _rating_line(product)
+
+            # Scores (organic only — sponsored items aren't relevance-scored).
+            if not sponsored:
+                final = product.get("final_score")
+                rerank_val = product.get("rerank_score")
+                embed = product.get("score", 0)
+                if final is not None and not _is_nan(final):
+                    bayes = product.get("bayesian_rating")
+                    bayes_str = f" · Bayes rating: {bayes}" if bayes else ""
+                    st.caption(
+                        f"**Final score: {final}/100**  "
+                        f"(Rerank: {rerank_val}/100{bayes_str} · embed: {embed:.3f})"
+                    )
+                elif rerank_val is not None:
+                    st.caption(f"Rerank: {rerank_val}/100 · embed: {embed:.3f}")
+                else:
+                    st.caption(f"Embedding sim: {embed:.3f}")
+
+            if product.get("reason"):
+                st.markdown(f"💡 _{product['reason']}_")
+
+            if feedback:
+                # Key on catalog_index (globally unique, stable across pages).
+                # Truncated titles collide — thousands share a 20-char prefix.
+                kid = product.get("catalog_index", rank)
+                fb_cols = st.columns([1, 1, 8])
+                if fb_cols[0].button("👍", key=f"fb_up_{kid}"):
+                    _post_feedback(
+                        st.session_state["query"],
+                        product["Product_title"],
+                        +1,
+                        rank,
+                        product.get("reason", ""),
+                    )
+                    st.toast("Thanks — feedback recorded.")
+                if fb_cols[1].button("👎", key=f"fb_down_{kid}"):
+                    _post_feedback(
+                        st.session_state["query"],
+                        product["Product_title"],
+                        -1,
+                        rank,
+                        product.get("reason", ""),
+                    )
+                    st.toast("Thanks — feedback recorded.")
+
+
+def _render_mini(item: dict, key: str):
+    """Compact card for the cross-sell / upsell strip."""
+    with st.container(border=True):
+        if item.get("img_url"):
+            st.image(item["img_url"], width=120)
+        title = item.get("Product_title", "Untitled")
+        st.markdown(f"**{title[:60]}{'…' if len(title) > 60 else ''}**")
+        if item.get("price") is not None and not _is_nan(item.get("price")):
+            st.caption(f"${item['price']}")
+        if item.get("recommend_reason"):
+            st.caption(f"_{item['recommend_reason']}_")
+        if st.button("🔍 Search this", key=key):
+            st.session_state["query"] = title
+            st.session_state["page"] = 1
+            _fetch()
+            st.rerun()
+
+
+# --- Search bar ------------------------------------------------------------
+query_input = st.text_input(
     "What are you looking for?",
     placeholder="e.g. casual outfit, wireless earbuds, healthy breakfast cereal",
 )
 
-if st.button("🔍 Search", type="primary") and query:
+if st.button("🔍 Search", type="primary") and query_input:
     with st.spinner("Understanding your intent..."):
-        try:
-            r = requests.get(
-                SEARCH_URL,
-                params={
-                    "query": query,
-                    "top_k": top_k,
-                    "rerank": str(rerank).lower(),
-                },
-                timeout=60,
-            )
-            r.raise_for_status()
-            data = r.json()
-        except requests.RequestException as e:
-            st.error(f"Backend error: {e}")
-            st.stop()
+        st.session_state["query"] = query_input
+        st.session_state["page"] = 1
+        _fetch()
 
-    st.session_state["last_response"] = data
+# If the user changed any sidebar setting while a search is active, re-run it
+# from page 1 — otherwise the cached results (and their rank numbering) would
+# no longer match the settings now shown in the sidebar. On first load (no
+# query yet) we just record the settings without fetching.
+_settings = (top_k, rerank, show_sponsored, show_recs)
+if st.session_state.get("settings") != _settings:
+    if st.session_state.get("query") and st.session_state.get("last_response") is not None:
+        st.session_state["page"] = 1
+        _fetch()
+    st.session_state["settings"] = _settings
 
-if "last_response" in st.session_state:
-    data = st.session_state["last_response"]
-
-    # Debug metrics moved OFF the results panel (Niharika 2026-06-11: "push
-    # them to the left / discard them"). Now they only render in the sidebar
-    # when the developer flips the debug toggle — invisible during a demo.
+# --- Results ---------------------------------------------------------------
+data = st.session_state.get("last_response")
+if data:
     timings = data.get("latency_ms", {})
     if show_debug:
         with st.sidebar:
@@ -110,8 +258,6 @@ if "last_response" in st.session_state:
             if data.get("rerank_succeeded") is False and data.get("rerank_requested"):
                 st.caption("⚠️ rerank fell back (LLM unavailable)")
 
-    # A single subtle warning stays in the main panel ONLY if rerank silently
-    # fell back — the user should know results are embedding-only in that case.
     if data.get("rerank_succeeded") is False and data.get("rerank_requested"):
         st.caption("⚠️ Showing embedding-ranked results (reranker was unavailable).")
 
@@ -119,99 +265,63 @@ if "last_response" in st.session_state:
     for intent in data.get("interpreted_as", []):
         st.markdown(f"- {intent}")
 
+    # --- Sponsored (page 1, visually separated) ---------------------------
+    sponsored_items = data.get("sponsored", []) if show_sponsored else []
+    if sponsored_items:
+        st.divider()
+        st.subheader("⭐ Sponsored")
+        st.caption("Paid placements — ranked separately from organic results.")
+        for i, product in enumerate(sponsored_items, start=1):
+            _render_card(product, i, feedback=False, sponsored=True)
+
+    # --- Organic results --------------------------------------------------
     st.divider()
-    st.subheader(
-        "🛍️ Recommended Products"
-        + (" — reranked" if data.get("rerank_enabled") else " — raw retrieval")
-    )
+    st.subheader("🛍️ Recommended Products")
 
     results = data.get("results", [])
+    page = data.get("page", 1)
+    page_size = data.get("page_size", top_k)
     if not results:
         st.warning("No products found.")
     else:
-        for rank, product in enumerate(results, start=1):
-            with st.container(border=True):
-                left, right = st.columns([2, 5])
-                with left:
-                    if product.get("img_url"):
-                        st.image(product["img_url"], width=200)
-                with right:
-                    st.markdown(f"### {rank}. {product.get('Product_title', 'Untitled')}")
-                    meta = []
-                    if product.get("bsns_vrtcl_name"):
-                        meta.append(f"**{product['bsns_vrtcl_name']}**")
-                    if product.get("categ_lvl2_name"):
-                        meta.append(product["categ_lvl2_name"])
-                    if product.get("store"):
-                        meta.append(f"by {product['store']}")
-                    if product.get("color"):
-                        meta.append(f"Color: {product['color']}")
-                    if product.get("price") is not None and not _is_nan(product.get("price")):
-                        meta.append(f"**${product['price']}**")
-                    st.markdown(" · ".join(meta))
+        start_rank = (page - 1) * page_size + 1
+        for offset, product in enumerate(results):
+            _render_card(product, start_rank + offset, feedback=True)
 
-                    # --- Rating: dedicated line, NaN-safe -----------------
-                    # Use pd.isna() so NaN doesn't slip past the None check.
-                    rating = product.get("average_rating")
-                    rating_n = product.get("rating_number")
-                    rating_valid = rating is not None and not _is_nan(rating)
-                    count_valid = rating_n is not None and not _is_nan(rating_n)
-                    if rating_valid:
-                        try:
-                            rating_val = float(rating)
-                            if 0 <= rating_val <= 5:
-                                stars = "⭐" * int(round(rating_val))
-                                line = f"{stars} **{rating_val:.1f}/5**"
-                                if count_valid:
-                                    n = int(float(rating_n))
-                                    line += f" — based on **{n:,}** ratings"
-                                else:
-                                    line += " — no rating count available"
-                                st.markdown(line)
-                        except (TypeError, ValueError):
-                            pass
-                    elif count_valid:
-                        # Edge case: count present but average missing
-                        st.markdown(f"_{int(float(rating_n)):,} ratings (no average)_")
+        # --- Pagination controls ------------------------------------------
+        total_pages = data.get("total_pages", 1)
+        total_results = data.get("total_results", len(results))
+        prev_col, mid_col, next_col = st.columns([1, 3, 1])
+        if prev_col.button("⬅ Prev", disabled=not data.get("has_prev"), key="pg_prev"):
+            st.session_state["page"] = page - 1
+            _fetch()
+            st.rerun()
+        mid_col.markdown(
+            f"<div style='text-align:center'>Page <b>{page}</b> of <b>{total_pages}</b>"
+            f" · {total_results} results</div>",
+            unsafe_allow_html=True,
+        )
+        if next_col.button("Next ➡", disabled=not data.get("has_next"), key="pg_next"):
+            st.session_state["page"] = page + 1
+            _fetch()
+            st.rerun()
 
-                    # --- Scores -----------------------------------------------
-                    final = product.get("final_score")
-                    rerank = product.get("rerank_score")
-                    embed = product.get("score", 0)
-                    if final is not None and not _is_nan(final):
-                        bayes = product.get("bayesian_rating")
-                        bayes_str = f" · Bayes rating: {bayes}" if bayes else ""
-                        st.caption(
-                            f"**Final score: {final}/100**  "
-                            f"(Rerank: {rerank}/100{bayes_str} · embed: {embed:.3f})"
-                        )
-                    elif rerank is not None:
-                        st.caption(
-                            f"Rerank: {rerank}/100 · embed: {embed:.3f}"
-                        )
-                    else:
-                        st.caption(f"Embedding sim: {embed:.3f}")
-
-                    if product.get("reason"):
-                        st.markdown(f"💡 _{product['reason']}_")
-
-                    # Feedback row
-                    fb_cols = st.columns([1, 1, 8])
-                    if fb_cols[0].button("👍", key=f"up_{rank}"):
-                        _post_feedback(
-                            data["user_query"],
-                            product["Product_title"],
-                            +1,
-                            rank,
-                            product.get("reason", ""),
-                        )
-                        st.toast("Thanks — feedback recorded.")
-                    if fb_cols[1].button("👎", key=f"down_{rank}"):
-                        _post_feedback(
-                            data["user_query"],
-                            product["Product_title"],
-                            -1,
-                            rank,
-                            product.get("reason", ""),
-                        )
-                        st.toast("Thanks — feedback recorded.")
+    # --- Cross-sell / upsell (page 1 only) --------------------------------
+    if show_recs and page == 1:
+        recs = data.get("recommendations") or {}
+        cross = recs.get("cross_sell", [])
+        upsell = recs.get("upsell", [])
+        if cross:
+            st.divider()
+            st.subheader("🧺 Frequently bought together")
+            cols = st.columns(len(cross))
+            for j, (col, item) in enumerate(zip(cols, cross)):
+                with col:
+                    _render_mini(item, key=f"cross_{item.get('catalog_index', j)}")
+        if upsell:
+            st.divider()
+            st.subheader("⬆️ You might prefer")
+            cols = st.columns(min(len(upsell), 3) or 1)
+            for j, (col, item) in enumerate(zip(cols, upsell)):
+                with col:
+                    _render_mini(item, key=f"uprec_{item.get('catalog_index', j)}")

@@ -1,0 +1,56 @@
+{
+  "_comment": "Recipe-completeness eval (Niharika 2026-06-11): for each dish, search 'ingredients to make <dish>' and check how many canonical ingredients appear in the top-K result titles. Ingredients were chosen to exist in the Grocery_and_Gourmet_Food catalog; the spread is deliberate — staple-heavy dishes (cookies/pancakes/pasta) should clear the target, while curry/guacamole stress the '70 paneer sellers' diversity problem (headline ingredient found, the long tail missed). Synonyms broaden matching. See eval/eval_recipe_completeness.py and .claude/rules/eval.md.",
+  "target_coverage": 0.7,
+  "dishes": [
+    {
+      "dish": "spaghetti bolognese",
+      "ingredients": ["spaghetti", "ground beef", "tomato", "onion", "garlic", "olive oil", "parmesan", "basil"],
+      "synonyms": {
+        "spaghetti": ["pasta", "noodle"],
+        "ground beef": ["beef", "minced beef", "mince"],
+        "tomato": ["tomato sauce", "tomato paste", "marinara"],
+        "olive oil": ["oil"],
+        "parmesan": ["parmigiano", "parmesan cheese", "cheese"]
+      }
+    },
+    {
+      "dish": "chocolate chip cookies",
+      "ingredients": ["flour", "sugar", "butter", "egg", "chocolate chips", "vanilla", "baking soda", "salt"],
+      "synonyms": {
+        "egg": ["eggs"],
+        "chocolate chips": ["chocolate chip", "chocolate"],
+        "baking soda": ["baking powder", "bicarbonate"],
+        "vanilla": ["vanilla extract"]
+      }
+    },
+    {
+      "dish": "chicken curry",
+      "ingredients": ["chicken", "onion", "garlic", "ginger", "curry powder", "turmeric", "cumin", "coconut milk", "tomato", "rice"],
+      "synonyms": {
+        "chicken": ["chicken breast", "chicken thigh"],
+        "curry powder": ["curry", "masala", "garam masala"],
+        "coconut milk": ["coconut", "coconut cream"],
+        "tomato": ["tomato sauce", "tomato paste"]
+      }
+    },
+    {
+      "dish": "guacamole",
+      "ingredients": ["avocado", "lime", "onion", "cilantro", "tomato", "salt"],
+      "synonyms": {
+        "cilantro": ["coriander"],
+        "lime": ["lime juice"],
+        "onion": ["red onion"]
+      }
+    },
+    {
+      "dish": "buttermilk pancakes",
+      "ingredients": ["flour", "milk", "egg", "sugar", "butter", "baking powder", "vanilla", "salt"],
+      "synonyms": {
+        "egg": ["eggs"],
+        "milk": ["buttermilk"],
+        "baking powder": ["baking soda", "baking"],
+        "vanilla": ["vanilla extract"]
+      }
+    }
+  ]
+}

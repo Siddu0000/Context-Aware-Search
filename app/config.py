@@ -140,5 +140,36 @@ CACHE_ENABLED = False  # hard-off; ignore env var until cache is rewired
 # between products of essentially equal semantic relevance.
 RATING_BOOST_WEIGHT = float(os.getenv("RATING_BOOST_WEIGHT", "0.05"))
 
+# --- Pagination ----------------------------------------------------------
+# /search returns ONE page of results. `top_k` is the page size; `page`
+# (1-based) selects which slice. To keep LLM quota sane, the reranker scores a
+# single deep pool ONCE (RERANK_POOL_K items) and every page is sliced from
+# that one ranked pool — so paging never costs an extra LLM call. Pages that
+# run past the reranked pool fall back to embedding-similarity order and are
+# labelled as such in each item's `reason`.
+RERANK_POOL_K = int(os.getenv("RERANK_POOL_K", "30"))
+
+# --- Cross-sell / upsell recommendations ---------------------------------
+# After organic results are ranked, an optional recommender suggests
+# (a) COMPLEMENTARY items ("frequently bought together") and (b) an UPSELL
+# (a higher-rated alternative in the same category). Amazon's `bought_together`
+# field is empty across this dataset (verified 2026-06-12), so complements are
+# produced by an LLM and then GROUNDED in the real catalog via embedding
+# retrieval. Set RECOMMEND_USE_LLM=false to skip the LLM and use pure
+# embedding similarity ("more like this") instead. Computed only for page 1.
+RECOMMEND_ENABLED = os.getenv("RECOMMEND_ENABLED", "true").lower() in {"1", "true", "yes"}
+RECOMMEND_MAX = int(os.getenv("RECOMMEND_MAX", "4"))  # max complementary items
+RECOMMEND_USE_LLM = os.getenv("RECOMMEND_USE_LLM", "true").lower() in {"1", "true", "yes"}
+
+# --- Featured / sponsored (paid-ad) prioritization -----------------------
+# Sponsored products are kept STRICTLY separate from organic ranking for
+# auditability (see .claude/rules/safety.md). There is no real ad inventory in
+# this PoC, so placements are read from a curated config file, targeted by
+# keyword/vertical, and returned under a dedicated `sponsored` response key —
+# never blended into `results`. Each carries is_sponsored=true + sponsor name.
+SPONSORED_ENABLED = os.getenv("SPONSORED_ENABLED", "true").lower() in {"1", "true", "yes"}
+SPONSORED_MAX = int(os.getenv("SPONSORED_MAX", "2"))  # max sponsored slots
+SPONSORED_CONFIG = DATA_DIR / "sponsored.json"
+
 # --- Networking ----------------------------------------------------------
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")

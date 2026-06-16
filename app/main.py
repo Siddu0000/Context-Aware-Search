@@ -21,14 +21,19 @@ from pydantic import BaseModel, Field
 from app.config import (
     FINAL_TOP_K,
     LLM_PROVIDER,
+    RECOMMEND_ENABLED,
     RERANK_ENABLED,
+    RERANK_POOL_K,
     RETRIEVAL_TOP_K,
+    SPONSORED_ENABLED,
     TRANSLATOR_MODE,
 )
 from app.feedback import record_feedback
 from app.metrics import StageTimings
+from app.recommendations import recommend as build_recommendations
 from app.reranker import rerank as llm_rerank
 from app.search import load_index, search_products
+from app.sponsored import get_sponsored
 from app.translator import translate_query
 
 logging.basicConfig(
@@ -79,17 +84,75 @@ def stats():
     return out
 
 
+def _paginate(ranked_pool, candidates, page: int, page_size: int):
+    """Slice one page out of the ranked pool, with an embedding-order tail.
+
+    The reranker scores a deep pool ONCE (RERANK_POOL_K items). Pages are
+    sliced from that single ranked list, so paging costs no extra LLM call.
+    Any deduped candidate not in the reranked pool forms an embedding-order
+    tail for deep pages — each tail item is labelled in its `reason` so the
+    UI can tell the user those rows are beyond the reranked window.
+
+    Returns (page_items, full_ordered_list).
+    """
+    pool_titles = {p.get("Product_title", "") for p in ranked_pool}
+    tail = []
+    for c in candidates:
+        if c.get("Product_title", "") in pool_titles:
+            continue
+        c = dict(c)
+        c.setdefault("rerank_score", None)
+        c.setdefault("bayesian_rating", None)
+        c.setdefault("final_score", None)
+        c["reason"] = "(beyond reranked pool — embedding-similarity order)"
+        tail.append(c)
+
+    full = list(ranked_pool) + tail
+    start = (page - 1) * page_size
+    return full[start : start + page_size], full
+
+
 @app.get("/search")
 def search(
     query: str = Query(..., min_length=1, max_length=300),
-    top_k: int = Query(FINAL_TOP_K, ge=1, le=50),
+    top_k: int = Query(FINAL_TOP_K, ge=1, le=50, description="Results per page."),
+    page: int = Query(1, ge=1, description="1-based page number."),
     rerank: bool = Query(RERANK_ENABLED, description="Toggle the LLM rerank stage."),
+    recommend: bool = Query(
+        RECOMMEND_ENABLED, description="Include cross-sell/upsell (page 1 only)."
+    ),
+    sponsored: bool = Query(
+        SPONSORED_ENABLED, description="Include sponsored placements (page 1 only)."
+    ),
     translator_mode: Optional[str] = Query(
         None,
         description="Override TRANSLATOR_MODE for this request: query_expansion | hyde | hybrid",
     ),
 ):
-    """Translate -> retrieve -> rerank pipeline. Every call hits the real LLM."""
+    """Translate -> retrieve -> rerank -> paginate, plus optional sponsored
+    and cross-sell layers. Every call hits the real LLM (cache disabled).
+
+    Note: this is a stateless endpoint, so navigating to a new page re-runs
+    translate + rerank. The reranked POOL is a fixed size (independent of the
+    page number) and rerank is deterministic (temp 0 + seed), so the ordering
+    and total_results are STABLE across pages — page 2 slices the same ranking
+    page 1 did. To make deep paging free of per-page LLM cost, re-enable the
+    (currently disabled) LLM cache or hold the ranked pool in server state."""
+    # Validate the per-request override BEFORE the try block, so the 422 is
+    # not swallowed by the catch-all and turned into a 500.
+    if translator_mode is not None and translator_mode not in {
+        "query_expansion",
+        "hyde",
+        "hybrid",
+    }:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Unknown translator_mode={translator_mode!r}; "
+                "expected query_expansion | hyde | hybrid"
+            ),
+        )
+    page_size = top_k
     timings = StageTimings()
     try:
         with timings.stage("translate"):
@@ -98,20 +161,44 @@ def search(
         with timings.stage("retrieve"):
             candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
 
+        # Rerank a deep pool ONCE, then paginate within it. The pool size is
+        # FIXED (does NOT grow with the page number) so the ranking — and thus
+        # total_results / page boundaries — stays identical across pages. It's
+        # at least page_size so page 1 is fully reranked (not padded from the
+        # embedding tail).
+        pool_k = max(RERANK_POOL_K, page_size)
         rerank_actually_ran = False
         if rerank and candidates:
             with timings.stage("rerank"):
-                results = llm_rerank(query, candidates, top_k=top_k)
+                ranked_pool = llm_rerank(query, candidates, top_k=pool_k)
             rerank_actually_ran = any(
-                r.get("rerank_score") is not None for r in results
+                r.get("rerank_score") is not None for r in ranked_pool
             )
         else:
-            results = []
-            for p in candidates[:top_k]:
+            ranked_pool = []
+            for p in candidates[:pool_k]:
                 p = dict(p)
                 p["rerank_score"] = None
+                p["bayesian_rating"] = None
+                p["final_score"] = None
                 p["reason"] = "(rerank disabled)"
-                results.append(p)
+                ranked_pool.append(p)
+
+        results, full = _paginate(ranked_pool, candidates, page, page_size)
+        total_results = len(full)
+        total_pages = max(1, -(-total_results // page_size))  # ceil
+
+        # Sponsored + cross-sell are page-1 concerns only (keeps quota down and
+        # matches how a storefront shows ads / "bought together" up top).
+        sponsored_items = []
+        if sponsored and page == 1:
+            with timings.stage("sponsored"):
+                sponsored_items = get_sponsored(query, results)
+
+        recommendations = {"cross_sell": [], "upsell": []}
+        if recommend and page == 1 and results:
+            with timings.stage("recommend"):
+                recommendations = build_recommendations(query, results, page=page)
 
         return {
             "user_query": query,
@@ -120,6 +207,14 @@ def search(
             "rerank_requested": rerank,
             "rerank_succeeded": rerank_actually_ran,
             "results": results,
+            "sponsored": sponsored_items,
+            "recommendations": recommendations,
+            "page": page,
+            "page_size": page_size,
+            "total_results": total_results,
+            "total_pages": total_pages,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
             "latency_ms": timings.to_dict(),
         }
 

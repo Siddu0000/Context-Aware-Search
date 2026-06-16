@@ -17,8 +17,11 @@ keyword matching. Stakeholders: Sai (dev), Niharika Ganesan (LatentView lead).
 1. `app/translator.py` — query → N search intents. THREE modes; we use `query_expansion`.
 2. `app/embeddings.py` — sentence-transformers (`all-MiniLM-L6-v2`) or OpenAI backend.
 3. `app/search.py` — cosine retrieval, scatter-gather across intents, dedup. NaN-safe.
-4. `app/reranker.py` — LLM reranks top-30 → top-10 with reasons, then blends rating.
+4. `app/reranker.py` — LLM reranks a deep pool (RERANK_POOL_K, default 30) with reasons, then blends rating.
 5. `app/scoring.py` — Bayesian rating shrinkage + blend into final score.
+6. `app/main.py` — paginates the reranked pool (`?page=`, `top_k`=page size), then attaches the two layers below.
+7. `app/sponsored.py` — featured/paid-ad layer. Reads `data/sponsored.json`, returns a SEPARATE `sponsored` list (never blended into organic — see safety.md).
+8. `app/recommendations.py` — cross-sell (LLM-proposed complements grounded in the catalog) + upsell (same-category, higher Bayesian rating). Page 1 only.
 - `app/llm_client.py` — provider abstraction (Gemini/OpenAI/Anthropic). Reads config DYNAMICALLY (see below).
 - `app/key_rotator.py` — multi-key Gemini 429 failover.
 - `app/config.py` — ALL env knobs live here; read this first.
@@ -46,6 +49,10 @@ The McAuley JSONL differs from older docs. `scripts/load_amazon_data.py` already
 - `price` is null or float (not a "$x" string).
 - `main_category` is UPPERCASE ("AMAZON FASHION").
 - Bonus fields kept: `average_rating`, `rating_number`, `store`, `parent_asin`, `bought_together`.
+- **`bought_together` is NULL across the ENTIRE dump** (verified 2026-06-12, all three meta_*.jsonl).
+  So cross-sell can NOT use real market-basket data. `app/recommendations.py` instead has an LLM
+  propose complementary items and grounds them in the catalog via embedding retrieval (decision: Sai,
+  2026-06-12). If a future dump populates `bought_together`, prefer it over the LLM path.
 
 ## products.csv columns
 `bsns_vrtcl_name, categ_lvl2_name, Product_title, img_url, color, material, occasion, price,
@@ -60,10 +67,13 @@ prod_description, average_rating, rating_number, store, parent_asin`
 ## Eval suite (eval/)
 - `run_eval.py` — main harness; reads `data/eval_queries.json` (12 multi-context queries).
 - `compare_translators.py` — query_expansion vs hyde vs hybrid (rerank off).
-- `compare_llms.py` — Gemini vs OpenAI vs Anthropic (rerank on; needs keys + SDKs).
+- `compare_llms.py` — Gemini vs OpenAI vs Anthropic (rerank on). Pre-flight checks each provider's
+  key + SDK and SKIPS the absent ones (we're Gemini-only right now; openai/anthropic SDKs not installed).
 - `compare_temperature.py` — temp sweep: quality + run-to-run stability. Auto-disables seed.
 - `eval_recipe_completeness.py` — grocery: % of a dish's ingredients in top results (target 70%).
+  Reads `data/recipe_eval.json` (5 dishes w/ synonyms — authored 2026-06-12).
 - `stress_test.py` — edge/nonsense/injection queries; checks graceful handling, not precision.
+  Reads `data/stress_queries.json` (~32 edge cases — authored 2026-06-12).
 - `compare_embeddings.py`, `compare_search_text.py` — slower; rebuild embeddings per variant.
 - Outputs land in `eval_results/*.csv`. Metric to lead with: P@10 and MRR (NOT R@10 — see below).
 
@@ -85,10 +95,13 @@ prod_description, average_rating, rating_number, store, parent_asin`
 - Windows: torch CPU-only + MSVC redistributable needed (past WinError 1114 on `c10.dll`).
 
 ## Open work (priority order)
-- P2: diversity/dedup ("70 paneer sellers" problem — recipe eval grid exposes it).
-- P2: cross-sell via Amazon `bought_together` (groceries first, then fashion).
-- P3: featured/paid-ad prioritization; pagination/scalability beyond 10 results.
+- P2: diversity/dedup ("70 paneer sellers" problem — recipe eval grid exposes it). STILL OPEN.
+- ~~P2: cross-sell via Amazon `bought_together`~~ — DONE 2026-06-12 via LLM+embedding (`app/recommendations.py`);
+  `bought_together` was empty so we don't use it. Upsell (same-category, higher Bayesian rating) included.
+- ~~P3: featured/paid-ad prioritization; pagination beyond 10 results~~ — DONE 2026-06-12
+  (`app/sponsored.py` + `?page=` in `app/main.py`). Electronics cross-sell tuning still light.
 - Backlog: US-locale filter for the catalog (Indian products leak into grocery results).
+- Backlog: real ad inventory to replace the curated `data/sponsored.json` stub.
 
 ## Conventions
 - Prose comments explaining WHY, not what. Keep functions small and pure where possible.
