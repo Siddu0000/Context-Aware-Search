@@ -76,3 +76,5 @@ ENV/
 Thumbs.db
 ehthumbs.db
 desktop.ini
+
+*.zip

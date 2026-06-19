@@ -2,7 +2,7 @@
 
 Use this on top of the Amazon Grocery_and_Gourmet_Food data IF you want
 real nutrition columns (calories, protein, carbs, fat) for the diet /
-meal-plan use case Niharika described. Amazon's grocery metadata has
+meal-plan use case   described. Amazon's grocery metadata has
 descriptions but no structured nutrition.
 
 ODbL-licensed (commercially usable, unlike Amazon Reviews 2023).

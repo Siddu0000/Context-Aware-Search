@@ -1,5 +1,5 @@
 {
-  "_comment": "Recipe-completeness eval (Niharika 2026-06-11): for each dish, search 'ingredients to make <dish>' and check how many canonical ingredients appear in the top-K result titles. Ingredients were chosen to exist in the Grocery_and_Gourmet_Food catalog; the spread is deliberate — staple-heavy dishes (cookies/pancakes/pasta) should clear the target, while curry/guacamole stress the '70 paneer sellers' diversity problem (headline ingredient found, the long tail missed). Synonyms broaden matching. See eval/eval_recipe_completeness.py and .claude/rules/eval.md.",
+  "_comment": "Recipe-completeness eval (  2026-06-11): for each dish, search 'ingredients to make <dish>' and check how many canonical ingredients appear in the top-K result titles. Ingredients were chosen to exist in the Grocery_and_Gourmet_Food catalog; the spread is deliberate — staple-heavy dishes (cookies/pancakes/pasta) should clear the target, while curry/guacamole stress the '70 paneer sellers' diversity problem (headline ingredient found, the long tail missed). Synonyms broaden matching. See eval/eval_recipe_completeness.py and .claude/rules/eval.md.",
   "target_coverage": 0.7,
   "dishes": [
     {

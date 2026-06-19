@@ -1,13 +1,13 @@
 """Recipe-completeness eval for the grocery use case.
 
-Niharika (2026-06-11) specified this QC: pick a few dishes, and check that
+  (2026-06-11) specified this QC: pick a few dishes, and check that
 the grocery search surfaces the INGREDIENTS needed to cook them. Target:
 70-80% of a dish's ingredients should appear in the top results.
 
 Methodology, per dish:
   1. Query the pipeline with "ingredients to make <dish>".
   2. Take the top-K result titles (default K=30 — recipes have many
-     ingredients, and Niharika noted "the ingredients themselves would be
+     ingredients, and   noted "the ingredients themselves would be
      more than 10", so top-10 alone is too tight a window).
   3. For each canonical ingredient, mark it FOUND if the ingredient word
      (or any of its synonyms) appears in any result title.
@@ -16,7 +16,7 @@ Methodology, per dish:
 Output: per-dish per-ingredient hit/miss grid, per-dish coverage, and an
 overall mean. Flags dishes below the target threshold.
 
-Notes / caveats this surfaces (worth telling Niharika):
+Notes / caveats this surfaces (worth telling  ):
   - The "70 paneer sellers" problem: if the search returns 30 variants of
     the headline ingredient, coverage of the OTHER ingredients suffers.
     The per-ingredient grid makes this visible — you'll see paneer FOUND

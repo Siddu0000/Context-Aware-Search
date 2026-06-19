@@ -17,7 +17,7 @@ Higher n means the result stays close to r. Lower n pulls it toward m.
 
 Why this is the right design:
 - Deterministic. Same inputs → bit-identical outputs every time
-  (preserves Niharika's "are results deterministic" requirement).
+  (preserves  's "are results deterministic" requirement).
 - Non-destructive. The LLM still owns the relevance ranking; rating
   is a small post-processing nudge.
 - Transparent. The weight is a single tunable parameter you can defend.

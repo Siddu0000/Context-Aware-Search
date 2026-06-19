@@ -15,6 +15,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
 
 from app.config import CACHE_DIR, PRODUCTS_CSV
 from app.embeddings import embed_text, get_default_embedder, search_vectors
@@ -114,6 +115,43 @@ def get_dataframe() -> pd.DataFrame:
     if _df is None:
         load_index()
     return _df
+
+
+def get_product(catalog_index: int) -> Optional[dict]:
+    """Return a single catalog row as a JSON-safe dict (NaN -> None).
+
+    catalog_index is the positional row index we attach to every search
+    result, so the UI can round-trip a product into a detail view.
+    """
+    if _df is None:
+        load_index()
+    if catalog_index < 0 or catalog_index >= len(_df):
+        return None
+    row = _df.iloc[int(catalog_index)].to_dict()
+    item = {k: (None if isinstance(v, float) and pd.isna(v) else v) for k, v in row.items()}
+    item["catalog_index"] = int(catalog_index)
+    return item
+
+
+def intent_similarity(terms: List[str], catalog_indices: List[int]) -> dict:
+    """Max cosine similarity between any of `terms` and each catalog row.
+
+    Same basis as retrieval (scatter-gather over the query intents), so the
+    scores are directly comparable to the `score` field on organic results.
+    The sponsored layer uses this to gate ads on real relevance to the query.
+    Returns {catalog_index: similarity}.
+    """
+    if _df is None or _embeddings is None:
+        load_index()
+    if not terms or not catalog_indices:
+        return {}
+    term_vecs = embed_text(terms)
+    out = {}
+    for idx in catalog_indices:
+        if 0 <= idx < len(_embeddings):
+            sims = cosine_similarity([_embeddings[idx]], term_vecs)[0]
+            out[idx] = float(sims.max())
+    return out
 
 
 def search_products(search_terms: List[str], top_k: int = 30) -> List[dict]:

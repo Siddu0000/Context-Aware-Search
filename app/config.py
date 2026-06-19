@@ -33,7 +33,7 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 # Gemini config -----------------------------------------------------------
 # Primary key + up to 4 backup keys for automatic 429 failover.
-# Niharika's suggestion: create extra free keys with personal Gmail IDs.
+#  's suggestion: create extra free keys with personal Gmail IDs.
 GOOGLE_API_KEYS = [
     k for k in [
         os.getenv("GOOGLE_API_KEY"),
@@ -54,7 +54,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
 
 # --- Translator strategy -------------------------------------------------
-# "query_expansion": N short product-search phrases (original / Niharika's preference)
+# "query_expansion": N short product-search phrases (original /  's preference)
 # "hyde":            1 long hypothetical product listing (classical HyDE)
 # "hybrid":          1 hypothetical doc + (N-1) short phrases
 #
@@ -113,7 +113,7 @@ def effective_temperature(requested: float) -> float:
     """
     if TEMPERATURE_OVERRIDE is not None:
         return float(TEMPERATURE_OVERRIDE)
-    return 0.0 if DETERMINISTIC else float(requested)
+    return 2.0 if DETERMINISTIC else float(requested)
 
 
 # --- LLM response caching ------------------------------------------------
@@ -135,7 +135,7 @@ CACHE_ENABLED = False  # hard-off; ignore env var until cache is rewired
 # 0.05 = relevance dominates (95%), rating is a faint tie-breaker.  <-- CURRENT
 # 0.15 = rating nudges 15%.
 #
-# Niharika (2026-06-11): rating must be "as minimal as possible — not our
+#   (2026-06-11): rating must be "as minimal as possible — not our
 # primary filter." Lowered 0.15 -> 0.05. It now only breaks near-ties
 # between products of essentially equal semantic relevance.
 RATING_BOOST_WEIGHT = float(os.getenv("RATING_BOOST_WEIGHT", "0.05"))
@@ -170,6 +170,18 @@ RECOMMEND_USE_LLM = os.getenv("RECOMMEND_USE_LLM", "true").lower() in {"1", "tru
 SPONSORED_ENABLED = os.getenv("SPONSORED_ENABLED", "true").lower() in {"1", "true", "yes"}
 SPONSORED_MAX = int(os.getenv("SPONSORED_MAX", "2"))  # max sponsored slots
 SPONSORED_CONFIG = DATA_DIR / "sponsored.json"
+# A sponsored item is shown ONLY if it is actually relevant to the query. The
+# gate is RELATIVE: the ad's max cosine similarity to the query intents (same
+# basis as retrieval) must reach SPONSORED_REL_RATIO times the MEDIAN organic
+# score on the page — i.e. the ad must be about as on-topic as the products
+# we're already showing. A fixed absolute threshold doesn't work here because
+# the embedding model rates all apparel ~0.4 similar, so a women's dress would
+# clear a fixed bar on a "men's formal shirt" query; but it scores far below
+# the men's shirts actually retrieved, so the relative gate drops it.
+# SPONSORED_MIN_RELEVANCE is an absolute backstop for the rare case where no
+# organic scores are available. If nothing clears the gate, no ads show.
+SPONSORED_REL_RATIO = float(os.getenv("SPONSORED_REL_RATIO", "0.72"))
+SPONSORED_MIN_RELEVANCE = float(os.getenv("SPONSORED_MIN_RELEVANCE", "0.30"))
 
 # --- Networking ----------------------------------------------------------
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
