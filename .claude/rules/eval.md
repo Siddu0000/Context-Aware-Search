@@ -8,7 +8,7 @@ criteria against the catalog. Supported keys (AND-combined):
 - `color_in` / `material_in` / `occasion_in` — exact match on that column
 - `category_in` — matches bsns_vrtcl_name OR categ_lvl2_name
 
-`data/eval_queries.json` holds 12 MULTI-CONTEXT queries (Niharika's 2026-06-11
+`data/eval_queries.json` holds 12 MULTI-CONTEXT queries ( 's 2026-06-11
 ask: every query carries 2-3 context signals like weather + activity + fabric).
 The relevance criteria encode the CORRECT interpretation of the context, e.g.
 "breathable top for a humid day" → `material_in: [cotton, linen, rayon]`.

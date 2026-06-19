@@ -1,5 +1,5 @@
 {
-  "_comment": "Stress / robustness queries (Niharika 2026-06-11: 'try some edge cases, weird things, nonsensical things'). These have NO ground truth — eval/stress_test.py only checks that every query is handled GRACEFULLY (no crash) and that injection-like strings are treated as inert text, never executed or obeyed. Grouped by intent in the comments below.",
+  "_comment": "Stress / robustness queries (  2026-06-11: 'try some edge cases, weird things, nonsensical things'). These have NO ground truth — eval/stress_test.py only checks that every query is handled GRACEFULLY (no crash) and that injection-like strings are treated as inert text, never executed or obeyed. Grouped by intent in the comments below.",
   "queries": [
     "",
     "   ",

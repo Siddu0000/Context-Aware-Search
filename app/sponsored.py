@@ -16,12 +16,13 @@ always distinguishable from earned placement.
 
 import json
 import logging
+import statistics
 from typing import List, Optional
 
 import pandas as pd
 
 import app.config as cfg
-from app.search import get_dataframe
+from app.search import get_dataframe, intent_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -48,31 +49,30 @@ def _load_config() -> List[dict]:
         return []
 
 
-def _targets(entry: dict, query_lc: str, verticals: set) -> bool:
-    """True if this sponsored entry should show for the current query.
-
-    Keyword match wins (intent-level targeting). Otherwise fall back to a
-    vertical match against the organic results, so a sponsored grocery item
-    only appears on grocery-shaped searches — never on a random query.
-    """
-    keywords = [str(k).lower() for k in entry.get("keywords", [])]
-    if any(kw in query_lc for kw in keywords):
-        return True
-    entry_verticals = {str(v).lower() for v in entry.get("verticals", [])}
-    return bool(entry_verticals & verticals)
-
-
 def _clean_row(row: dict) -> dict:
     return {k: (None if isinstance(v, float) and pd.isna(v) else v) for k, v in row.items()}
 
 
 def get_sponsored(
-    query: str, organic_results: List[dict], max_slots: int = None
+    query: str,
+    organic_results: List[dict],
+    intents: Optional[List[str]] = None,
+    max_slots: int = None,
 ) -> List[dict]:
-    """Return up to max_slots sponsored products relevant to this query.
+    """Return up to max_slots sponsored products that are RELEVANT to the query.
 
-    Best-effort: returns [] on any problem. Sponsored items are deduped
-    against the organic results so the same product never appears twice.
+    Relevance gate (the important bit): each candidate ad is scored by its max
+    cosine similarity to the query intents — the SAME vectors retrieval used —
+    and must reach SPONSORED_REL_RATIO x the MEDIAN organic score on the page,
+    i.e. be about as on-topic as the products we're already showing. That
+    relative gate is what keeps an off-topic ad (e.g. a women's dress on a
+    men's-shirt search) out, where a fixed threshold can't (all apparel embeds
+    ~0.4 similar). We do NOT fall back to a vertical match: if nothing clears
+    the bar, we return [] (relevance over fill rate).
+
+    Ordering among relevant ads is by bid, then by relevance. Best-effort:
+    returns [] on any problem. Deduped against the organic results by
+    parent_asin (then non-empty title).
     """
     if max_slots is None:
         max_slots = cfg.SPONSORED_MAX
@@ -87,25 +87,16 @@ def get_sponsored(
         logger.warning("Sponsored layer could not load catalog (%s).", repr(e))
         return []
 
-    query_lc = query.lower()
     organic_titles = {r.get("Product_title", "") for r in organic_results}
     organic_asins = {
         r.get("parent_asin") for r in organic_results if r.get("parent_asin")
     }
-    verticals = {
-        str(r.get("bsns_vrtcl_name", "")).lower()
-        for r in organic_results
-        if r.get("bsns_vrtcl_name")
-    }
+    terms = [t for t in (intents or [query]) if t]
 
-    # Highest bid first; that's the only place bid influences anything.
-    matched = [e for e in entries if _targets(e, query_lc, verticals)]
-    matched.sort(key=lambda e: e.get("bid", 0.0), reverse=True)
-
-    out: List[dict] = []
-    for entry in matched:
-        if len(out) >= max_slots:
-            break
+    # Resolve each entry to a real catalog row (+ embedding index), skipping
+    # anything already shown organically.
+    candidates = []  # list of (entry, product_dict, catalog_index)
+    for entry in entries:
         asin = entry.get("parent_asin")
         if not asin:
             continue
@@ -113,15 +104,43 @@ def get_sponsored(
         if rows.empty:
             logger.warning("Sponsored asin %s not found in catalog.", asin)
             continue
+        idx = int(rows.index[0])
         product = _clean_row(rows.iloc[0].to_dict())
-        # Dedup against organic by ASIN first (the real product key); fall back
-        # to a NON-EMPTY title match. Empty titles must not collide.
         title = product.get("Product_title", "")
         if asin in organic_asins or (title and title in organic_titles):
             continue  # already shown organically; don't double up
+        candidates.append((entry, product, idx))
+
+    if not candidates:
+        return []
+
+    # Relevance gate (relative to organic) + bid/relevance ordering.
+    organic_scores = [
+        r["score"]
+        for r in organic_results
+        if isinstance(r.get("score"), (int, float)) and not pd.isna(r["score"])
+    ]
+    if organic_scores:
+        floor = max(
+            cfg.SPONSORED_MIN_RELEVANCE,
+            cfg.SPONSORED_REL_RATIO * statistics.median(organic_scores),
+        )
+    else:
+        floor = cfg.SPONSORED_MIN_RELEVANCE
+
+    sims = intent_similarity(terms, [idx for _, _, idx in candidates])
+    relevant = []
+    for entry, product, idx in candidates:
+        score = sims.get(idx, 0.0)
+        if score < floor:
+            continue  # not as relevant as the products we're already showing
+        product = dict(product)
         product["is_sponsored"] = True
         product["sponsor"] = entry.get("sponsor", "Sponsored")
         product["reason"] = f"Sponsored by {entry.get('sponsor', 'a partner')}"
-        out.append(product)
+        product["catalog_index"] = idx
+        product["sponsored_relevance"] = round(score, 3)
+        relevant.append((entry.get("bid", 0.0), score, product))
 
-    return out
+    relevant.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    return [p for _, _, p in relevant[:max_slots]]

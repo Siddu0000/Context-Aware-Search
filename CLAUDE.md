@@ -4,7 +4,7 @@ Consulting PoC for LatentView. Two-stage retail product search: an LLM
 translates a natural-language query into search intents, embeddings retrieve
 candidates, and an LLM reranks them. The selling point is **context-aware**
 search ("breathable outfit for a humid day" → cotton/linen items), not
-keyword matching. Stakeholders: Sai (dev), Niharika Ganesan (LatentView lead).
+keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
 
 ## Commands
 - Run API: `uvicorn app.main:app --port 8000` (first boot encodes ~60K rows, ~5 min; cached after)
@@ -19,9 +19,9 @@ keyword matching. Stakeholders: Sai (dev), Niharika Ganesan (LatentView lead).
 3. `app/search.py` — cosine retrieval, scatter-gather across intents, dedup. NaN-safe.
 4. `app/reranker.py` — LLM reranks a deep pool (RERANK_POOL_K, default 30) with reasons, then blends rating.
 5. `app/scoring.py` — Bayesian rating shrinkage + blend into final score.
-6. `app/main.py` — paginates the reranked pool (`?page=`, `top_k`=page size), then attaches the two layers below.
-7. `app/sponsored.py` — featured/paid-ad layer. Reads `data/sponsored.json`, returns a SEPARATE `sponsored` list (never blended into organic — see safety.md).
-8. `app/recommendations.py` — cross-sell (LLM-proposed complements grounded in the catalog) + upsell (same-category, higher Bayesian rating). Page 1 only.
+6. `app/main.py` — paginates the reranked pool (`?page=`, `top_k`=page size); `GET /product?catalog_index=` powers the per-product detail page (product + its own recs).
+7. `app/sponsored.py` — featured/paid-ad layer. Reads `data/sponsored.json`, returns a SEPARATE `sponsored` list (never blended into organic — see safety.md). RELEVANCE-GATED: an ad shows only if its similarity to the query intents ≥ SPONSORED_REL_RATIO×median organic score, else none (fixes off-topic ads like a women's dress on a men's-shirt query).
+8. `app/recommendations.py` — cross-sell (LLM-proposed complements grounded in the catalog) + upsell (higher Bayesian-rated embedding neighbour). Surfaced on the PRODUCT DETAIL page (per-product), not the results list.
 - `app/llm_client.py` — provider abstraction (Gemini/OpenAI/Anthropic). Reads config DYNAMICALLY (see below).
 - `app/key_rotator.py` — multi-key Gemini 429 failover.
 - `app/config.py` — ALL env knobs live here; read this first.
@@ -31,9 +31,9 @@ keyword matching. Stakeholders: Sai (dev), Niharika Ganesan (LatentView lead).
   (`eval/compare_translators.py`). query_expansion won decisively: P@1 1.000, NDCG 0.904
   vs HyDE 0.750/0.716. HyDE drifts lexically from short Amazon titles. Hybrid inherits
   HyDE's failures. Keep hyde/hybrid code for re-benchmarking, but query_expansion is the default.
-- **RATING_BOOST_WEIGHT = 0.05.** Niharika wants rating "as minimal as possible — not a
+- **RATING_BOOST_WEIGHT = 0.05.**   wants rating "as minimal as possible — not a
   primary filter." It only breaks near-ties. Do not raise without her sign-off.
-- **DETERMINISTIC = true** → temperature 0 + fixed seed. This is the answer to Niharika's
+- **DETERMINISTIC = true** → temperature 0 + fixed seed. This is the answer to  's
   repeated "are results deterministic?" question. `eval/compare_temperature.py` justifies temp=0.
 - **Caching is DISABLED on purpose** (early-stage dev). Code exists in `app/cache.py` but is
   commented out at every integration point (search `# CACHE DISABLED`). Every /search hits the

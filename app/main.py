@@ -2,6 +2,7 @@
 
 Endpoints:
     GET  /search?query=...    translate -> retrieve -> (optional) rerank
+    GET  /product?catalog_index=...   single product + its cross-sell/upsell
     POST /feedback            record thumbs-up / thumbs-down
     GET  /healthz             readiness probe
     GET  /stats               provider + key-rotator state (debug)
@@ -32,7 +33,7 @@ from app.feedback import record_feedback
 from app.metrics import StageTimings
 from app.recommendations import recommend as build_recommendations
 from app.reranker import rerank as llm_rerank
-from app.search import load_index, search_products
+from app.search import get_product, load_index, search_products
 from app.sponsored import get_sponsored
 from app.translator import translate_query
 
@@ -193,7 +194,7 @@ def search(
         sponsored_items = []
         if sponsored and page == 1:
             with timings.stage("sponsored"):
-                sponsored_items = get_sponsored(query, results)
+                sponsored_items = get_sponsored(query, results, intents=intents)
 
         recommendations = {"cross_sell": [], "upsell": []}
         if recommend and page == 1 and results:
@@ -221,6 +222,32 @@ def search(
     except Exception as e:  # noqa: BLE001
         logger.exception("Search failed for query=%r", query)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/product")
+def product(
+    catalog_index: int = Query(..., ge=0, description="Catalog row id from a search result."),
+    query: Optional[str] = Query(None, description="Original search query, for recommendation context."),
+    recommend: bool = Query(
+        RECOMMEND_ENABLED, description="Include this product's cross-sell/upsell."
+    ),
+):
+    """Product detail view: a single product plus recommendations anchored on
+    IT (not on the top search result). Powers the per-product page in the UI.
+    The cross-sell path makes one LLM call when recommend is true."""
+    p = get_product(catalog_index)
+    if p is None:
+        raise HTTPException(status_code=404, detail="Product not found.")
+
+    recommendations = {"cross_sell": [], "upsell": []}
+    if recommend:
+        # Anchor recommendations on this product; use the original query (or the
+        # product title) as the cross-sell context.
+        recommendations = build_recommendations(
+            query or p.get("Product_title", ""), [p], page=1
+        )
+
+    return {"product": p, "recommendations": recommendations}
 
 
 # CACHE DISABLED — early-stage dev. Endpoint removed; cache is never populated.

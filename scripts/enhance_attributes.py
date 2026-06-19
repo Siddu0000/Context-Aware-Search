@@ -1,7 +1,7 @@
 """Re-derive product attributes from real titles using an LLM.
 
 Why this script exists:
-The catalog Niharika handed over has real titles/images/prices (eBay), but
+The catalog   handed over has real titles/images/prices (eBay), but
 the color, material, occasion, and prod_description columns were generated
 by an earlier LLM run without looking at the title. As a result, a product
 titled "Vintage 1998 Y2K Planet Hollywood Cut Workout Shirt White Tanktop"

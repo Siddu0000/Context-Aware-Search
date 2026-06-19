@@ -1,6 +1,6 @@
 """Temperature sweep — answers "why temperature=0 specifically?".
 
-Niharika (2026-06-11) asked why we hard-set temperature=0 and whether we
+  (2026-06-11) asked why we hard-set temperature=0 and whether we
 tested other values. This script does two things across a range of
 temperatures:
 
@@ -17,7 +17,7 @@ temperatures:
 Mechanism: the script disables the fixed seed (DETERMINISTIC=False) and
 sets TEMPERATURE_OVERRIDE so the chosen temperature actually takes effect.
 With the seed off, any instability you see is genuinely from temperature —
-which is exactly the effect Niharika is asking about.
+which is exactly the effect   is asking about.
 
   >>> Conclusion you can usually take to the sync: temperature=0 gives the
       best (and fully stable) results; quality degrades and ordering starts

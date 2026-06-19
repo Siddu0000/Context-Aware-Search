@@ -1,6 +1,6 @@
 """Multi-key Gemini API rotator with automatic 429 failover.
 
-Implements Niharika's suggestion (June 4): create multiple free Gemini API
+Implements  's suggestion (June 4): create multiple free Gemini API
 keys with personal Gmail IDs, rotate between them when one hits quota.
 
 Strategy:
