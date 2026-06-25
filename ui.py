@@ -45,21 +45,37 @@ st.caption(
     "Searches what you *meant*, not what you typed."
 )
 
-# --- Session state ---------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    .cas-thumb {
+        width: 100%; height: 180px; object-fit: cover;
+        border-radius: 8px; display: block;
+    }
+    .cas-thumb-empty {
+        width: 100%; height: 180px; border-radius: 8px;
+        background: #f0f0f0; display: flex; align-items: center;
+        justify-content: center; color: #999; font-size: 0.8rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 _defaults = {
     "query": "",
     "page": 1,
     "last_response": None,
-    "view": "search",          # "search" | "detail"
-    "detail_index": None,       # catalog_index of the product being viewed
-    "detail_response": None,    # cached /product response for that index
+    "view": "search",
+    "detail_index": None,
+    "detail_response": None,
 }
 for _k, _v in _defaults.items():
     st.session_state.setdefault(_k, _v)
 
 with st.sidebar:
     st.header("Settings")
-    top_k = st.slider("Results per page", 3, 30, 10)
+    top_k = st.slider("Results per page", 3, 30, 12)
     rerank = st.toggle("Enable LLM rerank", value=True)
     show_sponsored = st.toggle("Show sponsored", value=True)
     show_recs = st.toggle("Show recommendations", value=True, help="On product pages.")
@@ -69,11 +85,10 @@ with st.sidebar:
         help="Per-stage latency and pipeline diagnostics. Off by default so "
         "they don't clutter the results during a demo.",
     )
-    st.caption("Cache is disabled — every search hits the LLM directly.")
+    st.caption("Repeat searches are cached for speed; failed runs are not cached.")
     st.caption("Click any product to open its page + recommendations.")
 
 
-# --- Backend calls ---------------------------------------------------------
 def _fetch():
     """Run a search for the current session query + page; store the response.
 
@@ -139,11 +154,10 @@ def _post_feedback(query: str, product_title: str, rating: int, rank: int, reaso
         st.warning(f"Could not record feedback: {e}")
 
 
-# --- Navigation helpers ----------------------------------------------------
 def _open_detail(catalog_index: int):
     st.session_state["view"] = "detail"
     st.session_state["detail_index"] = int(catalog_index)
-    st.session_state["detail_response"] = None  # force a fresh /product fetch
+    st.session_state["detail_response"] = None
     st.rerun()
 
 
@@ -152,7 +166,6 @@ def _back_to_results():
     st.rerun()
 
 
-# --- Rendering helpers -----------------------------------------------------
 def _rating_line(product: dict):
     """Render the NaN-safe rating line for a product, if present."""
     rating = product.get("average_rating")
@@ -184,8 +197,6 @@ def _render_card(product: dict, rank=None, *, feedback: bool = True, sponsored: 
             if product.get("img_url"):
                 st.image(product["img_url"], width=200)
         with right:
-            # Defensive: badge if the caller says so OR the item is flagged
-            # sponsored — paid placement must never render as organic.
             if sponsored or product.get("is_sponsored"):
                 st.markdown(
                     f":orange[**⭐ SPONSORED**] · _by {product.get('sponsor', 'a partner')}_"
@@ -207,8 +218,11 @@ def _render_card(product: dict, rank=None, *, feedback: bool = True, sponsored: 
 
             _rating_line(product)
 
-            # Scores (organic only — sponsored items aren't relevance-scored).
-            if not sponsored:
+            if sponsored or product.get("is_sponsored"):
+                rel = product.get("sponsored_relevance")
+                if rel is not None and not _is_nan(rel):
+                    st.caption(f"**Relevance to query: {rel:.3f}** (cosine; not reranked)")
+            else:
                 final = product.get("final_score")
                 rerank_val = product.get("rerank_score")
                 embed = product.get("score")
@@ -227,7 +241,6 @@ def _render_card(product: dict, rank=None, *, feedback: bool = True, sponsored: 
             if product.get("reason"):
                 st.markdown(f"💡 _{product['reason']}_")
 
-            # Click-through to the product detail page.
             cidx = product.get("catalog_index")
             if cidx is not None:
                 tag = "sp" if (sponsored or product.get("is_sponsored")) else "or"
@@ -235,7 +248,6 @@ def _render_card(product: dict, rank=None, *, feedback: bool = True, sponsored: 
                     _open_detail(int(cidx))
 
             if feedback:
-                # Key on catalog_index (globally unique, stable across pages).
                 kid = product.get("catalog_index", rank)
                 fb_cols = st.columns([1, 1, 8])
                 if fb_cols[0].button("👍", key=f"fb_up_{kid}"):
@@ -250,6 +262,68 @@ def _render_card(product: dict, rank=None, *, feedback: bool = True, sponsored: 
                         product.get("reason", ""),
                     )
                     st.toast("Thanks — feedback recorded.")
+
+
+def _render_grid_card(product: dict, rank: int):
+    """Compact card for the multi-column results grid. Clicking opens detail."""
+    with st.container(border=True):
+        if product.get("is_sponsored"):
+            st.markdown(f":orange[**⭐ SPONSORED**] · _{product.get('sponsor', 'partner')}_")
+        img = product.get("img_url")
+        if img and not _is_nan(img):
+            st.markdown(
+                f'<img src="{img}" class="cas-thumb" loading="lazy" '
+                f'onerror="this.style.display=\'none\'">',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown('<div class="cas-thumb-empty">no image</div>', unsafe_allow_html=True)
+        title = product.get("Product_title", "Untitled")
+        st.markdown(f"**{rank}. {title[:70]}{'…' if len(title) > 70 else ''}**")
+
+        bits = []
+        if product.get("categ_lvl2_name"):
+            bits.append(product["categ_lvl2_name"])
+        if product.get("color"):
+            bits.append(product["color"].title())
+        if bits:
+            st.caption(" · ".join(bits))
+
+        if product.get("price") is not None and not _is_nan(product.get("price")):
+            st.markdown(f"**${product['price']}**")
+
+        rating = product.get("average_rating")
+        rating_n = product.get("rating_number")
+        if rating is not None and not _is_nan(rating):
+            try:
+                rv = float(rating)
+                cnt = f" ({int(float(rating_n)):,})" if (rating_n is not None and not _is_nan(rating_n)) else ""
+                st.caption(f"{'⭐' * int(round(rv))} {rv:.1f}{cnt}")
+            except (TypeError, ValueError):
+                pass
+
+        final = product.get("final_score")
+        rerank_val = product.get("rerank_score")
+        embed = product.get("score")
+        if final is not None and not _is_nan(final):
+            bayes = product.get("bayesian_rating")
+            bayes_str = f" · Bayes {bayes}" if bayes else ""
+            embed_str = f" · embed {embed:.3f}" if isinstance(embed, (int, float)) and not _is_nan(embed) else ""
+            st.caption(f"**Score {final}/100** (rerank {rerank_val}{bayes_str}{embed_str})")
+        elif rerank_val is not None:
+            embed_str = f" · embed {embed:.3f}" if isinstance(embed, (int, float)) and not _is_nan(embed) else ""
+            st.caption(f"Rerank {rerank_val}/100{embed_str}")
+        elif embed is not None and not _is_nan(embed):
+            st.caption(f"Embedding sim {embed:.3f}")
+
+        if product.get("reason"):
+            r = product["reason"]
+            st.caption(f"💡 _{r[:90]}{'…' if len(r) > 90 else ''}_")
+
+        cidx = product.get("catalog_index")
+        if cidx is not None:
+            if st.button("🔎 View details", key=f"grid_{cidx}"):
+                _open_detail(int(cidx))
 
 
 def _render_mini(item: dict, key_prefix: str):
@@ -269,7 +343,6 @@ def _render_mini(item: dict, key_prefix: str):
                 _open_detail(int(cidx))
 
 
-# --- Search bar (always visible) -------------------------------------------
 query_input = st.text_input(
     "What are you looking for?",
     placeholder="e.g. casual outfit, wireless earbuds, healthy breakfast cereal",
@@ -282,19 +355,16 @@ if st.button("🔍 Search", type="primary") and query_input:
         st.session_state["view"] = "search"
         _fetch()
 
-# If the user changed any sidebar setting, refresh the relevant view so what's
-# on screen always matches the settings shown in the sidebar.
 _settings = (top_k, rerank, show_sponsored, show_recs)
 if st.session_state.get("settings") != _settings:
     if st.session_state.get("view") == "detail":
-        st.session_state["detail_response"] = None  # re-pull product with new opts
+        st.session_state["detail_response"] = None
     elif st.session_state.get("query") and st.session_state.get("last_response") is not None:
         st.session_state["page"] = 1
         _fetch()
     st.session_state["settings"] = _settings
 
 
-# --- Product detail page ---------------------------------------------------
 def _render_detail_page():
     idx = st.session_state.get("detail_index")
     if st.button("⬅ Back to results"):
@@ -322,7 +392,7 @@ def _render_detail_page():
 
     if cross:
         st.divider()
-        st.subheader("🧺 Frequently bought together")
+        st.subheader("🧺 Buy along with")
         cols = st.columns(len(cross))
         for col, item in zip(cols, cross):
             with col:
@@ -336,7 +406,6 @@ def _render_detail_page():
                 _render_mini(item, key_prefix="d_up")
 
 
-# --- Search results page ---------------------------------------------------
 def _render_search_results():
     data = st.session_state.get("last_response")
     if not data:
@@ -354,25 +423,35 @@ def _render_search_results():
             if data.get("rerank_succeeded") is False and data.get("rerank_requested"):
                 st.caption("⚠️ rerank fell back (LLM unavailable)")
 
-    if data.get("rerank_succeeded") is False and data.get("rerank_requested"):
+    for err in data.get("errors", []):
+        stage = err.get("stage")
+        code = err.get("code", "?")
+        if stage == "rerank":
+            st.warning(f"⚠️ Reranker unavailable (error {code}) — showing embedding-ranked results.")
+        elif stage == "translate":
+            st.warning(f"⚠️ Query expansion unavailable (error {code}) — searched with your raw query.")
+        else:
+            st.warning(f"⚠️ {stage} error {code}.")
+    if not data.get("errors") and data.get("rerank_succeeded") is False and data.get("rerank_requested"):
         st.caption("⚠️ Showing embedding-ranked results (reranker was unavailable).")
+
+    if data.get("no_match"):
+        st.subheader("🧠 Interpreted intents")
+        for intent in data.get("interpreted_as", []):
+            st.markdown(f"- {intent}")
+        st.divider()
+        st.info(
+            data.get("message")
+            or "No matching products found. Try different or more general terms."
+        )
+        return
 
     st.subheader("🧠 Interpreted intents")
     for intent in data.get("interpreted_as", []):
         st.markdown(f"- {intent}")
 
-    # Sponsored (page 1, visually separated, relevance-gated by the backend).
-    sponsored_items = data.get("sponsored", []) if show_sponsored else []
-    if sponsored_items:
-        st.divider()
-        st.subheader("⭐ Sponsored")
-        st.caption("Paid placements — ranked separately from organic results.")
-        for product in sponsored_items:
-            _render_card(product, rank=None, feedback=False, sponsored=True)
-
-    # Organic results.
     st.divider()
-    st.subheader("🛍️ Recommended Products")
+    st.subheader("🛍️ Products")
     results = data.get("results", [])
     page = data.get("page", 1)
     page_size = data.get("page_size", top_k)
@@ -381,10 +460,14 @@ def _render_search_results():
         return
 
     start_rank = (page - 1) * page_size + 1
-    for offset, product in enumerate(results):
-        _render_card(product, rank=start_rank + offset, feedback=True)
+    cols_per_row = 3
+    for row_start in range(0, len(results), cols_per_row):
+        row_items = results[row_start : row_start + cols_per_row]
+        cols = st.columns(cols_per_row)
+        for col, (offset, product) in zip(cols, enumerate(row_items)):
+            with col:
+                _render_grid_card(product, rank=start_rank + row_start + offset)
 
-    # Pagination controls.
     total_pages = data.get("total_pages", 1)
     total_results = data.get("total_results", len(results))
     prev_col, mid_col, next_col = st.columns([1, 3, 1])
@@ -403,7 +486,6 @@ def _render_search_results():
         st.rerun()
 
 
-# --- Route -----------------------------------------------------------------
 if st.session_state.get("view") == "detail" and st.session_state.get("detail_index") is not None:
     _render_detail_page()
 else:

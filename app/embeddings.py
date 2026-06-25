@@ -25,8 +25,8 @@ class Embedder:
 
     def __init__(self, model_name: str):
         self.model_name = model_name
-        self._st_model = None  # sentence-transformers handle
-        self._openai_client = None  # openai client handle
+        self._st_model = None
+        self._openai_client = None
 
     @property
     def is_openai(self) -> bool:
@@ -36,7 +36,7 @@ class Embedder:
         if self.is_openai:
             if self._openai_client is None:
                 try:
-                    from openai import OpenAI  # imported lazily
+                    from openai import OpenAI
                 except ImportError as e:
                     raise RuntimeError(
                         "openai package not installed. Run `pip install openai` "
@@ -55,6 +55,16 @@ class Embedder:
 
                 logger.info("Loading sentence-transformer: %s", self.model_name)
                 self._st_model = SentenceTransformer(self.model_name)
+                max_seq = int(os.getenv("EMBED_MAX_SEQ_LEN", "128"))
+                try:
+                    if self._st_model.max_seq_length and self._st_model.max_seq_length > max_seq:
+                        logger.info(
+                            "Capping max_seq_length %s -> %s for speed.",
+                            self._st_model.max_seq_length, max_seq,
+                        )
+                        self._st_model.max_seq_length = max_seq
+                except Exception:
+                    pass
                 logger.info("Sentence-transformer loaded.")
 
     def encode(self, texts: List[str]) -> np.ndarray:
@@ -64,7 +74,6 @@ class Embedder:
             return np.zeros((0, 384), dtype=np.float32)
 
         if self.is_openai:
-            # OpenAI has a per-request size limit; batch defensively.
             batch_size = 100
             chunks = []
             for i in range(0, len(texts), batch_size):
@@ -75,8 +84,6 @@ class Embedder:
                 chunks.extend(d.embedding for d in resp.data)
             return np.asarray(chunks, dtype=np.float32)
 
-        # Show progress bar for large batches (catalog build) but not for
-        # small ones (a few query intents at search time would flash up).
         n = len(texts)
         show_progress = n >= 500
         if show_progress:
@@ -88,7 +95,7 @@ class Embedder:
             texts,
             show_progress_bar=show_progress,
             convert_to_numpy=True,
-            batch_size=64,
+            batch_size=int(os.getenv("EMBED_BATCH_SIZE", "64")),
         ).astype(np.float32)
 
         if show_progress:
@@ -101,7 +108,6 @@ class Embedder:
         return out
 
 
-# Module-level default embedder. Swap by reassigning in eval scripts.
 _default_embedder: Embedder | None = None
 
 

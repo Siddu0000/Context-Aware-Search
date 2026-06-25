@@ -27,17 +27,25 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
 - `app/config.py` — ALL env knobs live here; read this first.
 
 ## Decisions already made — do NOT silently revert these
+- **Production LLM = openai/gpt-oss-120b via Groq** (LLM_PROVIDER=openai, OPENAI_BASE_URL=Groq,
+  OPENAI_MODEL=openai/gpt-oss-120b). Chosen over Gemini: it matched/beat Gemini on the eval
+  (NDCG 0.950 vs ~0.93) and is free with no quota exhaustion. TRADEOFF: it's a reasoning model
+  and slow (~20-25s/query) — watch demo latency; gpt-oss-20b or a non-reasoning model is faster.
+  Needs GROQ_REASONING_FORMAT=hidden (reasoning tokens else break JSON) and RERANK_INPUT_K=15
+  (else Groq 8000 TPM → 429). REVERT to Gemini = set LLM_PROVIDER=gemini (one line).
 - **TRANSLATOR_MODE = query_expansion.** Benchmarked 2026-06-10 vs HyDE and hybrid
   (`eval/compare_translators.py`). query_expansion won decisively: P@1 1.000, NDCG 0.904
   vs HyDE 0.750/0.716. HyDE drifts lexically from short Amazon titles. Hybrid inherits
   HyDE's failures. Keep hyde/hybrid code for re-benchmarking, but query_expansion is the default.
 - **RATING_BOOST_WEIGHT = 0.05.**   wants rating "as minimal as possible — not a
   primary filter." It only breaks near-ties. Do not raise without her sign-off.
-- **DETERMINISTIC = true** → temperature 0 + fixed seed. This is the answer to  's
-  repeated "are results deterministic?" question. `eval/compare_temperature.py` justifies temp=0.
-- **Caching is DISABLED on purpose** (early-stage dev). Code exists in `app/cache.py` but is
-  commented out at every integration point (search `# CACHE DISABLED`). Every /search hits the
-  real LLM so we see true behaviour. Re-enable later by uncommenting those blocks.
+- **DETERMINISTIC = true** → fixed seed (NOT forced temperature 0). The seed provides
+  reproducibility; each call uses its tuned temperature for quality. `effective_temperature`
+  in config.py is the single source of truth. `eval/compare_temperature.py` explores the tradeoff.
+- **Result caching is ON** via `app/page_cache.py` — caches the ranked pool per query+settings so
+  repeat searches and page 2+ are instant. ONLY clean runs are cached; a run where an LLM stage
+  fell back (translator/reranker error) is never stored, so a retry hits the LLM again. The old
+  `app/cache.py` LRU was removed. The on-disk embedding cache is separate and stays.
 - **Data is Amazon Reviews 2023** (McAuley Lab), not the original synthetic eBay catalog. Real
   titles/prices/images/ratings. License is RESEARCH-ONLY — fine for PoC, flag before client demo.
 
@@ -67,8 +75,11 @@ prod_description, average_rating, rating_number, store, parent_asin`
 ## Eval suite (eval/)
 - `run_eval.py` — main harness; reads `data/eval_queries.json` (12 multi-context queries).
 - `compare_translators.py` — query_expansion vs hyde vs hybrid (rerank off).
-- `compare_llms.py` — Gemini vs OpenAI vs Anthropic (rerank on). Pre-flight checks each provider's
-  key + SDK and SKIPS the absent ones (we're Gemini-only right now; openai/anthropic SDKs not installed).
+- `compare_llms.py` — compares any models on the same eval set (rerank on). Built-ins
+  gemini/openai/anthropic; any other string is an OpenAI-compatible model id via OPENAI_BASE_URL
+  (Groq recommended — free, no card; current models openai/gpt-oss-120b, openai/gpt-oss-20b —
+  the older llama-3.3-70b / qwen3-32b were deprecated 2026-06-17). Pre-flight checks each before
+  spending calls. Add RERANK_INPUT_K=15 (env) if a token-limited free tier returns 429s.
 - `compare_temperature.py` — temp sweep: quality + run-to-run stability. Auto-disables seed.
 - `eval_recipe_completeness.py` — grocery: % of a dish's ingredients in top results (target 70%).
   Reads `data/recipe_eval.json` (5 dishes w/ synonyms — authored 2026-06-12).

@@ -113,14 +113,13 @@ def enhance(batch_size: int = 8, limit: Optional[int] = None) -> Path:
             items = parsed.get("items", [])
             if not isinstance(items, list):
                 raise LLMError(f"Unexpected shape: {parsed!r}")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning(
                 "Batch %d-%d failed (%s); skipping for now.",
                 batch_idx[0],
                 batch_idx[-1],
                 repr(e),
             )
-            # Don't crash — the script is resumable, run again later.
             continue
 
         records = []
@@ -143,7 +142,6 @@ def enhance(batch_size: int = 8, limit: Optional[int] = None) -> Path:
             done[r["row_idx"]] = r
         logger.info("Progress: %d/%d", len(done), n_total)
 
-    # Merge checkpoint back into the dataframe and write the enhanced CSV.
     logger.info("Writing enhanced CSV.")
     for i, rec in done.items():
         if i >= len(df):

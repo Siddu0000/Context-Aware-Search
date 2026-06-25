@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def record_feedback(
     query: str,
     product_title: str,
-    rating: int,  # +1 thumbs up, -1 thumbs down
+    rating: int,
     rank: int,
     reason: Optional[str] = None,
 ) -> None:

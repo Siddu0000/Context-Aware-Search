@@ -1,13 +1,10 @@
 """FastAPI service.
 
 Endpoints:
-    GET  /search?query=...    translate -> retrieve -> (optional) rerank
+    GET  /search?query=...            translate -> retrieve -> rerank -> paginate
     GET  /product?catalog_index=...   single product + its cross-sell/upsell
-    POST /feedback            record thumbs-up / thumbs-down
-    GET  /healthz             readiness probe
-    GET  /stats               provider + key-rotator state (debug)
-
-Note: in-process LLM caching is currently disabled. See app/config.py.
+    POST /feedback                    record thumbs-up / thumbs-down
+    GET  /healthz, /stats             probes / debug
 """
 
 import logging
@@ -17,11 +14,14 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-# CACHE DISABLED — early-stage dev. Uncomment to re-enable cache observability.
-# from app.cache import reranker_cache, translator_cache
+from app import page_cache
 from app.config import (
     FINAL_TOP_K,
+    GEMINI_MODEL,
+    GROCERY_PER_INTENT_K,
     LLM_PROVIDER,
+    MIN_RESULT_RELEVANCE,
+    OPENAI_MODEL,
     RECOMMEND_ENABLED,
     RERANK_ENABLED,
     RERANK_POOL_K,
@@ -33,9 +33,9 @@ from app.feedback import record_feedback
 from app.metrics import StageTimings
 from app.recommendations import recommend as build_recommendations
 from app.reranker import rerank as llm_rerank
-from app.search import get_product, load_index, search_products
-from app.sponsored import get_sponsored
-from app.translator import translate_query
+from app.search import best_score, get_product, load_index, search_products
+from app.sponsored import sponsored_map
+from app.translator import is_recipe_query, translate_query
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,13 +66,16 @@ def healthz():
 
 @app.get("/stats")
 def stats():
-    """Quick visibility into provider state and (Gemini) key-rotator status."""
+    active_model = (
+        GEMINI_MODEL if LLM_PROVIDER == "gemini"
+        else OPENAI_MODEL if LLM_PROVIDER == "openai"
+        else LLM_PROVIDER
+    )
     out = {
         "llm_provider": LLM_PROVIDER,
+        "active_model": active_model,
         "translator_mode": TRANSLATOR_MODE,
-        "cache": "disabled",  # cache is hard-off; see app/config.py
     }
-    # Key rotator stats only meaningful for Gemini.
     if LLM_PROVIDER == "gemini":
         try:
             from app.llm_client import get_llm_client
@@ -80,22 +83,14 @@ def stats():
             backend = get_llm_client()
             if hasattr(backend, "rotator"):
                 out["gemini_keys"] = backend.rotator.stats()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             out["gemini_keys"] = {"error": repr(e)}
     return out
 
 
-def _paginate(ranked_pool, candidates, page: int, page_size: int):
-    """Slice one page out of the ranked pool, with an embedding-order tail.
-
-    The reranker scores a deep pool ONCE (RERANK_POOL_K items). Pages are
-    sliced from that single ranked list, so paging costs no extra LLM call.
-    Any deduped candidate not in the reranked pool forms an embedding-order
-    tail for deep pages — each tail item is labelled in its `reason` so the
-    UI can tell the user those rows are beyond the reranked window.
-
-    Returns (page_items, full_ordered_list).
-    """
+def _assemble_full(ranked_pool, candidates):
+    """Full ordered result list: the reranked pool, then any remaining
+    candidates as an embedding-order tail (labelled in `reason`)."""
     pool_titles = {p.get("Product_title", "") for p in ranked_pool}
     tail = []
     for c in candidates:
@@ -107,10 +102,29 @@ def _paginate(ranked_pool, candidates, page: int, page_size: int):
         c.setdefault("final_score", None)
         c["reason"] = "(beyond reranked pool — embedding-similarity order)"
         tail.append(c)
+    return list(ranked_pool) + tail
 
-    full = list(ranked_pool) + tail
-    start = (page - 1) * page_size
-    return full[start : start + page_size], full
+
+def _boost_sponsored(full, smap):
+    """Pull sponsored products that made the RERANKED pool to the top, ordered
+    by bid (then final_score). Sponsored items outside the reranked pool are
+    left in place — they weren't relevant enough to be boosted."""
+    if not smap:
+        return full
+    boosted, rest = [], []
+    for item in full:
+        asin = item.get("parent_asin")
+        asin = str(asin) if asin is not None else None
+        if asin and asin in smap and item.get("rerank_score") is not None:
+            item = dict(item)
+            item["is_sponsored"] = True
+            item["sponsor"] = smap[asin]["sponsor"]
+            item["_bid"] = smap[asin]["bid"]
+            boosted.append(item)
+        else:
+            rest.append(item)
+    boosted.sort(key=lambda x: (x.get("_bid", 0.0), x.get("final_score") or 0.0), reverse=True)
+    return boosted + rest
 
 
 @app.get("/search")
@@ -127,24 +141,18 @@ def search(
     ),
     translator_mode: Optional[str] = Query(
         None,
-        description="Override TRANSLATOR_MODE for this request: query_expansion | hyde | hybrid",
+        description="Override TRANSLATOR_MODE: query_expansion | hyde | hybrid",
     ),
 ):
     """Translate -> retrieve -> rerank -> paginate, plus optional sponsored
-    and cross-sell layers. Every call hits the real LLM (cache disabled).
+    and cross-sell layers.
 
-    Note: this is a stateless endpoint, so navigating to a new page re-runs
-    translate + rerank. The reranked POOL is a fixed size (independent of the
-    page number) and rerank is deterministic (temp 0 + seed), so the ordering
-    and total_results are STABLE across pages — page 2 slices the same ranking
-    page 1 did. To make deep paging free of per-page LLM cost, re-enable the
-    (currently disabled) LLM cache or hold the ranked pool in server state."""
-    # Validate the per-request override BEFORE the try block, so the 422 is
-    # not swallowed by the catch-all and turned into a 500.
+    Page 1 runs the full pipeline and caches the ranked pool. Page 2+ of the
+    same search reuse that pool (no LLM call), so page transitions are fast.
+    If the best match is below MIN_RESULT_RELEVANCE, the query is treated as
+    having no real match and an empty result set is returned."""
     if translator_mode is not None and translator_mode not in {
-        "query_expansion",
-        "hyde",
-        "hybrid",
+        "query_expansion", "hyde", "hybrid",
     }:
         raise HTTPException(
             status_code=422,
@@ -154,52 +162,126 @@ def search(
             ),
         )
     page_size = top_k
+    pool_k = max(RERANK_POOL_K, page_size)
     timings = StageTimings()
+
+    cache_key = page_cache.make_key(
+        query, (page_size, pool_k, rerank, sponsored, translator_mode or TRANSLATOR_MODE)
+    )
+
     try:
-        with timings.stage("translate"):
-            intents = translate_query(query, mode=translator_mode)
-
-        with timings.stage("retrieve"):
-            candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
-
-        # Rerank a deep pool ONCE, then paginate within it. The pool size is
-        # FIXED (does NOT grow with the page number) so the ranking — and thus
-        # total_results / page boundaries — stays identical across pages. It's
-        # at least page_size so page 1 is fully reranked (not padded from the
-        # embedding tail).
-        pool_k = max(RERANK_POOL_K, page_size)
-        rerank_actually_ran = False
-        if rerank and candidates:
-            with timings.stage("rerank"):
-                ranked_pool = llm_rerank(query, candidates, top_k=pool_k)
-            rerank_actually_ran = any(
-                r.get("rerank_score") is not None for r in ranked_pool
+        cached = page_cache.get(cache_key)
+        if cached is not None:
+            full = cached["full"]
+            intents = cached["intents"]
+            rerank_actually_ran = cached["rerank_succeeded"]
+            no_match = cached["no_match"]
+            start = (page - 1) * page_size
+            results = full[start : start + page_size]
+            sponsored_items = [r for r in results if r.get("is_sponsored")]
+            recommendations = (
+                cached["recommendations"]
+                if page == 1
+                else {"cross_sell": [], "upsell": []}
             )
+            errors = []
         else:
-            ranked_pool = []
-            for p in candidates[:pool_k]:
-                p = dict(p)
-                p["rerank_score"] = None
-                p["bayesian_rating"] = None
-                p["final_score"] = None
-                p["reason"] = "(rerank disabled)"
-                ranked_pool.append(p)
+            errors = []
+            with timings.stage("translate"):
+                intents = translate_query(query, mode=translator_mode, errors=errors)
 
-        results, full = _paginate(ranked_pool, candidates, page, page_size)
-        total_results = len(full)
-        total_pages = max(1, -(-total_results // page_size))  # ceil
+            with timings.stage("retrieve"):
+                if is_recipe_query(query):
+                    candidates = search_products(
+                        intents,
+                        top_k=RETRIEVAL_TOP_K,
+                        per_intent_quota=GROCERY_PER_INTENT_K,
+                    )
+                else:
+                    candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
 
-        # Sponsored + cross-sell are page-1 concerns only (keeps quota down and
-        # matches how a storefront shows ads / "bought together" up top).
-        sponsored_items = []
-        if sponsored and page == 1:
-            with timings.stage("sponsored"):
-                sponsored_items = get_sponsored(query, results, intents=intents)
+            no_match = bool(candidates) and best_score(candidates) < MIN_RESULT_RELEVANCE
+            if not candidates or no_match:
+                empty_payload = {
+                    "user_query": query,
+                    "interpreted_as": intents,
+                    "translator_mode": translator_mode or TRANSLATOR_MODE,
+                    "rerank_requested": rerank,
+                    "rerank_succeeded": False,
+                    "no_match": True,
+                    "message": "No matching products found. Try different or more general terms.",
+                    "results": [],
+                    "sponsored": [],
+                    "recommendations": {"cross_sell": [], "upsell": []},
+                    "errors": errors,
+                    "page": 1,
+                    "page_size": page_size,
+                    "total_results": 0,
+                    "total_pages": 1,
+                    "has_prev": False,
+                    "has_next": False,
+                    "latency_ms": timings.to_dict(),
+                }
+                if not errors:
+                    page_cache.put(
+                        cache_key,
+                        {
+                            "full": [],
+                            "intents": intents,
+                            "rerank_succeeded": False,
+                            "no_match": True,
+                            "recommendations": {"cross_sell": [], "upsell": []},
+                        },
+                    )
+                return empty_payload
 
-        recommendations = {"cross_sell": [], "upsell": []}
-        if recommend and page == 1 and results:
-            with timings.stage("recommend"):
-                recommendations = build_recommendations(query, results, page=page)
+            rerank_actually_ran = False
+            if rerank and candidates:
+                with timings.stage("rerank"):
+                    ranked_pool = llm_rerank(query, candidates, top_k=pool_k, errors=errors)
+                rerank_actually_ran = any(
+                    r.get("rerank_score") is not None for r in ranked_pool
+                )
+            else:
+                ranked_pool = []
+                for p in candidates[:pool_k]:
+                    p = dict(p)
+                    p["rerank_score"] = None
+                    p["bayesian_rating"] = None
+                    p["final_score"] = None
+                    p["reason"] = "(rerank disabled)"
+                    ranked_pool.append(p)
+
+            full = _assemble_full(ranked_pool, candidates)
+
+            if sponsored:
+                with timings.stage("sponsored"):
+                    full = _boost_sponsored(full, sponsored_map())
+
+            start = (page - 1) * page_size
+            results = full[start : start + page_size]
+            sponsored_items = [r for r in results if r.get("is_sponsored")]
+
+            recommendations = {"cross_sell": [], "upsell": []}
+            if recommend and page == 1 and results:
+                with timings.stage("recommend"):
+                    recommendations = build_recommendations(query, results, page=page)
+
+            if not errors:
+                page_cache.put(
+                    cache_key,
+                    {
+                        "full": full,
+                        "intents": intents,
+                        "rerank_succeeded": rerank_actually_ran,
+                        "no_match": False,
+                        "recommendations": recommendations,
+                    },
+                )
+
+        cached_now = page_cache.get(cache_key)
+        total_results = len(cached_now["full"]) if cached_now else len(full)
+        total_pages = max(1, -(-total_results // page_size))
 
         return {
             "user_query": query,
@@ -207,9 +289,11 @@ def search(
             "translator_mode": translator_mode or TRANSLATOR_MODE,
             "rerank_requested": rerank,
             "rerank_succeeded": rerank_actually_ran,
+            "no_match": no_match,
             "results": results,
             "sponsored": sponsored_items,
             "recommendations": recommendations,
+            "errors": errors,
             "page": page,
             "page_size": page_size,
             "total_results": total_results,
@@ -219,7 +303,7 @@ def search(
             "latency_ms": timings.to_dict(),
         }
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.exception("Search failed for query=%r", query)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -232,43 +316,18 @@ def product(
         RECOMMEND_ENABLED, description="Include this product's cross-sell/upsell."
     ),
 ):
-    """Product detail view: a single product plus recommendations anchored on
-    IT (not on the top search result). Powers the per-product page in the UI.
-    The cross-sell path makes one LLM call when recommend is true."""
+    """Product detail view: one product plus recommendations anchored on it."""
     p = get_product(catalog_index)
     if p is None:
         raise HTTPException(status_code=404, detail="Product not found.")
 
     recommendations = {"cross_sell": [], "upsell": []}
     if recommend:
-        # Anchor recommendations on this product; use the original query (or the
-        # product title) as the cross-sell context.
         recommendations = build_recommendations(
             query or p.get("Product_title", ""), [p], page=1
         )
 
     return {"product": p, "recommendations": recommendations}
-
-
-# CACHE DISABLED — early-stage dev. Endpoint removed; cache is never populated.
-# To re-enable: restore cache imports above and uncomment this block.
-# @app.post("/cache/clear")
-# def clear_cache():
-#     """Clear both translator and reranker in-process caches."""
-#     t_stats = translator_cache.stats()
-#     r_stats = reranker_cache.stats()
-#     translator_cache._store.clear()
-#     reranker_cache._store.clear()
-#     translator_cache.hits = translator_cache.misses = 0
-#     reranker_cache.hits = reranker_cache.misses = 0
-#     return {
-#         "status": "cleared",
-#         "translator": {"prev_size": t_stats["size"]},
-#         "reranker": {"prev_size": r_stats["size"]},
-#     }
-
-
-# --- Feedback endpoint ----------------------------------------------------
 
 
 class FeedbackIn(BaseModel):

@@ -36,16 +36,11 @@ from app.config import DATA_DIR, EVAL_RESULTS_DIR
 from app.search import load_index, search_products
 from app.translator import translate_query
 
-logging.basicConfig(level=logging.ERROR)  # quiet; we report per-query ourselves
+logging.basicConfig(level=logging.ERROR)
 
-# Some stress queries are emoji / CJK / accented on purpose (unicode handling
-# IS part of the test). The Windows console defaults to cp1252 and would raise
-# UnicodeEncodeError when we print those query strings back — crashing the
-# harness even though the PIPELINE handled them fine. Force UTF-8 on stdout so
-# the report always completes. (The saved CSV is UTF-8 regardless.)
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-except Exception:  # noqa: BLE001 — non-reconfigurable stream; best-effort only
+except Exception:
     pass
 
 STRESS_FILE = DATA_DIR / "stress_queries.json"
@@ -66,8 +61,6 @@ def _run_one(query: str, rerank_on: bool, top_k: int) -> dict:
     try:
         intents = translate_query(query)
         row["n_intents"] = len(intents)
-        # Fallback heuristic: the translator returns [raw_query] when it can't
-        # expand (LLM error, empty/garbage input, or quota exhaustion).
         row["translator_fell_back"] = intents == [query]
 
         candidates = search_products(intents, top_k=top_k)
@@ -80,7 +73,7 @@ def _run_one(query: str, rerank_on: bool, top_k: int) -> dict:
             row["n_results"] = len(ranked)
             if ranked and ranked[0].get("rerank_score") is None:
                 row["note"] = "rerank fell back to embedding order"
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         row["status"] = "ERROR"
         row["note"] = f"{type(e).__name__}: {e}"[:120]
     row["ms"] = round((time.perf_counter() - t0) * 1000)
@@ -112,7 +105,6 @@ def main():
         disp = row["query"][:48]
         print(f"  [{status_icon}] n={row['n_results']:>3} {row['ms']:>6}ms  {disp}{fb}{note}")
 
-    # Summary
     n_ok = sum(1 for r in rows if r["status"] == "ok")
     n_err = sum(1 for r in rows if r["status"] == "ERROR")
     n_fb = sum(1 for r in rows if r["translator_fell_back"])

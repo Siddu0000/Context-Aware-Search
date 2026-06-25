@@ -25,9 +25,6 @@ logging.basicConfig(level=logging.WARNING)
 
 def run_for_mode(mode: str):
     """Set TRANSLATOR_MODE for this run and execute the eval."""
-    # The eval reads the mode via app.config at import time, but the
-    # translator looks it up dynamically every call — so we just patch
-    # the module's default. Cleaner than mutating env vars.
     original = translator_module.TRANSLATOR_MODE
     translator_module.TRANSLATOR_MODE = mode
     try:
@@ -56,7 +53,7 @@ def main():
         try:
             out_path, elapsed = run_for_mode(mode)
             print(f"completed in {elapsed:.1f}s, results -> {out_path}")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"FAILED for mode={mode}: {e!r}")
 
 

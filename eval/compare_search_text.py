@@ -30,7 +30,6 @@ from eval.run_eval import evaluate
 logging.basicConfig(level=logging.WARNING)
 
 
-# Each variant is a tuple of fields (concatenation order matters slightly).
 VARIANTS: dict[str, Tuple[str, ...]] = {
     "title_only": ("Product_title",),
     "title_plus_desc": ("Product_title", "prod_description"),
@@ -50,18 +49,14 @@ VARIANTS: dict[str, Tuple[str, ...]] = {
 
 def run_for_variant(name: str, fields: Tuple[str, ...]):
     """Force a rebuild of the index using this field set, then run eval."""
-    # Reset the in-memory index state. The cache key includes the field set,
-    # so a separate .npy file is produced per variant.
     search_module._df = None
     search_module._embeddings = None
     search_module._loaded_fields = ()
 
-    # Temporarily override the default fields used by load_index().
     original = search_module.DEFAULT_SEARCH_FIELDS
     search_module.DEFAULT_SEARCH_FIELDS = fields
     try:
         t0 = time.perf_counter()
-        # evaluate() calls load_index() which now uses our overridden fields.
         out_path = evaluate(rerank_on=False, tag=f"chunk_{name}")
         return out_path, time.perf_counter() - t0
     finally:

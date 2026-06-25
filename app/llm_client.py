@@ -19,6 +19,7 @@ fixed seed is sent where the provider supports it. See cfg.effective_temperature
 
 import json
 import logging
+import re
 from typing import Optional
 
 import app.config as cfg
@@ -30,12 +31,19 @@ class LLMError(Exception):
     """Raised when an LLM call fails after all retries / fallbacks."""
 
 
+def error_code(exc: Exception) -> str:
+    """Extract a short, user-facing code from an exception (e.g. '503').
+    Falls back to the HTTP-like status in the message, then the class name."""
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if code:
+        return str(code)
+    m = re.search(r"\b([4-5]\d{2})\b", str(exc))
+    return m.group(1) if m else exc.__class__.__name__
+
+
 def _use_seed() -> bool:
     """Send a fixed seed only in true deterministic mode (not during a sweep)."""
     return cfg.DETERMINISTIC and cfg.TEMPERATURE_OVERRIDE is None
-
-
-# ---------- Gemini ----------------------------------------------------------
 
 
 class _GeminiBackend:
@@ -44,7 +52,6 @@ class _GeminiBackend:
             raise LLMError(
                 "No Gemini API keys configured. Set GOOGLE_API_KEY in .env."
             )
-        # Use the rotator even with one key — it gives uniform error handling.
         from app.key_rotator import GeminiKeyRotator
 
         self.rotator = GeminiKeyRotator(cfg.GOOGLE_API_KEYS)
@@ -63,9 +70,6 @@ class _GeminiBackend:
         return response.text
 
 
-# ---------- OpenAI ----------------------------------------------------------
-
-
 class _OpenAIBackend:
     def __init__(self):
         if not cfg.OPENAI_API_KEY:
@@ -76,7 +80,10 @@ class _OpenAIBackend:
             raise LLMError(
                 "openai package not installed. `pip install openai`."
             ) from e
-        self.client = OpenAI(api_key=cfg.OPENAI_API_KEY)
+        self.client = OpenAI(
+            api_key=cfg.OPENAI_API_KEY,
+            **({"base_url": cfg.OPENAI_BASE_URL} if cfg.OPENAI_BASE_URL else {}),
+        )
         self.model = cfg.OPENAI_MODEL
 
     def generate_json(self, prompt: str, temperature: float) -> str:
@@ -88,11 +95,11 @@ class _OpenAIBackend:
         }
         if _use_seed():
             params["seed"] = cfg.LLM_SEED
+        base = (cfg.OPENAI_BASE_URL or "").lower()
+        if "groq" in base and cfg.GROQ_REASONING_FORMAT:
+            params["extra_body"] = {"reasoning_format": cfg.GROQ_REASONING_FORMAT}
         resp = self.client.chat.completions.create(**params)
         return resp.choices[0].message.content
-
-
-# ---------- Anthropic -------------------------------------------------------
 
 
 class _AnthropicBackend:
@@ -109,8 +116,6 @@ class _AnthropicBackend:
         self.model = cfg.ANTHROPIC_MODEL
 
     def generate_json(self, prompt: str, temperature: float) -> str:
-        # Anthropic does NOT have a strict JSON mode, so we instruct in the
-        # prompt and let the caller's existing JSON parser handle stripping.
         resp = self.client.messages.create(
             model=self.model,
             max_tokens=1024,
@@ -123,9 +128,6 @@ class _AnthropicBackend:
             ],
         )
         return resp.content[0].text
-
-
-# ---------- Factory ---------------------------------------------------------
 
 
 _singleton: Optional[object] = None

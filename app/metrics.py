@@ -34,8 +34,5 @@ class StageTimings:
         return out
 
 
-# Very rough token-count proxy. For Gemini we don't have a free tokenizer
-# always available, so this is a chars/4 approximation — good enough for
-# order-of-magnitude cost tracking, not for billing.
 def approx_tokens(text: str) -> int:
     return max(1, len(text) // 4)

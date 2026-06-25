@@ -1,12 +1,8 @@
 """Retrieval over the product catalog.
 
-Pipeline at boot:
-    1. Load CSV
-    2. Build per-product `search_text` from configured fields
-    3. Load embeddings from disk if cache hit, else compute + persist
-
-The cache key is a hash of (CSV content, embedding model name, field set).
-Any change to any of those auto-invalidates. No manual cache busting needed.
+At boot: load CSV, build per-product search_text from configured fields,
+load embeddings from disk (cache keyed by CSV hash + model + field set) or
+compute and persist them.
 """
 
 import hashlib
@@ -15,15 +11,12 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
 
 from app.config import CACHE_DIR, PRODUCTS_CSV
 from app.embeddings import embed_text, get_default_embedder, search_vectors
 
 logger = logging.getLogger(__name__)
 
-# Fields that go into the searchable text for each product.
-# Centralized here so the "chunking" comparison eval can swap them.
 DEFAULT_SEARCH_FIELDS: Tuple[str, ...] = (
     "bsns_vrtcl_name",
     "categ_lvl2_name",
@@ -34,7 +27,6 @@ DEFAULT_SEARCH_FIELDS: Tuple[str, ...] = (
     "occasion",
 )
 
-# Module-level state populated by load_index().
 _df: Optional[pd.DataFrame] = None
 _embeddings: Optional[np.ndarray] = None
 _loaded_fields: Tuple[str, ...] = ()
@@ -49,7 +41,6 @@ def _file_hash(path) -> str:
 
 
 def _cache_key(fields: Tuple[str, ...]) -> str:
-    """Stable key combining CSV hash + model name + field set."""
     embedder = get_default_embedder()
     parts = [
         _file_hash(PRODUCTS_CSV),
@@ -60,11 +51,6 @@ def _cache_key(fields: Tuple[str, ...]) -> str:
 
 
 def _build_search_text(df: pd.DataFrame, fields: Tuple[str, ...]) -> pd.Series:
-    """Combine the configured fields into one lowercase string per row.
-
-    `fillna("")` BEFORE str-casting is critical: otherwise NaN cells become
-    the literal string 'nan' and pollute the embedding space.
-    """
     for col in fields:
         if col not in df.columns:
             logger.warning("Missing column in CSV: %s. Filling with ''.", col)
@@ -74,11 +60,7 @@ def _build_search_text(df: pd.DataFrame, fields: Tuple[str, ...]) -> pd.Series:
 
 
 def load_index(fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS) -> None:
-    """Idempotent: builds the in-memory index once.
-
-    Reloads if the field set differs from what's currently loaded — that's
-    how the chunking-comparison eval triggers a rebuild without restarting.
-    """
+    """Build the in-memory index once. Rebuilds if the field set changes."""
     global _df, _embeddings, _loaded_fields
 
     if _df is not None and _embeddings is not None and _loaded_fields == fields:
@@ -118,11 +100,7 @@ def get_dataframe() -> pd.DataFrame:
 
 
 def get_product(catalog_index: int) -> Optional[dict]:
-    """Return a single catalog row as a JSON-safe dict (NaN -> None).
-
-    catalog_index is the positional row index we attach to every search
-    result, so the UI can round-trip a product into a detail view.
-    """
+    """Return a single catalog row as a JSON-safe dict (NaN -> None)."""
     if _df is None:
         load_index()
     if catalog_index < 0 or catalog_index >= len(_df):
@@ -133,33 +111,17 @@ def get_product(catalog_index: int) -> Optional[dict]:
     return item
 
 
-def intent_similarity(terms: List[str], catalog_indices: List[int]) -> dict:
-    """Max cosine similarity between any of `terms` and each catalog row.
+def search_products(
+    search_terms: List[str],
+    top_k: int = 30,
+    per_intent_quota: Optional[int] = None,
+) -> List[dict]:
+    """Scatter-gather retrieval: top_k candidates per intent, merged and
+    deduped by title, sorted by embedding score.
 
-    Same basis as retrieval (scatter-gather over the query intents), so the
-    scores are directly comparable to the `score` field on organic results.
-    The sponsored layer uses this to gate ads on real relevance to the query.
-    Returns {catalog_index: similarity}.
-    """
-    if _df is None or _embeddings is None:
-        load_index()
-    if not terms or not catalog_indices:
-        return {}
-    term_vecs = embed_text(terms)
-    out = {}
-    for idx in catalog_indices:
-        if 0 <= idx < len(_embeddings):
-            sims = cosine_similarity([_embeddings[idx]], term_vecs)[0]
-            out[idx] = float(sims.max())
-    return out
-
-
-def search_products(search_terms: List[str], top_k: int = 30) -> List[dict]:
-    """Scatter-gather retrieval: top_k candidates per intent, then merge.
-
-    Returns up to (len(search_terms) * top_k) candidates, deduped by Product_title,
-    sorted by best embedding score. This is the candidate pool for the reranker
-    (which then trims to FINAL_TOP_K).
+    per_intent_quota (grocery mode): keep at most this many results from EACH
+    intent before merging, so no single intent (ingredient) crowds out the
+    others. None = no per-intent cap (default behaviour).
     """
     if _df is None or _embeddings is None:
         load_index()
@@ -171,11 +133,15 @@ def search_products(search_terms: List[str], top_k: int = 30) -> List[dict]:
     rows: List[dict] = []
     for vec in intent_vecs:
         indices, scores = search_vectors(vec, _embeddings, top_k=top_k)
+        kept = 0
         for idx, score in zip(indices, scores):
+            if per_intent_quota is not None and kept >= per_intent_quota:
+                break
             item = _df.iloc[int(idx)].to_dict()
             item["score"] = float(score)
             item["catalog_index"] = int(idx)
             rows.append(item)
+            kept += 1
 
     if not rows:
         return []
@@ -184,6 +150,16 @@ def search_products(search_terms: List[str], top_k: int = 30) -> List[dict]:
         pd.DataFrame(rows)
         .sort_values("score", ascending=False)
         .drop_duplicates(subset="Product_title")
-        .replace({np.nan: None})  # JSON-safe
+        .replace({np.nan: None})
     )
     return final.to_dict(orient="records")
+
+
+def best_score(candidates: List[dict]) -> float:
+    """Top embedding similarity in a candidate list (0.0 if empty).
+    Used to decide whether a query has any real match."""
+    scores = [
+        c["score"] for c in candidates
+        if isinstance(c.get("score"), (int, float))
+    ]
+    return max(scores) if scores else 0.0

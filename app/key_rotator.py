@@ -90,15 +90,11 @@ class GeminiKeyRotator:
                 tried.add(idx)
                 last_err = e
                 msg = repr(e)
-                # Detect quota errors. We accept a broad match because the
-                # specific exception class is SDK-version-dependent.
                 if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
                     self._mark_cooling(idx)
                     logger.info("Key #%d hit quota; trying next key.", idx)
                     continue
-                # Non-quota errors (auth, network, bad request): re-raise.
                 raise
-        # All keys exhausted or cooling.
         if last_err:
             raise last_err
         raise KeyExhausted("No keys available.")
