@@ -1,0 +1,31 @@
+{
+  "cases": [
+    {
+      "query": "running shoes for men",
+      "expect_complement_any": ["sock", "insole", "shoe lace", "laces", "shoe cleaner", "shoe care", "foot"],
+      "avoid_substitute_any": ["sneaker", "boot", "sandal", "loafer", "heel"]
+    },
+    {
+      "query": "yoga mat",
+      "expect_complement_any": ["yoga block", "yoga strap", "water bottle", "towel", "mat bag", "yoga wheel", "resistance band"]
+    },
+    {
+      "query": "coffee maker",
+      "expect_complement_any": ["coffee filter", "coffee bean", "ground coffee", "descaler", "mug", "carafe", "creamer"],
+      "avoid_substitute_any": ["kettle", "blender", "toaster"]
+    },
+    {
+      "query": "dslr camera",
+      "expect_complement_any": ["memory card", "sd card", "camera bag", "tripod", "lens", "battery", "camera strap", "cleaning kit"]
+    },
+    {
+      "query": "spaghetti pasta",
+      "expect_complement_any": ["pasta sauce", "marinara", "tomato sauce", "parmesan", "olive oil", "garlic", "basil", "cheese"]
+    },
+    {
+      "query": "electric toothbrush",
+      "expect_complement_any": ["toothpaste", "floss", "mouthwash", "brush head", "replacement head", "whitening"],
+      "avoid_substitute_any": ["manual toothbrush"]
+    }
+  ]
+}

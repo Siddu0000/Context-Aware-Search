@@ -109,6 +109,7 @@ def evaluate(
     rerank_on: bool,
     tag: str,
     fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS,
+    translate_on: bool = True,
 ) -> Path:
     load_index(fields=fields)
     df = get_dataframe()
@@ -128,8 +129,11 @@ def evaluate(
         tokens_in = 0
 
         with timings.stage("translate"):
-            intents = translate_query(query)
-            tokens_in += approx_tokens(query)
+            if translate_on:
+                intents = translate_query(query)
+                tokens_in += approx_tokens(query)
+            else:
+                intents = [query]
 
         with timings.stage("retrieve"):
             candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)

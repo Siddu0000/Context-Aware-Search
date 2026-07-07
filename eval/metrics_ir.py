@@ -37,7 +37,6 @@ def ndcg_at_k(retrieved: List[str], relevant: Set[str], k: int) -> float:
     for i, r in enumerate(retrieved[:k], start=1):
         if r in relevant:
             dcg += 1.0 / math.log2(i + 1)
-    # Ideal DCG assumes all relevant items are at the top.
     n_rel = min(len(relevant), k)
     if n_rel == 0:
         return 0.0

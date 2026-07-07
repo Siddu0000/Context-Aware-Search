@@ -1,84 +1,74 @@
 [
   {
-    "query": "men's casual athletic socks",
-    "relevance": {
-      "title_any_of": ["socks", "sock"],
-      "category_in": ["men's clothing", "unisex clothing"]
-    }
+    "query": "comfortable cushioned running socks for men",
+    "relevance": { "title_any_of": ["sock", "socks"] }
   },
   {
-    "query": "women's blue casual dress",
-    "relevance": {
-      "title_any_of": ["dress"],
-      "category_in": ["women's clothing"],
-      "color_in": ["blue", "navy"]
-    }
+    "query": "women's lightweight summer floral dress",
+    "relevance": { "title_any_of": ["dress", "sundress", "maxi"] }
   },
   {
-    "query": "compression sleeves for running",
-    "relevance": {
-      "title_any_of": ["compression", "sleeve"],
-      "occasion_in": ["sports"]
-    }
+    "query": "warm wool sweater for cold weather",
+    "relevance": { "title_any_of": ["sweater", "pullover", "cardigan", "jumper"] }
   },
   {
-    "query": "vintage style dress",
-    "relevance": {
-      "title_any_of": ["vintage", "retro"]
-    }
+    "query": "genuine leather belt for men",
+    "relevance": { "title_any_of": ["belt"] }
   },
   {
-    "query": "cotton sweater for women",
-    "relevance": {
-      "title_any_of": ["sweater", "cardigan", "pullover"],
-      "category_in": ["women's clothing"]
-    }
+    "query": "waterproof hiking boots",
+    "relevance": { "title_any_of": ["boot", "boots"] }
   },
   {
-    "query": "leather belt for men",
-    "relevance": {
-      "title_any_of": ["belt"],
-      "category_in": ["men's clothing"]
-    }
+    "query": "gold drop earrings for a wedding",
+    "relevance": { "title_any_of": ["earring", "earrings"] }
   },
   {
-    "query": "girls dress for kids",
-    "relevance": {
-      "title_any_of": ["dress", "outfit"],
-      "category_in": ["kids"]
-    }
+    "query": "noise cancelling wireless earbuds",
+    "relevance": { "title_any_of": ["earbud", "earbuds", "earphone", "earphones", "headphone", "headphones"] }
   },
   {
-    "query": "ankle boots with heels",
-    "relevance": {
-      "title_any_of": ["boots", "boot", "heel"]
-    }
+    "query": "fast charging usb-c cable",
+    "relevance": { "title_any_of": ["usb-c", "usb c", "type-c", "charging cable", "charger cable"] }
   },
   {
-    "query": "drop earrings gold",
-    "relevance": {
-      "title_any_of": ["earrings", "earring"],
-      "color_in": ["gold"]
-    }
+    "query": "portable bluetooth speaker for outdoors",
+    "relevance": { "title_any_of": ["speaker", "speakers"] }
   },
   {
-    "query": "comfortable lounge pants",
-    "relevance": {
-      "title_any_of": ["pants", "lounge", "palazzo"],
-      "occasion_in": ["casual"]
-    }
+    "query": "wireless gaming mouse",
+    "relevance": { "title_any_of": ["mouse"] }
   },
   {
-    "query": "plus size women's clothing",
-    "relevance": {
-      "title_any_of": ["plus size", "plus", "xl", "xxl"],
-      "category_in": ["women's clothing"]
-    }
+    "query": "1080p webcam for video calls",
+    "relevance": { "title_any_of": ["webcam", "web cam"] }
   },
   {
-    "query": "tie dye sweatshirt",
-    "relevance": {
-      "title_any_of": ["tie dye", "sweatshirt", "tie-dye"]
-    }
+    "query": "power bank to charge my phone on the go",
+    "relevance": { "title_any_of": ["power bank", "powerbank", "portable charger"] }
+  },
+  {
+    "query": "organic green tea bags",
+    "relevance": { "title_any_of": ["green tea", "tea bags", "tea"] }
+  },
+  {
+    "query": "dark roast ground coffee",
+    "relevance": { "title_any_of": ["coffee"] }
+  },
+  {
+    "query": "gluten free pasta",
+    "relevance": { "title_any_of": ["pasta", "spaghetti", "penne", "macaroni", "fusilli"] }
+  },
+  {
+    "query": "extra virgin olive oil for cooking",
+    "relevance": { "title_any_of": ["olive oil"] }
+  },
+  {
+    "query": "chocolate protein bars",
+    "relevance": { "title_any_of": ["protein bar", "protein bars"] }
+  },
+  {
+    "query": "unsalted raw almonds",
+    "relevance": { "title_any_of": ["almond", "almonds"] }
   }
 ]

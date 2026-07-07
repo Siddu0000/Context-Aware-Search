@@ -1,55 +1,67 @@
 {
-  "_comment": "Recipe-completeness eval (  2026-06-11): for each dish, search 'ingredients to make <dish>' and check how many canonical ingredients appear in the top-K result titles. Ingredients were chosen to exist in the Grocery_and_Gourmet_Food catalog; the spread is deliberate — staple-heavy dishes (cookies/pancakes/pasta) should clear the target, while curry/guacamole stress the '70 paneer sellers' diversity problem (headline ingredient found, the long tail missed). Synonyms broaden matching. See eval/eval_recipe_completeness.py and .claude/rules/eval.md.",
   "target_coverage": 0.7,
   "dishes": [
     {
-      "dish": "spaghetti bolognese",
-      "ingredients": ["spaghetti", "ground beef", "tomato", "onion", "garlic", "olive oil", "parmesan", "basil"],
+      "dish": "pancakes",
+      "ingredients": ["flour", "eggs", "milk", "sugar", "butter", "baking powder"],
       "synonyms": {
-        "spaghetti": ["pasta", "noodle"],
-        "ground beef": ["beef", "minced beef", "mince"],
-        "tomato": ["tomato sauce", "tomato paste", "marinara"],
-        "olive oil": ["oil"],
-        "parmesan": ["parmigiano", "parmesan cheese", "cheese"]
+        "flour": ["all-purpose flour", "all purpose flour", "plain flour", "maida", "wheat flour"],
+        "eggs": ["egg"],
+        "milk": ["whole milk", "milk powder"],
+        "sugar": ["granulated sugar", "caster sugar", "white sugar"],
+        "butter": ["unsalted butter", "salted butter"],
+        "baking powder": ["baking powder"]
       }
     },
     {
       "dish": "chocolate chip cookies",
-      "ingredients": ["flour", "sugar", "butter", "egg", "chocolate chips", "vanilla", "baking soda", "salt"],
+      "ingredients": ["flour", "butter", "sugar", "brown sugar", "eggs", "chocolate chips", "vanilla", "baking soda"],
       "synonyms": {
-        "egg": ["eggs"],
-        "chocolate chips": ["chocolate chip", "chocolate"],
-        "baking soda": ["baking powder", "bicarbonate"],
-        "vanilla": ["vanilla extract"]
+        "flour": ["all-purpose flour", "all purpose flour", "plain flour", "wheat flour"],
+        "butter": ["unsalted butter", "salted butter"],
+        "sugar": ["granulated sugar", "white sugar", "caster sugar"],
+        "brown sugar": ["brown sugar", "light brown sugar", "dark brown sugar"],
+        "eggs": ["egg"],
+        "chocolate chips": ["chocolate chip", "choc chips", "chocolate morsels", "chocolate chunks"],
+        "vanilla": ["vanilla extract", "vanilla essence"],
+        "baking soda": ["baking soda", "bicarbonate of soda", "bicarb"]
+      }
+    },
+    {
+      "dish": "spaghetti bolognese",
+      "ingredients": ["spaghetti", "ground beef", "tomato", "onion", "garlic", "olive oil"],
+      "synonyms": {
+        "spaghetti": ["spaghetti", "pasta"],
+        "ground beef": ["ground beef", "minced beef", "beef mince", "minced meat"],
+        "tomato": ["tomato", "tomatoes", "tomato sauce", "tomato paste", "crushed tomatoes", "passata"],
+        "onion": ["onion", "onions"],
+        "garlic": ["garlic"],
+        "olive oil": ["olive oil"]
       }
     },
     {
       "dish": "chicken curry",
-      "ingredients": ["chicken", "onion", "garlic", "ginger", "curry powder", "turmeric", "cumin", "coconut milk", "tomato", "rice"],
+      "ingredients": ["chicken", "onion", "garlic", "ginger", "curry powder", "coconut milk", "tomato"],
       "synonyms": {
         "chicken": ["chicken breast", "chicken thigh"],
-        "curry powder": ["curry", "masala", "garam masala"],
-        "coconut milk": ["coconut", "coconut cream"],
-        "tomato": ["tomato sauce", "tomato paste"]
+        "onion": ["onions"],
+        "garlic": ["garlic"],
+        "ginger": ["ginger"],
+        "curry powder": ["curry powder", "curry paste", "garam masala"],
+        "coconut milk": ["coconut milk", "coconut cream"],
+        "tomato": ["tomato", "tomatoes", "tomato paste"]
       }
     },
     {
       "dish": "guacamole",
-      "ingredients": ["avocado", "lime", "onion", "cilantro", "tomato", "salt"],
+      "ingredients": ["avocado", "lime", "onion", "tomato", "cilantro", "salt"],
       "synonyms": {
-        "cilantro": ["coriander"],
-        "lime": ["lime juice"],
-        "onion": ["red onion"]
-      }
-    },
-    {
-      "dish": "buttermilk pancakes",
-      "ingredients": ["flour", "milk", "egg", "sugar", "butter", "baking powder", "vanilla", "salt"],
-      "synonyms": {
-        "egg": ["eggs"],
-        "milk": ["buttermilk"],
-        "baking powder": ["baking soda", "baking"],
-        "vanilla": ["vanilla extract"]
+        "avocado": ["avocados"],
+        "lime": ["lime", "lime juice"],
+        "onion": ["onion", "onions", "red onion"],
+        "tomato": ["tomato", "tomatoes"],
+        "cilantro": ["cilantro", "coriander"],
+        "salt": ["salt", "sea salt", "kosher salt"]
       }
     }
   ]

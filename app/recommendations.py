@@ -1,28 +1,10 @@
 """Cross-sell & upsell recommendations.
 
-The original plan (CLAUDE.md) was to mine Amazon's `bought_together` field,
-but it is null across the ENTIRE dataset (verified 2026-06-12 against the
-meta_*.jsonl). So we produce complements in two grounded steps instead:
-
-  1. CROSS-SELL (complementary). An LLM proposes a few complementary product
-     phrases for the shopper's context — e.g. "spaghetti" -> ["parmesan
-     cheese", "marinara sauce", "garlic bread"]; "summer dress" -> ["strappy
-     sandals", "sun hat"]. Each phrase is then GROUNDED in the real catalog
-     via the existing embedding retrieval, so every suggestion is a product
-     that actually exists. If the LLM is unavailable (quota/error) we fall
-     back to pure embedding similarity against the anchor product
-     ("more like this").
-
-  2. UPSELL. A higher-confidence alternative in the SAME category as the top
-     organic result: the highest Bayesian-adjusted rating, excluding the
-     anchor itself and anything already on the page. Deterministic, no LLM.
-
-This is the answer to the "LLM + embedding complementary" decision (Sai,
-2026-06-12). Everything here is best-effort: recommendations must NEVER break
-a search. On any error we log a warning and return empty lists.
-
-Per .claude/rules/safety.md the user query is treated as DATA in the prompt,
-never as instructions.
+bought_together is empty across this dataset, so complements come in two
+grounded steps: an LLM proposes complementary phrases, each grounded in a
+real catalog product via embedding retrieval (falls back to "more like this"
+if the LLM is down). Upsell is a higher-Bayesian-rated alternative to the
+same kind of product (deterministic, no LLM). Page 1 only; never raises.
 """
 
 import logging
@@ -77,7 +59,7 @@ def _complementary_phrases(query: str, anchor: dict, k: int) -> List[str]:
         parsed = generate_json(prompt, temperature=0.3)
         phrases = parsed.get("complementary", [])
         return [str(p).strip() for p in phrases if str(p).strip()][:k]
-    except (LLMError, Exception) as e:  # noqa: BLE001 — recommendations are best-effort
+    except (LLMError, Exception) as e:
         logger.warning("Complementary-phrase LLM call failed (%s).", repr(e))
         return []
 
@@ -98,7 +80,7 @@ def _ground_phrases(
             break
         try:
             hits = search_products([phrase], top_k=5)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("Grounding search failed for %r (%s).", phrase, repr(e))
             continue
         for hit in hits:
@@ -127,7 +109,7 @@ def _embedding_fallback(
         return []
     try:
         hits = search_products([anchor_title], top_k=max_items + 5)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning("Embedding-fallback search failed (%s).", repr(e))
         return []
     out: List[dict] = []
@@ -168,7 +150,7 @@ def _upsell(anchor: dict, exclude_titles: set) -> List[dict]:
 
     try:
         neighbours = search_products([anchor_title], top_k=30)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning("Upsell neighbour search failed (%s).", repr(e))
         return []
 
@@ -181,7 +163,6 @@ def _upsell(anchor: dict, exclude_titles: set) -> List[dict]:
         if anchor_asin and nb.get("parent_asin") == anchor_asin:
             continue
         n = nb.get("rating_number")
-        # Require a reasonably trustworthy sample so the upsell is credible.
         if n is None or float(n) < 50:
             continue
         b = bayesian_rating(nb.get("average_rating"), n)
@@ -215,10 +196,9 @@ def recommend(
     Returns {"cross_sell": [...], "upsell": [...]}. Anchored on the top
     organic result. Never raises — returns empty lists on any failure.
 
-    Recommendations are PAGE-1 ONLY: the cross-sell path makes an LLM call,
-    and Gemini quota is scarce, so we refuse to spend it on deeper pages. The
-    page guard lives here (not just at the call site) so any future caller
-    inherits the constraint automatically.
+    Recommendations are PAGE-1 ONLY: the cross-sell path makes an LLM call
+    and quota is scarce, so deeper pages skip it. The page guard lives here so
+    any caller inherits the constraint.
     """
     if max_cross_sell is None:
         max_cross_sell = cfg.RECOMMEND_MAX
@@ -237,14 +217,12 @@ def recommend(
         if use_llm:
             phrases = _complementary_phrases(query, anchor, max_cross_sell)
             cross = _ground_phrases(phrases, on_page, max_cross_sell)
-        # Fallback (or LLM disabled): semantic 'more like this'.
         if not cross:
             cross = _embedding_fallback(anchor, on_page, max_cross_sell)
 
-        # Don't let the upsell duplicate a cross-sell item either.
         exclude = on_page | {c.get("Product_title", "") for c in cross}
         up = _upsell(anchor, exclude)
         return {"cross_sell": cross, "upsell": up}
-    except Exception as e:  # noqa: BLE001 — best-effort, never break search
+    except Exception as e:
         logger.warning("recommend() failed (%s); returning empty.", repr(e))
         return empty

@@ -124,7 +124,6 @@ def evaluate(top_k: int, query_template: str):
     n_pass = sum(1 for c in coverages if c >= target)
     print(f"  Dishes meeting target: {n_pass}/{len(dishes)}")
 
-    # Save the grid for sharing.
     from datetime import datetime
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out = EVAL_RESULTS_DIR / f"recipe_completeness_{ts}.csv"

@@ -39,7 +39,6 @@ logger = logging.getLogger(__name__)
 
 OUTPUT_CSV = DATA_DIR / "products_amazon.csv"
 
-# Map file basename -> business vertical (the value used in bsns_vrtcl_name).
 VERTICAL_MAP = {
     "meta_Amazon_Fashion": "Fashion",
     "meta_Clothing_Shoes_and_Jewelry": "Fashion",
@@ -50,8 +49,6 @@ VERTICAL_MAP = {
     "meta_Home_and_Kitchen": "Home",
 }
 
-
-# ---------- Vocabularies for attribute extraction ----------------------
 
 _COLOR_WORDS = [
     "black", "white", "red", "blue", "green", "yellow", "pink", "purple",
@@ -81,8 +78,6 @@ _OCCASION_PATTERNS = {
     "Outdoor": [r"\boutdoor\b", r"\bhiking\b", r"\bcamping\b"],
 }
 
-# Department raw value -> normalized category name. The eval queries use
-# these normalized values in their `category_in` filters.
 DEPT_NORMALIZE = {
     "womens": "Women's Clothing",
     "women's": "Women's Clothing",
@@ -102,9 +97,6 @@ DEPT_NORMALIZE = {
     "unisex-child": "Kids",
     "unisex": "Unisex Clothing",
 }
-
-
-# ---------- Lightweight extractors -------------------------------------
 
 
 def _word_match(text: str, vocab: list[str]) -> str:
@@ -202,7 +194,6 @@ def _infer_category(title: str, dept: str, main_cat: str, vertical: str) -> str:
         dept_l = dept.lower().strip()
         if dept_l in DEPT_NORMALIZE:
             return DEPT_NORMALIZE[dept_l]
-        # Try substring match for messy values like "Women's-Plus"
         for key, val in DEPT_NORMALIZE.items():
             if key in dept_l:
                 return val
@@ -216,7 +207,6 @@ def _infer_category(title: str, dept: str, main_cat: str, vertical: str) -> str:
         return "Kids"
 
     if vertical != "Fashion":
-        # For Electronics / Grocery, the main_category is descriptive.
         return (main_cat or "").title()
     return "Unisex Clothing"
 
@@ -231,15 +221,11 @@ def _infer_occasion(blob: str) -> str:
     return ""
 
 
-# ---------- Row converter ----------------------------------------------
-
-
 def _convert_row(row: dict, vertical: str) -> dict:
     """Map one Amazon metadata record to our schema."""
     title = str(row.get("title") or "").strip()
     description = _joined_description(row.get("description"))
     features_text = _joined_features(row.get("features"))
-    # Combined searchable blob for attribute extraction.
     full_text = f"{title} {features_text} {description}".strip()
 
     details = _extract_from_details(row.get("details"))
@@ -261,8 +247,6 @@ def _convert_row(row: dict, vertical: str) -> dict:
         title, details["department"], row.get("main_category") or "", vertical
     )
 
-    # prod_description: features tend to be more useful than the marketing
-    # description blob, so put features first.
     prod_description = (features_text + " " + description).strip()
 
     return {
@@ -275,15 +259,11 @@ def _convert_row(row: dict, vertical: str) -> dict:
         "occasion": occasion,
         "price": _parse_price(row.get("price")),
         "prod_description": prod_description[:1500],
-        # Bonus columns — UI shows ratings; reranker can use them; eval can filter.
         "average_rating": row.get("average_rating"),
         "rating_number": row.get("rating_number"),
         "store": details["brand"] or row.get("store") or "",
         "parent_asin": row.get("parent_asin") or "",
     }
-
-
-# ---------- Streaming reservoir sampler --------------------------------
 
 
 def _reservoir_sample_jsonl(
@@ -337,11 +317,8 @@ def _reservoir_sample_jsonl(
     return reservoir
 
 
-# ---------- Driver -----------------------------------------------------
-
-
 def _detect_vertical(file_path: Path) -> str:
-    stem = file_path.stem  # 'meta_Amazon_Fashion' or with .jsonl stripped
+    stem = file_path.stem
     return VERTICAL_MAP.get(stem, stem.replace("meta_", "").replace("_", " "))
 
 

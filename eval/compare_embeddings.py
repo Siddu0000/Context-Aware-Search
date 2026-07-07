@@ -1,20 +1,28 @@
 """Compare embedding backends on the same eval set.
 
 Runs the eval pipeline once per model, swapping the global embedder. Pure
-retrieval comparison — reranker is disabled so we isolate the effect of the
-embedding model.
+retrieval comparison — reranker is disabled so we isolate the embedding model.
 
-Default contenders:
-  - all-MiniLM-L6-v2          (384-d, fast, free)
-  - all-mpnet-base-v2         (768-d, stronger, free, slower)
-  - text-embedding-3-small    (1536-d, OpenAI, requires OPENAI_API_KEY)
+Contenders (production default stays all-MiniLM-L6-v2 until this says otherwise):
+  - all-MiniLM-L6-v2        384-d, fast, free, CPU. Current production model.
+  - all-mpnet-base-v2       768-d, stronger, free, slower, CPU.
+  - BAAI/bge-m3             1024-d, MIT, multilingual; strong RAG baseline.
+                            Runs on CPU via sentence-transformers (no installer),
+                            ~2GB download, noticeably slower than MiniLM.
+  - Qwen/Qwen3-Embedding-8B top of the open MTEB leaderboard, but an 8B model:
+                            ~16GB RAM and very slow to encode 60K rows on CPU.
+                            Practical only on a GPU/cloud box — or swap to the
+                            lighter Qwen/Qwen3-Embedding-0.6B locally. Listed
+                            here so it's in the lineup; expect to run it elsewhere.
+
+All run through sentence-transformers (pip + HF download, no system installer).
+Anything starting with 'text-embedding-' would instead use the OpenAI path.
 
 Usage:
     python -m eval.compare_embeddings
-    python -m eval.compare_embeddings --models all-MiniLM-L6-v2 all-mpnet-base-v2
+    python -m eval.compare_embeddings --models all-MiniLM-L6-v2 BAAI/bge-m3
 
-The function caches embeddings under a key that includes the model name,
-so each model only re-embeds the first time you run it.
+Embeddings are cached per model name, so each model only re-embeds once.
 """
 
 import argparse
@@ -31,11 +39,8 @@ logging.basicConfig(level=logging.WARNING)
 
 def run_for_model(model_name: str):
     """Swap the default embedder and run eval (rerank disabled)."""
-    # Forcibly reset the default embedder + clear cached search index so the
-    # next load_index() rebuilds for this model.
     embeddings_module._default_embedder = Embedder(model_name)
 
-    # Reset the search module's loaded state so it rebuilds the index.
     from app import search as search_module
 
     search_module._df = None
@@ -43,7 +48,11 @@ def run_for_model(model_name: str):
     search_module._loaded_fields = ()
 
     t0 = time.perf_counter()
-    out_path = evaluate(rerank_on=False, tag=f"embed_{model_name.replace('/', '_')}")
+    out_path = evaluate(
+        rerank_on=False,
+        translate_on=False,
+        tag=f"embed_{model_name.replace('/', '_')}",
+    )
     return out_path, time.perf_counter() - t0
 
 
@@ -52,7 +61,12 @@ def main():
     p.add_argument(
         "--models",
         nargs="+",
-        default=["all-MiniLM-L6-v2", "all-mpnet-base-v2"],
+        default=[
+            "all-MiniLM-L6-v2",
+            "BAAI/bge-small-en-v1.5",
+            "thenlper/gte-small",
+            "intfloat/e5-small-v2",
+        ],
         help="Embedding model names. text-embedding-3-* triggers the OpenAI path.",
     )
     args = p.parse_args()

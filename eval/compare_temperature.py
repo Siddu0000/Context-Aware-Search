@@ -56,8 +56,8 @@ logging.basicConfig(level=logging.WARNING)
 def _run_quality_at(temp: float, rerank_on: bool):
     """Run the full eval set once at a fixed temperature (seed disabled)."""
     orig_det, orig_ovr = cfg.DETERMINISTIC, cfg.TEMPERATURE_OVERRIDE
-    cfg.DETERMINISTIC = False        # turn off the seed so temperature matters
-    cfg.TEMPERATURE_OVERRIDE = temp  # force this exact temperature everywhere
+    cfg.DETERMINISTIC = False
+    cfg.TEMPERATURE_OVERRIDE = temp
     try:
         t0 = time.perf_counter()
         out_path = evaluate(rerank_on=rerank_on, tag=f"temp_{temp:.2f}")
@@ -141,7 +141,6 @@ def main():
     print(f"  seed          = DISABLED during sweep (so temperature is observable)")
     print("=" * 78)
 
-    # --- Quality pass -----------------------------------------------------
     quality_rows = []
     for temp in args.temps:
         print(f"\n--- quality @ temperature={temp:.2f} ---")
@@ -160,14 +159,13 @@ def main():
                 }
             )
             print(f"   done in {elapsed:.1f}s -> {out_path.name}")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"   FAILED at temp={temp}: {e!r}")
 
-    # --- Stability pass ---------------------------------------------------
     stability_summary = {}
     if not args.no_stability:
         load_index()
-        df_all = get_dataframe()  # ensure index is warm
+        df_all = get_dataframe()
         with open(cfg.EVAL_QUERIES_JSON, encoding="utf-8") as f:
             all_queries = [q["query"] for q in json.load(f)]
         stab_queries = all_queries[: args.stability_queries]
@@ -190,7 +188,6 @@ def main():
                 flag = "stable" if n == 1 else f"WOBBLES ({n} orderings)"
                 print(f"    [{flag:>22}]  {q[:50]}")
 
-    # --- Final tables -----------------------------------------------------
     print("\n" + "=" * 78)
     print("QUALITY vs TEMPERATURE (means across eval set)")
     print("=" * 78)

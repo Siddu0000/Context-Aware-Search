@@ -26,7 +26,6 @@ Why this is the right design:
 import math
 from typing import Optional
 
-# Reasonable defaults for Amazon-style catalogs. Override in tests if needed.
 BAYESIAN_PRIOR_MEAN = 4.0
 BAYESIAN_PRIOR_WEIGHT = 10.0
 
