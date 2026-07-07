@@ -63,9 +63,9 @@ def main():
         nargs="+",
         default=[
             "all-MiniLM-L6-v2",
-            "all-mpnet-base-v2",
-            "BAAI/bge-m3",
-            "Qwen/Qwen3-Embedding-8B",
+            "BAAI/bge-small-en-v1.5",
+            "thenlper/gte-small",
+            "intfloat/e5-small-v2",
         ],
         help="Embedding model names. text-embedding-3-* triggers the OpenAI path.",
     )

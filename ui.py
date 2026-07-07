@@ -201,8 +201,7 @@ def _render_card(product: dict, rank=None, *, feedback: bool = True, sponsored: 
                 st.markdown(
                     f":orange[**⭐ SPONSORED**] · _by {product.get('sponsor', 'a partner')}_"
                 )
-            prefix = f"{rank}. " if rank else ""
-            st.markdown(f"### {prefix}{product.get('Product_title', 'Untitled')}")
+            st.markdown(f"### {product.get('Product_title', 'Untitled')}")
             meta = []
             if product.get("bsns_vrtcl_name"):
                 meta.append(f"**{product['bsns_vrtcl_name']}**")
@@ -279,7 +278,7 @@ def _render_grid_card(product: dict, rank: int):
         else:
             st.markdown('<div class="cas-thumb-empty">no image</div>', unsafe_allow_html=True)
         title = product.get("Product_title", "Untitled")
-        st.markdown(f"**{rank}. {title[:70]}{'…' if len(title) > 70 else ''}**")
+        st.markdown(f"**{title[:70]}{'…' if len(title) > 70 else ''}**")
 
         bits = []
         if product.get("categ_lvl2_name"):

@@ -26,10 +26,16 @@ Rules:
 - Use product-focused language
 - Include type/spec/color where appropriate
 - Do NOT assume gender unless stated
+- If the query is random characters, keyboard mashing, or has no plausible
+  product meaning (e.g. "asdfgh", "qwerty", "zzz123", ";lkjhg"), output
+  {{"search_terms": [], "no_intent": true}}. Do NOT invent products for
+  gibberish. Real words, brands, or abbreviations (even unusual ones like
+  "CEO") are NOT gibberish — expand those normally.
 - Output ONLY valid JSON
 
 JSON format:
 {{"search_terms": ["...", "...", "..."]}}
+(or {{"search_terms": [], "no_intent": true}} for gibberish)
 """
 
 
@@ -78,11 +84,26 @@ Output ONLY valid JSON:
 """
 
 
+_DISHES = (
+    r"(cake|bread|cookies?|biscuits?|muffins?|pancakes?|waffles?|pasta|noodles?|"
+    r"curry|soup|stew|salad|smoothie|pizza|pie|omelettes?|sandwich|burger|"
+    r"casserole|risotto|tacos?|burritos?|dumplings?|sauce|gravy|"
+    r"chicken|fish|paneer|biryani|fried rice)"
+)
 _RECIPE_PATTERNS = [
-    r"\brecipe\b", r"\bingredients?\b", r"\bhow (to|do i) (make|cook|prepare)\b",
-    r"\bmake\b.*\b(curry|pasta|cake|soup|salad|stew|bread|cookies?|smoothie)\b",
-    r"\bcook\b", r"\bbake\b", r"\bdish\b", r"\bmeal\b",
-    r"\bingredients for\b", r"\beverything (for|to make)\b",
+    r"\brecipes?\b",
+    r"\bingredients?\b",
+    r"\bingredients?\s+(for|to|needed)\b",
+    r"\bhow (to|do i) (make|cook|prepare|bake)\b",
+    r"\b(make|making|bake|baking|cook|cooking|roast|roasting|grill|grilling|"
+    r"fry|frying|prepare|preparing|steam|steaming)\b\s+(a|an|some|the|my|your)?\s*"
+    + _DISHES + r"\b",
+    r"\b" + _DISHES + r"\s+(recipe|preparation)\b",
+    r"\bcook\b", r"\bbake\b",
+    r"\bmeal\s+(prep|preparation|plan|planning|idea|recipe)",
+    r"\b(side|main|signature)\s+dish(es)?\b",
+    r"\beverything (for|to make)\b",
+    r"\b(homemade|from scratch)\b",
 ]
 
 
@@ -94,6 +115,8 @@ def is_recipe_query(user_query: str) -> bool:
 def _expand(prompt_head: str, user_query: str) -> List[str]:
     prompt = prompt_head + f'\nUser query: "{user_query}"'
     parsed = generate_json(prompt, temperature=0.2)
+    if parsed.get("no_intent") is True:
+        return []
     terms = parsed.get("search_terms", [])
     if not isinstance(terms, list) or not terms:
         raise LLMError(f"Bad search_terms shape: {parsed!r}")
@@ -161,9 +184,14 @@ def translate_query(user_query: str, mode: str | None = None, errors: list | Non
         strategy = _recipe_expansion
 
     try:
-        return strategy(user_query) or [user_query]
+        result = strategy(user_query)
     except Exception as e:
         if errors is not None:
             errors.append({"stage": "translate", "code": error_code(e), "detail": str(e)[:200]})
         logger.warning("Translator failed [mode=%s] (%s). Using raw query.", mode, repr(e))
         return [user_query]
+    # result == [] means the model flagged the query as gibberish (no_intent).
+    # Pass it through: empty intents -> no candidates -> no-match in main.
+    if result == []:
+        return []
+    return result or [user_query]

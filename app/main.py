@@ -105,6 +105,29 @@ def _assemble_full(ranked_pool, candidates):
     return list(ranked_pool) + tail
 
 
+def _diversify_by_ingredient(full):
+    """Round-robin results by their source ingredient so each ingredient
+    appears once before any appears twice. Stable: preserves the existing
+    (reranked) order within each ingredient group, and the relative order of
+    first-appearances. Items without a source_intent are treated as their own
+    group and kept in place."""
+    groups = {}          # source_intent -> list of items (in current order)
+    order = []           # first-seen order of group keys
+    for item in full:
+        key = item.get("source_intent") or item.get("Product_title")
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(item)
+
+    out = []
+    while any(groups[k] for k in order):
+        for k in order:
+            if groups[k]:
+                out.append(groups[k].pop(0))
+    return out
+
+
 def _boost_sponsored(full, smap):
     """Pull sponsored products that made the RERANKED pool to the top, ordered
     by bid (then final_score). Sponsored items outside the reranked pool are
@@ -253,6 +276,13 @@ def search(
                     ranked_pool.append(p)
 
             full = _assemble_full(ranked_pool, candidates)
+
+            # Recipe queries: round-robin by source ingredient so page 1 shows
+            # one of each ingredient (flour, eggs, butter, sugar...) before a
+            # second of any — instead of three flours. Preserves rank within
+            # each ingredient; sponsored items (boosted next) are unaffected.
+            if is_recipe_query(query):
+                full = _diversify_by_ingredient(full)
 
             if sponsored:
                 with timings.stage("sponsored"):

@@ -131,7 +131,7 @@ def search_products(
     intent_vecs = embed_text(search_terms)
 
     rows: List[dict] = []
-    for vec in intent_vecs:
+    for term, vec in zip(search_terms, intent_vecs):
         indices, scores = search_vectors(vec, _embeddings, top_k=top_k)
         kept = 0
         for idx, score in zip(indices, scores):
@@ -140,6 +140,7 @@ def search_products(
             item = _df.iloc[int(idx)].to_dict()
             item["score"] = float(score)
             item["catalog_index"] = int(idx)
+            item["source_intent"] = term
             rows.append(item)
             kept += 1
 

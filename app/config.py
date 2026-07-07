@@ -48,7 +48,12 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
 
 TRANSLATOR_MODE = os.getenv("TRANSLATOR_MODE", "query_expansion").lower()
 
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+# Embedding model for retrieval. Default thenlper/gte-small: it won both eval
+# rounds (Fashion-only NDCG 0.955, and the 18-query 3-vertical set NDCG 0.894 vs
+# MiniLM 0.857 with P@1/MRR 1.000) and is faster than MiniLM at the same ~33M
+# CPU weight class. Revert: EMBEDDING_MODEL=all-MiniLM-L6-v2 (one line).
+# Switching invalidates the on-disk embedding cache -> next boot re-encodes once.
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "thenlper/gte-small")
 
 NUM_INTENTS = int(os.getenv("NUM_INTENTS", "3"))
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "30"))

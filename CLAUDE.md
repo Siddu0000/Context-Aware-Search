@@ -33,6 +33,14 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
   and slow (~20-25s/query) — watch demo latency; gpt-oss-20b or a non-reasoning model is faster.
   Needs GROQ_REASONING_FORMAT=hidden (reasoning tokens else break JSON) and RERANK_INPUT_K=15
   (else Groq 8000 TPM → 429). REVERT to Gemini = set LLM_PROVIDER=gemini (one line).
+- **EMBEDDING_MODEL = thenlper/gte-small — comparison done, it WON both rounds.** Retrieval-only
+  benchmark (rerank off) vs MiniLM, bge-small-en-v1.5, e5-small-v2, mpnet, bge-m3. gte-small led on
+  the Fashion set (NDCG 0.955) AND the 18-query 3-vertical set (NDCG 0.894 vs MiniLM 0.857; P@1/MRR
+  1.000), and is fastest of the small models (~33M, CPU). MiniLM only "won" earlier before the strong
+  small models were tested. bge-m3 (568M) was worse AND ~5h to encode; 8B impractical on CPU. REVERT =
+  EMBEDDING_MODEL=all-MiniLM-L6-v2 (one line). Switching invalidates the on-disk embedding cache ->
+  next boot re-encodes 60K once. Shared weak queries ("warm wool sweater", "power bank", "chocolate
+  protein bars") are low for ALL models = catalog coverage gaps, not a ranking bug.
 - **TRANSLATOR_MODE = query_expansion.** Benchmarked 2026-06-10 vs HyDE and hybrid
   (`eval/compare_translators.py`). query_expansion won decisively: P@1 1.000, NDCG 0.904
   vs HyDE 0.750/0.716. HyDE drifts lexically from short Amazon titles. Hybrid inherits
