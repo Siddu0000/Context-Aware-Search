@@ -112,6 +112,24 @@ def is_recipe_query(user_query: str) -> bool:
     return any(re.search(p, q) for p in _RECIPE_PATTERNS)
 
 
+# Whole-word gender terms. \b handles the "women" contains "men" trap: in
+# "women's" there's no word boundary before the "men" substring, so the men
+# alternative won't match it.
+_GENDER_QUERY_RE = re.compile(
+    r"\b(men|men's|mens|male|males|boy|boys|gentlemen|"
+    r"women|women's|womens|woman|female|females|girl|girls|ladies|lady|"
+    r"unisex)\b",
+    re.IGNORECASE,
+)
+
+
+def query_specifies_gender(user_query: str) -> bool:
+    """True if the query names a gender (so results SHOULD bias to it). When
+    False for an apparel query, results should be gender-balanced instead of
+    skewing to whichever gender the catalog/embeddings favour."""
+    return bool(_GENDER_QUERY_RE.search(user_query))
+
+
 def _expand(prompt_head: str, user_query: str) -> List[str]:
     prompt = prompt_head + f'\nUser query: "{user_query}"'
     parsed = generate_json(prompt, temperature=0.2)

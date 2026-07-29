@@ -30,18 +30,23 @@ from app.config import (
     TRANSLATOR_MODE,
 )
 from app.feedback import record_feedback
+from app.hybrid_router import route as hybrid_route
+from app.keyword_search import KeywordSearchEngine
 from app.metrics import StageTimings
 from app.recommendations import recommend as build_recommendations
 from app.reranker import rerank as llm_rerank
-from app.search import best_score, get_product, load_index, search_products
+from app.search import best_score, get_dataframe, get_product, load_index, search_products
 from app.sponsored import sponsored_map
-from app.translator import is_recipe_query, translate_query
+from app.translator import is_recipe_query, query_specifies_gender, translate_query
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+_keyword_engine: Optional[KeywordSearchEngine] = None
 
 
 @asynccontextmanager
@@ -52,7 +57,12 @@ async def lifespan(app: FastAPI):
         TRANSLATOR_MODE,
     )
     load_index()
-    logger.info("Service ready.")
+    # The "existing retailer keyword stack" that CAS plugs in front of.
+    # Indexed on the same catalog so the two search paths cover the same items.
+    global _keyword_engine
+    _keyword_engine = KeywordSearchEngine()
+    _keyword_engine.index(get_dataframe())
+    logger.info("Keyword engine indexed; service ready.")
     yield
 
 
@@ -128,6 +138,76 @@ def _diversify_by_ingredient(full):
     return out
 
 
+def _recipe_slots_with_alternatives(full, max_options: int = 3):
+    """Aditya's carousel: one card per ingredient, but each card carries its
+    top `max_options` alternatives (different brands for the SAME ingredient),
+    so a shopper can swipe brand A / B / C in place instead of scrolling pages
+    to find the second-best of an ingredient.
+
+    Returns one primary per ingredient (highest-ranked ingredient first,
+    preserving rerank order within each). Each primary gets an `alternatives`
+    list = the next products of the same ingredient (primary excluded), capped
+    so primary + alternatives <= max_options. Non-grouped items (no
+    source_intent) pass through as single-option cards."""
+    groups = {}          # source_intent -> [items in rank order]
+    order = []           # ingredients in first-seen (rank) order
+    for item in full:
+        key = item.get("source_intent") or item.get("Product_title")
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(item)
+
+    slots = []
+    for key in order:
+        members = groups[key]
+        primary = dict(members[0])
+        primary["alternatives"] = [dict(m) for m in members[1:max_options]]
+        slots.append(primary)
+    return slots
+
+
+def _product_gender(product: dict) -> str:
+    """Infer a product's gender from its category (authoritative per the
+    reranker) with a title fallback. Returns 'women', 'men', or 'neutral'.
+    Checks 'women' before 'men' because 'women' contains the substring 'men'."""
+    cat = (product.get("categ_lvl2_name") or "").lower()
+    title = (product.get("Product_title") or "").lower()
+    for text in (cat, title):
+        if "women" in text or "ladies" in text or "girl" in text:
+            return "women"
+        if "men" in text or "boy" in text:   # 'women' already returned above
+            return "men"
+    return "neutral"
+
+
+def _balance_by_gender(full):
+    """For gender-unspecified apparel queries: round-robin women/men/neutral so
+    one gender can't crowd the page out (the 'beach wedding outfit -> only
+    women's dresses' problem). Only reorders when BOTH men's and women's items
+    are present in the pool; otherwise returns unchanged. Preserves rank within
+    each gender. NOTE: this can only surface men's items that retrieval already
+    put in the pool — if none were retrieved, this cannot manufacture them
+    (that's a recall/data-coverage limit, flagged separately)."""
+    women, men, neutral = [], [], []
+    for item in full:
+        g = _product_gender(item)
+        (women if g == "women" else men if g == "men" else neutral).append(item)
+
+    if not (women and men):
+        return full   # nothing to balance (single gender or non-apparel)
+
+    streams = [women, men, neutral]
+    idx = [0, 0, 0]
+    out = []
+    while any(idx[i] < len(streams[i]) for i in range(3)):
+        for i in range(3):
+            if idx[i] < len(streams[i]):
+                out.append(streams[i][idx[i]])
+                idx[i] += 1
+    return out
+
+
 def _boost_sponsored(full, smap):
     """Pull sponsored products that made the RERANKED pool to the top, ordered
     by bid (then final_score). Sponsored items outside the reranked pool are
@@ -147,6 +227,9 @@ def _boost_sponsored(full, smap):
         else:
             rest.append(item)
     boosted.sort(key=lambda x: (x.get("_bid", 0.0), x.get("final_score") or 0.0), reverse=True)
+    # _bid is sort-internal only — never expose sponsors' bid amounts to clients.
+    for item in boosted:
+        item.pop("_bid", None)
     return boosted + rest
 
 
@@ -188,8 +271,13 @@ def search(
     pool_k = max(RERANK_POOL_K, page_size)
     timings = StageTimings()
 
+    # `recommend` MUST be in the key: the cached entry stores that run's
+    # recommendations, and /unified_search's CAS fallback always runs with
+    # recommend=False — without it in the key, a hybrid query would poison the
+    # cache and a later plain /search would silently get empty recommendations.
     cache_key = page_cache.make_key(
-        query, (page_size, pool_k, rerank, sponsored, translator_mode or TRANSLATOR_MODE)
+        query,
+        (page_size, pool_k, rerank, recommend, sponsored, translator_mode or TRANSLATOR_MODE),
     )
 
     try:
@@ -282,7 +370,14 @@ def search(
             # second of any — instead of three flours. Preserves rank within
             # each ingredient; sponsored items (boosted next) are unaffected.
             if is_recipe_query(query):
-                full = _diversify_by_ingredient(full)
+                # One card per ingredient, each carrying its top-3 alternatives
+                # (brand A/B/C) for the carousel.
+                full = _recipe_slots_with_alternatives(full, max_options=3)
+            elif not query_specifies_gender(query):
+                # Apparel queries with no stated gender: keep men's and women's
+                # both represented instead of skewing to one. No-op when the
+                # pool has only one gender (e.g. all-electronics results).
+                full = _balance_by_gender(full)
 
             if sponsored:
                 with timings.stage("sponsored"):
@@ -335,6 +430,105 @@ def search(
 
     except Exception as e:
         logger.exception("Search failed for query=%r", query)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/unified_search")
+def unified_search(
+    query: str = Query(..., min_length=1, max_length=300),
+    top_k: int = Query(FINAL_TOP_K, ge=1, le=50),
+    min_coverage: float = Query(
+        0.75, ge=0.0, le=1.0,
+        description="Keyword-hit threshold: the top result's title+category "
+        "must cover this fraction of query terms, else fall back to "
+        "context-aware search. 0.75 tolerates keyword-stuffed titles.",
+    ),
+    rerank: bool = Query(
+        RERANK_ENABLED, description="Rerank toggle for the CAS fallback path."
+    ),
+    sponsored: bool = Query(
+        SPONSORED_ENABLED, description="Sponsored toggle for the CAS fallback path."
+    ),
+):
+    """Swiggy-model single entry point: keyword-first, context-aware fallback.
+
+    Runs the lexical keyword engine first (fast, the common case). If the top
+    keyword result doesn't cover enough of the query (an intent query the
+    keyword stack can't satisfy), falls back to the full CAS pipeline. Returns
+    which path served the query so the client can label/measure it."""
+    if _keyword_engine is None:
+        raise HTTPException(status_code=503, detail="Keyword engine not ready.")
+
+    # The intent fallback IS the real CAS pipeline (the existing /search flow).
+    # search() is a FastAPI endpoint function: when called directly like this,
+    # every parameter MUST be passed explicitly — any omitted one keeps its
+    # Query(...) default object instead of a real value (which otherwise trips
+    # search()'s own validation and 500s here). recommend=False because the
+    # results list doesn't show cross-sell (that lives on the product page).
+    # cas_context captures the full CAS payload so the intent path can surface
+    # interpreted_as / errors / no_match to the UI, not just the bare results.
+    cas_context: dict = {}
+
+    def _cas_intent(q: str, k: int):
+        payload = search(
+            query=q,
+            top_k=k,
+            page=1,
+            rerank=rerank,
+            recommend=False,
+            sponsored=sponsored,
+            translator_mode=None,
+        )
+        cas_context.update(payload)
+        return payload.get("results", [])
+
+    try:
+        result = hybrid_route(
+            query,
+            _keyword_engine,
+            _cas_intent,
+            k=top_k,
+            min_coverage=min_coverage,
+        )
+        if result.get("path") == "intent" and cas_context:
+            # Pass the CAS pipeline's context through so the UI can show the
+            # interpreted intents, degradation warnings and no-match message
+            # exactly as it does in non-hybrid mode.
+            result["interpreted_as"] = cas_context.get("interpreted_as", [])
+            result["errors"] = cas_context.get("errors", [])
+            result["no_match"] = cas_context.get("no_match", not result["results"])
+            result["message"] = cas_context.get("message", "")
+            result["rerank_requested"] = cas_context.get("rerank_requested")
+            result["rerank_succeeded"] = cas_context.get("rerank_succeeded")
+            result["latency_ms"] = cas_context.get("latency_ms", {})
+        elif result.get("path") == "keyword" and sponsored:
+            # Sponsored parity with /search: label + bid-front sponsored items
+            # that EARNED a spot in the keyword top-k (lexical retrieval is the
+            # relevance gate here — nothing is injected that didn't match).
+            smap = sponsored_map()
+            if smap:
+                boosted, rest = [], []
+                for item in result["results"]:
+                    asin = item.get("parent_asin")
+                    asin = str(asin) if asin is not None else None
+                    if asin and asin in smap:
+                        item = dict(item)
+                        item["is_sponsored"] = True
+                        item["sponsor"] = smap[asin]["sponsor"]
+                        boosted.append((smap[asin].get("bid", 0.0), item))
+                    else:
+                        rest.append(item)
+                if boosted:
+                    boosted.sort(key=lambda t: t[0], reverse=True)
+                    result["results"] = [it for _, it in boosted] + rest
+        return result
+    except HTTPException:
+        # search() already logged and shaped its error — pass it through
+        # untouched instead of re-wrapping (which nested the detail as
+        # "500: <msg>" and double-logged every CAS-fallback failure).
+        raise
+    except Exception as e:
+        logger.exception("Unified search failed for query=%r", query)
         raise HTTPException(status_code=500, detail=str(e))
 
 

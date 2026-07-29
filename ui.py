@@ -21,6 +21,7 @@ import streamlit as st
 
 BACKEND = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 SEARCH_URL = f"{BACKEND}/search"
+UNIFIED_URL = f"{BACKEND}/unified_search"
 PRODUCT_URL = f"{BACKEND}/product"
 FEEDBACK_URL = f"{BACKEND}/feedback"
 
@@ -78,6 +79,13 @@ with st.sidebar:
     top_k = st.slider("Results per page", 3, 30, 12)
     rerank = st.toggle("Enable LLM rerank", value=True)
     show_sponsored = st.toggle("Show sponsored", value=True)
+    hybrid_mode = st.toggle(
+        "🔀 Hybrid mode (keyword-first)",
+        value=False,
+        help="Swiggy model: run the keyword engine first; fall back to "
+        "context-aware search only when keyword search misses. Shows which "
+        "path served the query.",
+    )
     show_recs = st.toggle("Show recommendations", value=True, help="On product pages.")
     show_debug = st.toggle(
         "Show debug metrics",
@@ -97,6 +105,53 @@ def _fetch():
     """
     q = st.session_state["query"]
     if not q:
+        return
+    if hybrid_mode:
+        try:
+            r = requests.get(
+                UNIFIED_URL,
+                params={
+                    "query": q,
+                    "top_k": top_k,
+                    "rerank": str(rerank).lower(),
+                    "sponsored": str(show_sponsored).lower(),
+                },
+                timeout=60,
+            )
+            r.raise_for_status()
+            data = r.json()
+            results = data.get("results", [])
+            # Normalize the hybrid response into the shape the results view
+            # expects. The intent path passes through the CAS context
+            # (interpreted_as / errors / no_match); the keyword path has none.
+            st.session_state["last_response"] = {
+                "results": results,
+                "no_match": data.get("no_match", not results),
+                "message": data.get("message")
+                or ("" if results else "No matching products found."),
+                "page": 1,
+                "page_size": top_k,
+                "total_results": len(results),
+                "total_pages": 1,
+                "has_prev": False,
+                "has_next": False,
+                "sponsored": [r_ for r_ in results if r_.get("is_sponsored")],
+                "recommendations": {"cross_sell": [], "upsell": []},
+                "user_query": q,
+                "interpreted_as": data.get("interpreted_as", []),
+                "errors": data.get("errors", []),
+                "rerank_requested": data.get("rerank_requested"),
+                "rerank_succeeded": data.get("rerank_succeeded"),
+                "unified_path": data.get("path"),
+                "unified_reason": data.get("reason"),
+                "keyword_coverage": data.get("keyword_coverage"),
+                # Present on the intent path (CAS timings); {} on keyword hits,
+                # which legitimately have no LLM stage timings.
+                "latency_ms": data.get("latency_ms", {}),
+            }
+        except requests.RequestException as e:
+            st.error(f"Backend error: {e}")
+            st.session_state["last_response"] = None
         return
     try:
         r = requests.get(
@@ -263,66 +318,94 @@ def _render_card(product: dict, rank=None, *, feedback: bool = True, sponsored: 
                     st.toast("Thanks — feedback recorded.")
 
 
+def _grid_product_body(product: dict):
+    """The per-product content of a grid card (image, title, price, rating,
+    score, view button). Reused for each option in an ingredient carousel."""
+    img = product.get("img_url")
+    if img and not _is_nan(img):
+        st.markdown(
+            f'<img src="{img}" class="cas-thumb" loading="lazy" '
+            f'onerror="this.style.display=\'none\'">',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown('<div class="cas-thumb-empty">no image</div>', unsafe_allow_html=True)
+    title = product.get("Product_title", "Untitled")
+    st.markdown(f"**{title[:70]}{'…' if len(title) > 70 else ''}**")
+
+    bits = []
+    if product.get("categ_lvl2_name"):
+        bits.append(product["categ_lvl2_name"])
+    if product.get("color"):
+        bits.append(product["color"].title())
+    if bits:
+        st.caption(" · ".join(bits))
+
+    if product.get("price") is not None and not _is_nan(product.get("price")):
+        st.markdown(f"**${product['price']}**")
+
+    rating = product.get("average_rating")
+    rating_n = product.get("rating_number")
+    if rating is not None and not _is_nan(rating):
+        try:
+            rv = float(rating)
+            cnt = f" ({int(float(rating_n)):,})" if (rating_n is not None and not _is_nan(rating_n)) else ""
+            st.caption(f"{'⭐' * int(round(rv))} {rv:.1f}{cnt}")
+        except (TypeError, ValueError):
+            pass
+
+    final = product.get("final_score")
+    rerank_val = product.get("rerank_score")
+    embed = product.get("score")
+    if final is not None and not _is_nan(final):
+        bayes = product.get("bayesian_rating")
+        bayes_str = f" · Bayes {bayes}" if bayes else ""
+        embed_str = f" · embed {embed:.3f}" if isinstance(embed, (int, float)) and not _is_nan(embed) else ""
+        st.caption(f"**Score {final}/100** (rerank {rerank_val}{bayes_str}{embed_str})")
+    elif rerank_val is not None:
+        embed_str = f" · embed {embed:.3f}" if isinstance(embed, (int, float)) and not _is_nan(embed) else ""
+        st.caption(f"Rerank {rerank_val}/100{embed_str}")
+    elif embed is not None and not _is_nan(embed):
+        st.caption(f"Embedding sim {embed:.3f}")
+    elif product.get("best_match_score") is not None:
+        # Keyword-path (hybrid) rows: show the lexical ranking signal so these
+        # cards aren't the only ones with no relevance annotation.
+        st.caption(
+            f"Best match {product['best_match_score']:.3f}"
+            f" · BM25 {product.get('keyword_score')}"
+        )
+
+    if product.get("reason"):
+        r = product["reason"]
+        st.caption(f"💡 _{r[:90]}{'…' if len(r) > 90 else ''}_")
+
+    cidx = product.get("catalog_index")
+    if cidx is not None:
+        if st.button("🔎 View details", key=f"grid_{cidx}"):
+            _open_detail(int(cidx))
+
+
 def _render_grid_card(product: dict, rank: int):
-    """Compact card for the multi-column results grid. Clicking opens detail."""
+    """Compact card for the multi-column results grid. For recipe results, an
+    ingredient card carries `alternatives` (other brands for the same
+    ingredient) shown as a swipeable carousel via tabs."""
     with st.container(border=True):
         if product.get("is_sponsored"):
             st.markdown(f":orange[**⭐ SPONSORED**] · _{product.get('sponsor', 'partner')}_")
-        img = product.get("img_url")
-        if img and not _is_nan(img):
-            st.markdown(
-                f'<img src="{img}" class="cas-thumb" loading="lazy" '
-                f'onerror="this.style.display=\'none\'">',
-                unsafe_allow_html=True,
-            )
+
+        alternatives = product.get("alternatives") or []
+        if alternatives:
+            # Carousel: primary + alternatives as click-through options (brand A/B/C).
+            options = [product] + list(alternatives)
+            ingredient = product.get("source_intent")
+            if ingredient:
+                st.caption(f"🧺 {ingredient} · {len(options)} options")
+            tabs = st.tabs([f"Option {i + 1}" for i in range(len(options))])
+            for tab, opt in zip(tabs, options):
+                with tab:
+                    _grid_product_body(opt)
         else:
-            st.markdown('<div class="cas-thumb-empty">no image</div>', unsafe_allow_html=True)
-        title = product.get("Product_title", "Untitled")
-        st.markdown(f"**{title[:70]}{'…' if len(title) > 70 else ''}**")
-
-        bits = []
-        if product.get("categ_lvl2_name"):
-            bits.append(product["categ_lvl2_name"])
-        if product.get("color"):
-            bits.append(product["color"].title())
-        if bits:
-            st.caption(" · ".join(bits))
-
-        if product.get("price") is not None and not _is_nan(product.get("price")):
-            st.markdown(f"**${product['price']}**")
-
-        rating = product.get("average_rating")
-        rating_n = product.get("rating_number")
-        if rating is not None and not _is_nan(rating):
-            try:
-                rv = float(rating)
-                cnt = f" ({int(float(rating_n)):,})" if (rating_n is not None and not _is_nan(rating_n)) else ""
-                st.caption(f"{'⭐' * int(round(rv))} {rv:.1f}{cnt}")
-            except (TypeError, ValueError):
-                pass
-
-        final = product.get("final_score")
-        rerank_val = product.get("rerank_score")
-        embed = product.get("score")
-        if final is not None and not _is_nan(final):
-            bayes = product.get("bayesian_rating")
-            bayes_str = f" · Bayes {bayes}" if bayes else ""
-            embed_str = f" · embed {embed:.3f}" if isinstance(embed, (int, float)) and not _is_nan(embed) else ""
-            st.caption(f"**Score {final}/100** (rerank {rerank_val}{bayes_str}{embed_str})")
-        elif rerank_val is not None:
-            embed_str = f" · embed {embed:.3f}" if isinstance(embed, (int, float)) and not _is_nan(embed) else ""
-            st.caption(f"Rerank {rerank_val}/100{embed_str}")
-        elif embed is not None and not _is_nan(embed):
-            st.caption(f"Embedding sim {embed:.3f}")
-
-        if product.get("reason"):
-            r = product["reason"]
-            st.caption(f"💡 _{r[:90]}{'…' if len(r) > 90 else ''}_")
-
-        cidx = product.get("catalog_index")
-        if cidx is not None:
-            if st.button("🔎 View details", key=f"grid_{cidx}"):
-                _open_detail(int(cidx))
+            _grid_product_body(product)
 
 
 def _render_mini(item: dict, key_prefix: str):
@@ -354,10 +437,16 @@ if st.button("🔍 Search", type="primary") and query_input:
         st.session_state["view"] = "search"
         _fetch()
 
-_settings = (top_k, rerank, show_sponsored, show_recs)
+_settings = (top_k, rerank, show_sponsored, show_recs, hybrid_mode)
 if st.session_state.get("settings") != _settings:
     if st.session_state.get("view") == "detail":
         st.session_state["detail_response"] = None
+        # Also invalidate the results list: without this, "Back to results"
+        # would show stale results fetched under the OLD settings (wrong badge,
+        # wrong pagination state). The search view refetches when it sees
+        # last_response is empty but a query is active.
+        st.session_state["page"] = 1
+        st.session_state["last_response"] = None
     elif st.session_state.get("query") and st.session_state.get("last_response") is not None:
         st.session_state["page"] = 1
         _fetch()
@@ -407,11 +496,30 @@ def _render_detail_page():
 
 def _render_search_results():
     data = st.session_state.get("last_response")
+    if not data and st.session_state.get("query"):
+        # Results were invalidated (e.g. settings changed while on the detail
+        # page) — refetch under the current settings instead of showing nothing.
+        with st.spinner("Refreshing results..."):
+            _fetch()
+        data = st.session_state.get("last_response")
     if not data:
         return
 
+    # Hybrid-mode badge: which path served this query.
+    path = data.get("unified_path")
+    if path:
+        if path == "keyword":
+            st.success(f"⚡ Served by **keyword search** — {data.get('unified_reason', '')}")
+        else:
+            st.info(f"🧠 Served by **context-aware search** — {data.get('unified_reason', '')}")
+
     timings = data.get("latency_ms", {})
-    if show_debug:
+    rerank_fell_back = (
+        data.get("rerank_succeeded") is False and data.get("rerank_requested")
+    )
+    # Only render the debug block when there is something to show — keyword-
+    # path hybrid responses legitimately have no stage timings.
+    if show_debug and (timings or rerank_fell_back):
         with st.sidebar:
             st.divider()
             st.caption("**Debug — last request**")
@@ -419,7 +527,7 @@ def _render_search_results():
                 st.caption(f"{stage}: {ms} ms")
             if timings:
                 st.caption(f"total: {sum(timings.values())} ms")
-            if data.get("rerank_succeeded") is False and data.get("rerank_requested"):
+            if rerank_fell_back:
                 st.caption("⚠️ rerank fell back (LLM unavailable)")
 
     for err in data.get("errors", []):
@@ -435,19 +543,22 @@ def _render_search_results():
         st.caption("⚠️ Showing embedding-ranked results (reranker was unavailable).")
 
     if data.get("no_match"):
-        st.subheader("🧠 Interpreted intents")
-        for intent in data.get("interpreted_as", []):
-            st.markdown(f"- {intent}")
-        st.divider()
+        if data.get("interpreted_as"):
+            st.subheader("🧠 Interpreted intents")
+            for intent in data.get("interpreted_as", []):
+                st.markdown(f"- {intent}")
+            st.divider()
         st.info(
             data.get("message")
             or "No matching products found. Try different or more general terms."
         )
         return
 
-    st.subheader("🧠 Interpreted intents")
-    for intent in data.get("interpreted_as", []):
-        st.markdown(f"- {intent}")
+    # Keyword-path hybrid responses have no LLM intents — skip the empty header.
+    if data.get("interpreted_as"):
+        st.subheader("🧠 Interpreted intents")
+        for intent in data.get("interpreted_as", []):
+            st.markdown(f"- {intent}")
 
     st.divider()
     st.subheader("🛍️ Products")
