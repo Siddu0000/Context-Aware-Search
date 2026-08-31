@@ -1,12 +1,4 @@
-"""Sponsored (paid-ad) products.
-
-Sponsored items are ordinary catalog products flagged in data/sponsored.json
-(by parent_asin, with a sponsor name and bid). They are NOT ranked separately:
-the normal pipeline retrieves and reranks everything, and any sponsored product
-that lands in the reranked pool is boosted to the top of the results (ordered
-by bid). A sponsored product that isn't relevant enough to reach the reranked
-pool simply doesn't appear — relevance is enforced by the ranking itself.
-"""
+"""Sponsored (paid-ad) products flagged by parent_asin in data/sponsored.json."""
 
 import json
 import logging
@@ -21,8 +13,7 @@ _mtime: Optional[float] = None
 
 
 def sponsored_map() -> Dict[str, dict]:
-    """Return {parent_asin: {"sponsor", "bid"}}, reloading if the file changed.
-    Empty dict if the config is missing or unreadable (best-effort)."""
+    """Return {parent_asin: {"sponsor", "bid"}}, reloading if the file changed."""
     global _map, _mtime
     path = cfg.SPONSORED_CONFIG
     if not path.exists():

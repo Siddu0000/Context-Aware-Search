@@ -1,24 +1,4 @@
-"""Generate data/sponsored.json by sampling the catalog.
-
-Picks sponsored products at a 1:RATIO rate (default 1:50 -> ~2%), stratified by
-sub-category (categ_lvl2_name): within EACH sub-category it samples round(n /
-ratio) products at random. This spreads the sponsored picks evenly across every
-category and sub-category (proportional to their size) instead of clustering
-them, and keeps the overall rate at 1:ratio.
-
-Each pick gets a random sponsor (from a small pool) and a random bid; bid
-decides ordering when several sponsored items land in the same result pool.
-Extra fields (category, sub_category, title) are written for auditing — the
-loader only reads parent_asin/sponsor/bid.
-
-Cannot pick meaningful ASINs without the real catalog, so run this locally
-against data/products.csv.
-
-Usage:
-    python -m scripts.generate_sponsored
-    python -m scripts.generate_sponsored --ratio 50 --seed 42
-    python -m scripts.generate_sponsored --min-per-subcat 1   # force >=1 each
-"""
+"""Generate data/sponsored.json: 1:ratio catalog sample, stratified by sub-category."""
 
 import argparse
 import json
@@ -73,6 +53,7 @@ def main():
         chosen_idx = rng.sample(list(group.index), k)
         for i in chosen_idx:
             row = df.loc[i]
+            # bid orders sponsored items within one pool; category/title are audit-only
             picks.append({
                 "parent_asin": str(row["parent_asin"]),
                 "sponsor": rng.choice(SPONSORS),

@@ -1,41 +1,4 @@
-"""Temperature sweep — answers "why temperature=0 specifically?".
-
-  (2026-06-11) asked why we hard-set temperature=0 and whether we
-tested other values. This script does two things across a range of
-temperatures:
-
-  1. QUALITY      — runs the eval set at each temperature and reports
-                    mean P@1 / P@10 / MRR / NDCG. Shows whether non-zero
-                    temperature hurts (or helps) retrieval quality.
-
-  2. STABILITY    — runs a few representative queries N times each at each
-                    temperature and counts how many DISTINCT top-10
-                    orderings come back. 1 distinct ordering = perfectly
-                    stable (deterministic). More = the output wobbles.
-                    This is the real "are results deterministic?" test.
-
-Mechanism: the script disables the fixed seed (DETERMINISTIC=False) and
-sets TEMPERATURE_OVERRIDE so the chosen temperature actually takes effect.
-With the seed off, any instability you see is genuinely from temperature —
-which is exactly the effect   is asking about.
-
-  >>> Conclusion you can usually take to the sync: temperature=0 gives the
-      best (and fully stable) results; quality degrades and ordering starts
-      to wobble as temperature rises. So 0 is not arbitrary — it is the
-      empirically correct choice for a deterministic search ranker.
-
-IMPORTANT — quota: each temperature runs the whole eval. With rerank ON
-that is ~2 LLM calls x 12 queries = 24 calls per temperature, plus the
-stability runs. On Gemini free tier (15 RPM) this WILL throttle. Defaults
-keep rerank OFF (translator-only, 1 call/query) to stay light. Add
---rerank to include the rerank stage.
-
-Usage:
-    python -m eval.compare_temperature
-    python -m eval.compare_temperature --temps 0.0 0.2 0.5 --rerank
-    python -m eval.compare_temperature --no-stability     # quality only
-    python -m eval.compare_temperature --stability-queries 2 --stability-repeats 3
-"""
+"""Temperature sweep — eval quality and run-to-run ordering stability per temp."""
 
 import argparse
 import json
@@ -54,8 +17,9 @@ logging.basicConfig(level=logging.WARNING)
 
 
 def _run_quality_at(temp: float, rerank_on: bool):
-    """Run the full eval set once at a fixed temperature (seed disabled)."""
+    """Run the full eval set once at a fixed temperature."""
     orig_det, orig_ovr = cfg.DETERMINISTIC, cfg.TEMPERATURE_OVERRIDE
+    # fixed seed off, temperature forced — else the sweep isn't observable
     cfg.DETERMINISTIC = False
     cfg.TEMPERATURE_OVERRIDE = temp
     try:
@@ -67,8 +31,7 @@ def _run_quality_at(temp: float, rerank_on: bool):
 
 
 def _pipeline_titles(query: str, rerank_on: bool, top_k: int = 10):
-    """Run one query through translate -> retrieve (-> rerank) and return the
-    ordered list of result titles. Used by the stability test."""
+    """Run one query through the pipeline and return its ordered result titles."""
     intents = translate_query(query)
     candidates = search_products(intents, top_k=max(top_k * 3, 30))
     if rerank_on and candidates:
@@ -80,10 +43,7 @@ def _pipeline_titles(query: str, rerank_on: bool, top_k: int = 10):
 
 
 def _run_stability_at(temp: float, queries: list[str], repeats: int, rerank_on: bool):
-    """For each query, run it `repeats` times and count distinct orderings.
-
-    Returns dict query -> distinct_ordering_count (1 == perfectly stable).
-    """
+    """Returns query -> distinct top-10 orderings across repeats (1 == stable)."""
     orig_det, orig_ovr = cfg.DETERMINISTIC, cfg.TEMPERATURE_OVERRIDE
     cfg.DETERMINISTIC = False
     cfg.TEMPERATURE_OVERRIDE = temp

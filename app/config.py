@@ -1,9 +1,4 @@
-"""Centralized configuration. All env vars are read here exactly once.
-
-Why centralize: scattered os.getenv() calls become hard to audit. A single
-config module makes it obvious what knobs exist and what their defaults are,
-and lets eval scripts override them programmatically.
-"""
+"""Centralized configuration: every env knob is read here exactly once."""
 
 import os
 from pathlib import Path
@@ -48,11 +43,7 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
 
 TRANSLATOR_MODE = os.getenv("TRANSLATOR_MODE", "query_expansion").lower()
 
-# Embedding model for retrieval. Default thenlper/gte-small: it won both eval
-# rounds (Fashion-only NDCG 0.955, and the 18-query 3-vertical set NDCG 0.894 vs
-# MiniLM 0.857 with P@1/MRR 1.000) and is faster than MiniLM at the same ~33M
-# CPU weight class. Revert: EMBEDDING_MODEL=all-MiniLM-L6-v2 (one line).
-# Switching invalidates the on-disk embedding cache -> next boot re-encodes once.
+# gte-small won both eval rounds; switching invalidates the on-disk embedding cache
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "thenlper/gte-small")
 
 NUM_INTENTS = int(os.getenv("NUM_INTENTS", "3"))
@@ -68,17 +59,7 @@ TEMPERATURE_OVERRIDE = None
 
 
 def effective_temperature(requested: float) -> float:
-    """Resolve the temperature a backend should actually use.
-
-    Determinism comes from the fixed seed (sent when DETERMINISTIC is on), not
-    from forcing temperature to 0 — so we use each call's requested temperature
-    (tuned per task: lower for ranking, a little higher for cross-sell ideas)
-    for the best output quality, and still get reproducible results.
-
-    Precedence:
-      1. TEMPERATURE_OVERRIDE if set (sweep mode) — wins over everything.
-      2. otherwise the caller's requested temperature.
-    """
+    """Sweep override wins; otherwise the caller's tuned temperature is used as-is."""
     if TEMPERATURE_OVERRIDE is not None:
         return float(TEMPERATURE_OVERRIDE)
     return float(requested)

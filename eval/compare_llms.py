@@ -1,36 +1,4 @@
-"""Compare core LLMs on the same eval set (rerank ON — where the LLM works hardest).
-
-Two kinds of model name are accepted in --models:
-
-  Built-in providers (use the model configured for that provider in .env):
-    gemini      -> GOOGLE_API_KEY                       (current production)
-    openai      -> OPENAI_API_KEY      (+ pip install openai)
-    anthropic   -> ANTHROPIC_API_KEY   (+ pip install anthropic)
-
-  ANY other string is treated as a model ID served through an OpenAI-COMPATIBLE
-  endpoint (set OPENAI_BASE_URL + OPENAI_API_KEY). Nothing is installed locally.
-  So you can compare any model your provider serves, e.g.:
-    python -m eval.compare_llms --models gemini openai/gpt-oss-120b openai/gpt-oss-20b
-
-Recommended FREE, no-credit-card endpoint — Groq (groq.com):
-    OPENAI_API_KEY   = gsk_...
-    OPENAI_BASE_URL  = https://api.groq.com/openai/v1
-  Current Groq models (as of mid-2026): openai/gpt-oss-120b (flagship open model),
-  openai/gpt-oss-20b (lighter), qwen/qwen3.6-27b. NOTE: the older
-  llama-3.3-70b-versatile, llama-3.1-8b-instant, and qwen/qwen3-32b were
-  deprecated on 2026-06-17 — avoid them. GPT-OSS are reasoning models; if one
-  returns empty/invalid JSON under strict JSON mode, that's the cause (Groq's
-  reasoning_format would need wiring in). Lower RERANK_INPUT_K if you hit 429s.
-
-NOTE: with OPENAI_BASE_URL set, the plain `openai` entry also targets that
-endpoint — so compare gemini + compatible models in one run, not real OpenAI too.
-
-Outputs side-by-side CSVs under eval_results/llm_<name>_<timestamp>.csv.
-
-Usage:
-    python -m eval.compare_llms
-    python -m eval.compare_llms --models gemini openai/gpt-oss-120b openai/gpt-oss-20b
-"""
+"""Compare LLMs on the same eval set, rerank ON."""
 
 import argparse
 import importlib.util
@@ -47,10 +15,7 @@ BUILTIN = {"gemini", "openai", "anthropic"}
 
 
 def availability(name: str) -> tuple[bool, str]:
-    """Check a model can run BEFORE spending any LLM calls.
-    Returns (available, reason); reason explains a skip in one line.
-    Built-ins use their own key; any other name is an OpenAI-compatible model
-    ID and needs the openai SDK + OPENAI_API_KEY + OPENAI_BASE_URL."""
+    """Pre-flight a model before spending LLM calls; returns (ok, skip_reason)."""
     if name == "gemini":
         if not config_module.GOOGLE_API_KEYS:
             return False, "no GOOGLE_API_KEY in .env"
@@ -71,8 +36,7 @@ def availability(name: str) -> tuple[bool, str]:
 
 
 def run_for_model(name: str):
-    """Run the eval once for a built-in provider or a compatible model id.
-    Restores config afterwards."""
+    """Run the eval once for one model, restoring config afterwards."""
     orig_provider = config_module.LLM_PROVIDER
     orig_openai_model = config_module.OPENAI_MODEL
 

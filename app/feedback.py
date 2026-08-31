@@ -1,12 +1,4 @@
-"""User feedback collection.
-
-Append-only JSONL file. Each row is one thumbs-up / thumbs-down event with
-the query, the product, and the rerank reason that was shown. The eval
-harness can replay this log later to compute online relevance metrics.
-
-Why JSONL: append-only is concurrency-safe enough for a PoC, trivially
-parseable, and survives crashes without corruption.
-"""
+"""User feedback collection: one thumbs-up/down event per row, appended to JSONL."""
 
 import json
 import logging

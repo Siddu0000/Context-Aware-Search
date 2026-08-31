@@ -1,8 +1,4 @@
-"""Lightweight latency + cost instrumentation.
-
-Used by main.py to attach per-stage timing to every response. The eval
-harness also uses these to produce latency tables.
-"""
+"""Lightweight per-stage latency + token instrumentation."""
 
 import time
 from contextlib import contextmanager

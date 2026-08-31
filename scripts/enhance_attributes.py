@@ -1,26 +1,4 @@
-"""Re-derive product attributes from real titles using an LLM.
-
-Why this script exists:
-The catalog   handed over has real titles/images/prices (eBay), but
-the color, material, occasion, and prod_description columns were generated
-by an earlier LLM run without looking at the title. As a result, a product
-titled "Vintage 1998 Y2K Planet Hollywood Cut Workout Shirt White Tanktop"
-might have color=Blue, material=Linen, occasion=Party — none of which
-match the title.
-
-This script reads each row, asks the LLM to extract the attributes from
-the TITLE ALONE, and writes a corrected CSV. The original is preserved.
-
-Features:
-- Resumable: writes progress to a JSONL checkpoint after each batch. If
-  you Ctrl-C or hit quota, re-run and it picks up from the last row done.
-- Batched: processes N rows per LLM call to reduce overhead.
-- Provider-agnostic: uses the same LLM client abstraction as the app.
-
-Usage:
-    python -m scripts.enhance_attributes
-    python -m scripts.enhance_attributes --batch-size 10 --limit 500
-"""
+"""Batched, resumable re-derivation of product attributes from titles via an LLM."""
 
 import argparse
 import json

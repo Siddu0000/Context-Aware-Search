@@ -8,7 +8,11 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
 
 ## Commands
 - Run API: `uvicorn app.main:app --port 8000` (first boot encodes ~60K rows, ~5 min; cached after)
-- Run UI: `streamlit run ui.py` (needs the API running on :8000)
+- Run UI: `streamlit run ui.py` (needs the API running on :8000). `ui.py` is a thin
+  `st.navigation` entry point; the real pages are `pages/ai_search.py` ("AI Search" —
+  the CAS pipeline), `pages/keyword_search.py` ("Keyword Search" — plain BM25), and
+  `pages/shopping_assistant.py` ("Shopping Assistant" — the on-site helper bot).
+  Shared rendering lives in `ui_common.py`.
 - Eval (main): `python -m eval.run_eval` (add `--no-rerank`, `--exclude-description`, `--tag NAME`)
 - Load data: `python -m scripts.load_amazon_data` (reads `data/meta_*` JSONL, writes `data/products_amazon.csv`)
 - Install: `pip install -r requirements.txt`
@@ -121,6 +125,139 @@ prod_description, average_rating, rating_number, store, parent_asin`
   (`app/sponsored.py` + `?page=` in `app/main.py`). Electronics cross-sell tuning still light.
 - Backlog: US-locale filter for the catalog (Indian products leak into grocery results).
 - Backlog: real ad inventory to replace the curated `data/sponsored.json` stub.
+
+## Positioning & priorities (Niharika call, 2026-08-13) — READ BEFORE PLANNING
+- **CAS is NOT a standalone product.** It is an addition that sits INSIDE the
+  client's existing search stack (their website, their ecosystem). Delivery shape:
+  swap backend connectors, or package as an API that lets them TOGGLE semantic vs
+  contextual search. "How do we plug into their stack" is the recurring question.
+- **Target accounts (P0): fashion retailers** (H&M, C&A tier) **and grocery
+  retailers** (Kroger, Albertsons, HEB tier). **Walmart/Amazon are benchmarks and
+  reference points ONLY — never pitch targets.** (Correcting an earlier note that
+  said "small enterprise e-commerce".)
+- **Priority order agreed:** (1) helper bot on the client's site — DONE, see below;
+  (2) **Databricks migration — non-negotiable**, whole solution, then start GTM
+  outreach; (3) **agentic commerce — ON HOLD** pending Niharika's call on whether it
+  even belongs in this project.
+- **Do not conflate these two** (the main confusion on the call):
+  * **Helper bot** = self-service conversational assistant ON the client's website
+    (Sphere-style). That's `POST /chat` + `pages/shopping_assistant.py`.
+  * **Agentic commerce** = shopper browses/carts/pays INSIDE ChatGPT/Gemini via a
+    third-party provider connected to the client's data. Separate workstream, on hold.
+    Only thing in common is "search".
+- **GTM philosophy:** do NOT build to completion before going to market. Demo early,
+  pitch, get validation from search/industry experts, then rework.
+- **Always attach source links** to any stat or claim — standing ask.
+
+## Shopping Assistant (helper bot) — 2026-08-13
+`POST /chat` (`app/assistant.py`) is a thin CONVERSATIONAL LAYER over the existing
+pipeline, not a second engine. One extra LLM call per turn decides search-vs-reply
+and rewrites the turn into a SELF-CONTAINED query resolving conversation references
+("cheaper ones, for men" -> "men's warm wool sweater winter cheap"), then the normal
+`/search` runs — so the bot inherits constraints, rerank reasons, recipe
+shopping-lists and sponsored gating for free. Server stays STATELESS: the client
+posts `history` back each turn (capped at MAX_HISTORY_TURNS). Shopper text is
+inserted as DATA with an explicit anti-injection instruction (verified: it refuses
+to leak the prompt).
+
+## Scope decisions + fixes (Niharika call, 2026-08-24)
+Scope calls made against docs/COMPETITIVE_SUMMARY.md section A (full table there):
+- OUT: A/B testing (another team owns it), visual/image search, multilingual, SLA/SOC2.
+- HOLD: purchase-history personalization (returns/cancellation staleness — POS lags
+  1-2 days; maybe premium later), store-level inventory, GEO/agent-channel (agentic
+  commerce workstream), analytics dashboard (after Databricks).
+- DO: persisted catalog attribute enrichment (scripts/enhance_attributes.py exists;
+  make it a one-time/seasonal batch), retrieval diversity, autocomplete ONLY if simple
+  (verdict: NOT simple in Streamlit — no per-keystroke callbacks without a custom
+  component; backend /suggest is trivial later. Deferred).
+- Databricks runs IN PARALLEL with local enhancements (databricks/ folder is the
+  runbook; blocked on Tarun's credentials). Migrate only what's tested and agreed.
+Fixes shipped same day:
+- **Gender-skew fix is at RETRIEVAL, not display**: catalog skews ~4.5:1 women's, so
+  gender-unspecified apparel queries now retrieve 2x deep and gender-interleave the
+  candidate pool BEFORE rerank (`_balance_candidate_pool`) — the reranker's
+  RERANK_INPUT_K window otherwise never sees men's items and the post-rerank
+  `_balance_by_gender` can't fix what wasn't retrieved.
+- **Chat refinement is pool-stable**: "remove the socks" must NOT re-retrieve (that
+  dropped pants / pulled in bags). `interpret()` now has a third action "refine"
+  (exclusions) → /chat re-pages the CACHED pool of `last_search_query` (zero LLM
+  calls), filters exclusion terms deterministically (substring + naive plural fold),
+  backfills to top_k. Client echoes `last_search_query` + `exclusions` each turn
+  (server stays stateless); a new-topic search resets exclusions.
+- **Chat UI shows ONE results panel** (pages/shopping_assistant.py): transcript is
+  text-only bubbles; new search REPLACES the panel, refine UPDATES it in place.
+  Products never pile up turn after turn ("the page gets lengthy" complaint).
+- **Topic boundaries in chat** (Sai, 2026-08-26): `interpret()` also returns
+  `new_topic`. History is only kept while the shopper stays on one goal — an
+  UNRELATED request (reunion outfits -> pancake ingredients) sets new_topic=true, and
+  the UI then CLEARS the transcript to just that exchange (fresh page) AND the prompt
+  writes `search_query` from the latest message alone so the finished topic can't leak
+  into the new search. Continuations ("cheaper ones") and refines keep the transcript.
+  new_topic is forced True when there's no prior search, False for refine/reply, and
+  True on LLM failure (never silently inherit context we couldn't interpret).
+  Verified: unrelated turn -> 2 bubbles; related turn -> 4 bubbles retained.
+  Also fixed here: the client used to send the current message BOTH as `message` and
+  as the last `history` entry — the model saw it twice, muddying the judgement.
+- **No example prompts in the assistant copy** (Sai, 2026-08-26): the greeting is just
+  "Hi! What are you shopping for today?" and the caption carries no sample queries.
+  Do not reintroduce "try: something breathable…" style hints.
+
+## Bundles, cart, surface isolation (Sai, 2026-08-27)
+- **BUNDLES generalise the recipe pattern.** `bundle_type` = `recipe` | `outfit` |
+  `setup` | None, returned by `/search`, `/chat` and `/unified_search`. The backend
+  machinery was ALREADY generic: `_recipe_slots_with_alternatives()` groups by
+  `source_intent`, so one card per component with 3 options works unchanged for all
+  three kinds. What was added is translator-side (OUTFIT_PROMPT / SETUP_PROMPT +
+  `detect_bundle_type()` regex fast-path) and label-side (`ui_common.BUNDLE_UI`).
+  * outfit -> garment SLOTS (top/bottom/footwear/outerwear/accessory). Gender or age
+    stated in the query is pushed into EVERY slot phrase; never mix genders in one
+    outfit; gender-neutral when unstated. Kids/boys/girls work via the same rule.
+  * setup -> devices AND the peripherals people forget (cables, stands, surge).
+  * Bundles deliberately SKIP `_balance_candidate_pool` / `_balance_by_gender` — an
+    outfit must stay gender-coherent, unlike a generic apparel query.
+  * `is_recipe` is kept as a derived alias (`bundle_type == "recipe"`) so the eval
+    suite and older callers keep working. Don't delete it.
+- **Advice-shaped questions are SEARCHES, not chat replies.** "What should I wear
+  to an interview?" was being answered with prose. `app/assistant.py` now says so
+  explicitly; the assistant must never name products in `reply` (it can't see the
+  catalogue).
+- **SURFACE ISOLATION.** Each page calls `ui_common.set_surface("ai"|"keyword"|
+  "assistant"|"cart")` and all state goes through `sget/sset/sinit`, which namespace
+  keys as `<surface>__<key>`. Verified: no cross-surface key leakage. Opening a
+  product in the assistant no longer moves AI Search. NEVER go back to bare
+  `st.session_state["view"]` in a page.
+- **Cart** (`ui_cart.py` + `pages/cart.py`) is session-only and deliberately SHARED
+  across surfaces — one basket is what a shopper expects; it's the single exception
+  to isolation. Add-to-cart sits on grid cards, the product detail card AND the
+  cross-sell strip. Many catalog rows have a null price, so the cart reports
+  "N items without a listed price" instead of silently under-totalling.
+- **Do NOT use `st.page_link` in a sidebar.** It raised `KeyError: 'url_pathname'`
+  outside full page context and would have taken the page down whenever the cart was
+  non-empty (invisible in manual testing because the cart starts empty). Cart is a
+  top-level nav item; a caption is enough.
+- **Verify UI with `streamlit.testing.v1.AppTest`, not the browser.** Driving
+  Streamlit's `text_input` via synthetic browser events does not commit reliably;
+  AppTest runs the page in-process and catches real errors (it found the page_link
+  bug). Remember `sys.path.insert(0, os.getcwd())` — AppTest doesn't put the project
+  root on the path the way `streamlit run` does.
+
+## UI naming conventions (2026-08-12)
+User-facing copy is PLAIN LANGUAGE; pipeline internals are shown only behind each
+page's **"Developer details"** toggle. Keep it that way — Niharika's standing ask is
+that demos stay clean.
+- Nav/pages: **AI Search** 🧠 and **Keyword Search** 🔍 (previously the main page
+  showed as a bare "ui" because auto-discovery names pages after the FILENAME —
+  fixed by `st.navigation` in `ui.py`).
+- Cards: "**93% match**" (rerank blend), "≈ 90% similar" (embedding-only),
+  "🔤 Keyword match" (BM25). Dev toggle appends `rerank / Bayes / embed / BM25`.
+- Sections: "🧠 What we searched for" (intents), "🛍️ Results", "🧺 Shopping list"
+  for recipes, "🧺 Frequently bought together", "⬆️ Better-rated alternative".
+- Backend `reason` strings that are pipeline notes ("(beyond reranked pool …)",
+  "(rerank disabled)") are mapped to nothing via `ui_common.friendly_reason()` —
+  the backend strings are UNCHANGED because evals/tests match on them.
+- `is_recipe` MUST come from the API response, never inferred from `source_intent`
+  (which is set on every result for every query — inferring it labelled a
+  wool-sweater search as a "Shopping list").
 
 ## Conventions
 - Prose comments explaining WHY, not what. Keep functions small and pure where possible.

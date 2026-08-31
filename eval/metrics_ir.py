@@ -1,9 +1,4 @@
-"""Standard IR metrics. Pure functions, no dependencies.
-
-A "relevant_set" is a set of product titles considered relevant for a query
-(usually derived from textual criteria in eval_queries.json).
-A "retrieved" list is the ranked product titles returned by the pipeline.
-"""
+"""Standard IR metrics over ranked product titles. Pure functions, no dependencies."""
 
 import math
 from typing import List, Set

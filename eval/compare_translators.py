@@ -1,17 +1,4 @@
-"""Compare query-translation strategies on the same eval set.
-
-Runs the full eval pipeline once per mode:
-  - query_expansion (N short phrases)
-  - hyde            (1 hypothetical document)
-  - hybrid          (1 document + N-1 short phrases)
-
-Reranker is DISABLED to isolate the translator's contribution. Results go
-to eval_results/translator_<mode>_<timestamp>.csv.
-
-Usage:
-    python -m eval.compare_translators
-    python -m eval.compare_translators --modes query_expansion hyde
-"""
+"""Compare translator modes on the same eval set, reranker off."""
 
 import argparse
 import logging

@@ -2,12 +2,13 @@
 *.pem
 *.key
 
-data/meta_*
-data/products.csv
-data/products_amazon.csv
-data/products_grocery.csv
-data/products_enhanced.csv
-data/enhancement_checkpoint.jsonl
+# Catalogs (40MB-2.2GB) and raw Amazon dumps (1.4-5GB) blow past GitHub's
+# 100MB hard limit. Ignore every CSV/JSONL here by rule, so a new catalog
+# variant can never be committed by accident; the small JSON eval fixtures
+# (eval_queries, recipe_eval, stress_queries, sponsored, cross_sell_eval)
+# are NOT matched and stay tracked.
+data/*.csv
+data/*.jsonl
 
 .cache/
 

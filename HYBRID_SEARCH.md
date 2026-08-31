@@ -85,9 +85,26 @@ UI toggles behave identically in both modes.
   queries). Swap that in when integrating with a real client's analytics.
 - **The demo intent layer is a stand-in**, not CAS. It shows the *routing*, not
   CAS's real quality. Production uses the actual LLM+vector pipeline.
-- **UI is wired** via the sidebar "🔀 Hybrid mode" toggle: the search bar calls
-  `/unified_search` and shows a "served by keyword / context-aware" badge.
-  Hybrid mode returns a single page (no pagination) by design.
+- **`/unified_search` is backend-only again as of 2026-07-31.** Sai/Niharika's
+  2026-07-30 call: the inline "🔀 Hybrid mode" toggle was replaced with a
+  SEPARATE page (Amazon's model — regular search bar vs its AI assistant, two
+  distinct surfaces, not one page with a mode switch). The endpoint,
+  `app/hybrid_router.py`, and `app/keyword_search.py` are untouched and still
+  work exactly as documented above; nothing here was disrupted. They're just
+  not wired into the UI's auto-routing toggle anymore. If you want to exercise
+  the auto-router again, call `/unified_search` directly or re-add a toggle.
+- **The new Classic Search page is NOT `/unified_search`.** It's a separate,
+  simpler endpoint, `GET /keyword_search` (see `app/main.py`), that is pure
+  BM25 with NO fallback to CAS, ever — the deliberate "normal search bar"
+  alternative to `/search`, not an auto-router. `ui.py` (Context-Aware Search)
+  and `pages/1_Classic_Search.py` (Classic Search) are two independent pages;
+  `ui_common.py` holds the rendering/fetch code they share.
+- **Streamlit gotcha found 2026-07-31**: an emoji in a `pages/*.py` FILENAME
+  silently breaks the entire sidebar (not just page nav) on this Streamlit
+  version/Windows setup — confirmed by removing the emoji and watching the
+  sidebar reappear. Emoji in page *content* (`st.title`, captions, `st.Page`
+  `icon=` if you migrate to `st.navigation()`) is fine; just never put one in
+  a `pages/` filename.
 - This mirrors, on a synthetic scale, what a client integration would do; the
   exact keyword engine would be *their* stack (Cassini/Elasticsearch), with CAS
   reranking or catching misses via the same router shape.

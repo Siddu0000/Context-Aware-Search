@@ -1,11 +1,4 @@
-"""FastAPI service.
-
-Endpoints:
-    GET  /search?query=...            translate -> retrieve -> rerank -> paginate
-    GET  /product?catalog_index=...   single product + its cross-sell/upsell
-    POST /feedback                    record thumbs-up / thumbs-down
-    GET  /healthz, /stats             probes / debug
-"""
+"""FastAPI service exposing the search, chat, product and feedback endpoints."""
 
 import logging
 from contextlib import asynccontextmanager
@@ -37,7 +30,8 @@ from app.recommendations import recommend as build_recommendations
 from app.reranker import rerank as llm_rerank
 from app.search import best_score, get_dataframe, get_product, load_index, search_products
 from app.sponsored import sponsored_map
-from app.translator import is_recipe_query, query_specifies_gender, translate_query
+from app.assistant import interpret
+from app.translator import query_specifies_gender, understand_query
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,8 +51,7 @@ async def lifespan(app: FastAPI):
         TRANSLATOR_MODE,
     )
     load_index()
-    # The "existing retailer keyword stack" that CAS plugs in front of.
-    # Indexed on the same catalog so the two search paths cover the same items.
+    # Indexed on the same catalog so both search paths cover the same items
     global _keyword_engine
     _keyword_engine = KeywordSearchEngine()
     _keyword_engine.index(get_dataframe())
@@ -99,8 +92,7 @@ def stats():
 
 
 def _assemble_full(ranked_pool, candidates):
-    """Full ordered result list: the reranked pool, then any remaining
-    candidates as an embedding-order tail (labelled in `reason`)."""
+    """Reranked pool first, then remaining candidates as an embedding-order tail."""
     pool_titles = {p.get("Product_title", "") for p in ranked_pool}
     tail = []
     for c in candidates:
@@ -116,12 +108,8 @@ def _assemble_full(ranked_pool, candidates):
 
 
 def _diversify_by_ingredient(full):
-    """Round-robin results by their source ingredient so each ingredient
-    appears once before any appears twice. Stable: preserves the existing
-    (reranked) order within each ingredient group, and the relative order of
-    first-appearances. Items without a source_intent are treated as their own
-    group and kept in place."""
-    groups = {}          # source_intent -> list of items (in current order)
+    """Round-robin by source ingredient so each appears once before any appears twice."""
+    groups = {}          # source_intent -> items, in current (reranked) order
     order = []           # first-seen order of group keys
     for item in full:
         key = item.get("source_intent") or item.get("Product_title")
@@ -139,18 +127,10 @@ def _diversify_by_ingredient(full):
 
 
 def _recipe_slots_with_alternatives(full, max_options: int = 3):
-    """Aditya's carousel: one card per ingredient, but each card carries its
-    top `max_options` alternatives (different brands for the SAME ingredient),
-    so a shopper can swipe brand A / B / C in place instead of scrolling pages
-    to find the second-best of an ingredient.
-
-    Returns one primary per ingredient (highest-ranked ingredient first,
-    preserving rerank order within each). Each primary gets an `alternatives`
-    list = the next products of the same ingredient (primary excluded), capped
-    so primary + alternatives <= max_options. Non-grouped items (no
-    source_intent) pass through as single-option cards."""
+    """One primary per component, each carrying the next same-component items as
+    `alternatives` (brand A/B/C for the carousel), capped at max_options total."""
     groups = {}          # source_intent -> [items in rank order]
-    order = []           # ingredients in first-seen (rank) order
+    order = []           # components in first-seen (rank) order
     for item in full:
         key = item.get("source_intent") or item.get("Product_title")
         if key not in groups:
@@ -168,9 +148,7 @@ def _recipe_slots_with_alternatives(full, max_options: int = 3):
 
 
 def _product_gender(product: dict) -> str:
-    """Infer a product's gender from its category (authoritative per the
-    reranker) with a title fallback. Returns 'women', 'men', or 'neutral'.
-    Checks 'women' before 'men' because 'women' contains the substring 'men'."""
+    """Infer gender from category, then title: 'women', 'men' or 'neutral'."""
     cat = (product.get("categ_lvl2_name") or "").lower()
     title = (product.get("Product_title") or "").lower()
     for text in (cat, title):
@@ -182,13 +160,8 @@ def _product_gender(product: dict) -> str:
 
 
 def _balance_by_gender(full):
-    """For gender-unspecified apparel queries: round-robin women/men/neutral so
-    one gender can't crowd the page out (the 'beach wedding outfit -> only
-    women's dresses' problem). Only reorders when BOTH men's and women's items
-    are present in the pool; otherwise returns unchanged. Preserves rank within
-    each gender. NOTE: this can only surface men's items that retrieval already
-    put in the pool — if none were retrieved, this cannot manufacture them
-    (that's a recall/data-coverage limit, flagged separately)."""
+    """Round-robin women/men/neutral so one gender can't crowd out the page."""
+    # Can only reorder what retrieval put in the pool, never manufacture items
     women, men, neutral = [], [], []
     for item in full:
         g = _product_gender(item)
@@ -208,10 +181,57 @@ def _balance_by_gender(full):
     return out
 
 
+def _promote_sponsored_options(slots, smap):
+    """Promote a sponsored option to primary WITHIN its slot; slot order unchanged."""
+    if not smap:
+        return slots
+    out = []
+    for slot in slots:
+        # flat _boost_sponsored can't see a sponsored item nested in `alternatives`
+        alternatives = slot.get("alternatives") or []
+        options = [{k: v for k, v in slot.items() if k != "alternatives"}] + [
+            dict(a) for a in alternatives
+        ]
+        sponsored_idxs = []
+        for i, opt in enumerate(options):
+            asin = opt.get("parent_asin")
+            asin = str(asin) if asin is not None else None
+            if asin and asin in smap:
+                opt["is_sponsored"] = True
+                opt["sponsor"] = smap[asin]["sponsor"]
+                sponsored_idxs.append((i, smap[asin].get("bid", 0.0)))
+        if sponsored_idxs and sponsored_idxs[0][0] != 0:
+            best_i = max(sponsored_idxs, key=lambda t: t[1])[0]
+            options.insert(0, options.pop(best_i))
+        new_primary = dict(options[0])
+        new_primary["alternatives"] = options[1:]
+        out.append(new_primary)
+    return out
+
+
+def _balance_candidate_pool(candidates):
+    """Gender-interleave the retrieval candidates before the reranker."""
+    # Catalog skews ~4.5:1 women's; else the reranker's window sees no men's items
+    women, men, neutral = [], [], []
+    for item in candidates:
+        g = _product_gender(item)
+        (women if g == "women" else men if g == "men" else neutral).append(item)
+    if not (women and men):
+        return candidates
+    streams = [women, men, neutral]
+    idx = [0, 0, 0]
+    out = []
+    while any(idx[i] < len(streams[i]) for i in range(3)):
+        for i in range(3):
+            if idx[i] < len(streams[i]):
+                out.append(streams[i][idx[i]])
+                idx[i] += 1
+    return out
+
+
 def _boost_sponsored(full, smap):
-    """Pull sponsored products that made the RERANKED pool to the top, ordered
-    by bid (then final_score). Sponsored items outside the reranked pool are
-    left in place — they weren't relevant enough to be boosted."""
+    """Bid-order sponsored items that made the RERANKED pool to the top."""
+    # rerank_score gates it: sponsored items outside the pool aren't relevant enough
     if not smap:
         return full
     boosted, rest = [], []
@@ -227,7 +247,7 @@ def _boost_sponsored(full, smap):
         else:
             rest.append(item)
     boosted.sort(key=lambda x: (x.get("_bid", 0.0), x.get("final_score") or 0.0), reverse=True)
-    # _bid is sort-internal only — never expose sponsors' bid amounts to clients.
+    # _bid is sort-internal only — never expose sponsors' bid amounts to clients
     for item in boosted:
         item.pop("_bid", None)
     return boosted + rest
@@ -250,13 +270,7 @@ def search(
         description="Override TRANSLATOR_MODE: query_expansion | hyde | hybrid",
     ),
 ):
-    """Translate -> retrieve -> rerank -> paginate, plus optional sponsored
-    and cross-sell layers.
-
-    Page 1 runs the full pipeline and caches the ranked pool. Page 2+ of the
-    same search reuse that pool (no LLM call), so page transitions are fast.
-    If the best match is below MIN_RESULT_RELEVANCE, the query is treated as
-    having no real match and an empty result set is returned."""
+    """Translate -> retrieve -> rerank -> paginate, plus sponsored and cross-sell."""
     if translator_mode is not None and translator_mode not in {
         "query_expansion", "hyde", "hybrid",
     }:
@@ -271,20 +285,21 @@ def search(
     pool_k = max(RERANK_POOL_K, page_size)
     timings = StageTimings()
 
-    # `recommend` MUST be in the key: the cached entry stores that run's
-    # recommendations, and /unified_search's CAS fallback always runs with
-    # recommend=False — without it in the key, a hybrid query would poison the
-    # cache and a later plain /search would silently get empty recommendations.
+    # `recommend` must be in the key or /unified_search's recommend=False poisons it
     cache_key = page_cache.make_key(
         query,
         (page_size, pool_k, rerank, recommend, sponsored, translator_mode or TRANSLATOR_MODE),
     )
 
     try:
+        # Page 1 caches the ranked pool; page 2+ reuse it, so no LLM call is made
         cached = page_cache.get(cache_key)
         if cached is not None:
             full = cached["full"]
             intents = cached["intents"]
+            constraints = cached.get("constraints", [])
+            bundle_type = cached.get("bundle_type")
+            is_recipe = bundle_type == "recipe"
             rerank_actually_ran = cached["rerank_succeeded"]
             no_match = cached["no_match"]
             start = (page - 1) * page_size
@@ -299,15 +314,32 @@ def search(
         else:
             errors = []
             with timings.stage("translate"):
-                intents = translate_query(query, mode=translator_mode, errors=errors)
+                # ONE LLM call: intents + bundle_type + typed constraints
+                understanding = understand_query(
+                    query, mode=translator_mode, errors=errors
+                )
+                intents = understanding["intents"]
+                bundle_type = understanding.get("bundle_type")
+                is_recipe = bundle_type == "recipe"
+                constraints = understanding["constraints"]
+
+            gender_stated = (
+                any(c.get("type") == "gender" for c in constraints)
+                or query_specifies_gender(query)  # regex belt-and-braces
+            )
 
             with timings.stage("retrieve"):
-                if is_recipe_query(query):
+                if bundle_type:
+                    # Cap per intent so one bundle component can't crowd out the others
                     candidates = search_products(
                         intents,
                         top_k=RETRIEVAL_TOP_K,
                         per_intent_quota=GROCERY_PER_INTENT_K,
                     )
+                elif not gender_stated:
+                    # 2x deep so the skewed catalog's men's items reach the rerank window
+                    candidates = search_products(intents, top_k=RETRIEVAL_TOP_K * 2)
+                    candidates = _balance_candidate_pool(candidates)
                 else:
                     candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
 
@@ -316,6 +348,10 @@ def search(
                 empty_payload = {
                     "user_query": query,
                     "interpreted_as": intents,
+                    "constraints": constraints,
+                    "is_recipe": is_recipe,
+            "bundle_type": bundle_type,
+                    "bundle_type": bundle_type,
                     "translator_mode": translator_mode or TRANSLATOR_MODE,
                     "rerank_requested": rerank,
                     "rerank_succeeded": False,
@@ -339,6 +375,12 @@ def search(
                         {
                             "full": [],
                             "intents": intents,
+                            "constraints": constraints,
+                            "is_recipe": is_recipe,
+            "bundle_type": bundle_type,
+                        "bundle_type": bundle_type,
+                            "bundle_type": bundle_type,
+                    "bundle_type": bundle_type,
                             "rerank_succeeded": False,
                             "no_match": True,
                             "recommendations": {"cross_sell": [], "upsell": []},
@@ -349,7 +391,10 @@ def search(
             rerank_actually_ran = False
             if rerank and candidates:
                 with timings.stage("rerank"):
-                    ranked_pool = llm_rerank(query, candidates, top_k=pool_k, errors=errors)
+                    ranked_pool = llm_rerank(
+                        query, candidates, top_k=pool_k, errors=errors,
+                        constraints=constraints,
+                    )
                 rerank_actually_ran = any(
                     r.get("rerank_score") is not None for r in ranked_pool
                 )
@@ -365,23 +410,20 @@ def search(
 
             full = _assemble_full(ranked_pool, candidates)
 
-            # Recipe queries: round-robin by source ingredient so page 1 shows
-            # one of each ingredient (flour, eggs, butter, sugar...) before a
-            # second of any — instead of three flours. Preserves rank within
-            # each ingredient; sponsored items (boosted next) are unaffected.
-            if is_recipe_query(query):
-                # One card per ingredient, each carrying its top-3 alternatives
-                # (brand A/B/C) for the carousel.
+            if bundle_type:
+                # One card per component (ingredient / garment slot / device) + options
                 full = _recipe_slots_with_alternatives(full, max_options=3)
-            elif not query_specifies_gender(query):
-                # Apparel queries with no stated gender: keep men's and women's
-                # both represented instead of skewing to one. No-op when the
-                # pool has only one gender (e.g. all-electronics results).
-                full = _balance_by_gender(full)
-
-            if sponsored:
-                with timings.stage("sponsored"):
-                    full = _boost_sponsored(full, sponsored_map())
+                if sponsored:
+                    # Nested-aware: _boost_sponsored can't see slot `alternatives`
+                    with timings.stage("sponsored"):
+                        full = _promote_sponsored_options(full, sponsored_map())
+            else:
+                if not gender_stated:
+                    # Re-balance the DISPLAY order after the reranker re-scored the pool
+                    full = _balance_by_gender(full)
+                if sponsored:
+                    with timings.stage("sponsored"):
+                        full = _boost_sponsored(full, sponsored_map())
 
             start = (page - 1) * page_size
             results = full[start : start + page_size]
@@ -398,6 +440,11 @@ def search(
                     {
                         "full": full,
                         "intents": intents,
+                        "constraints": constraints,
+                        "is_recipe": is_recipe,
+            "bundle_type": bundle_type,
+                        "bundle_type": bundle_type,
+                    "bundle_type": bundle_type,
                         "rerank_succeeded": rerank_actually_ran,
                         "no_match": False,
                         "recommendations": recommendations,
@@ -411,6 +458,10 @@ def search(
         return {
             "user_query": query,
             "interpreted_as": intents,
+            "constraints": constraints,
+            # From the backend only: source_intent is on every result, not just recipes
+            "is_recipe": is_recipe,
+            "bundle_type": bundle_type,
             "translator_mode": translator_mode or TRANSLATOR_MODE,
             "rerank_requested": rerank,
             "rerank_succeeded": rerank_actually_ran,
@@ -433,6 +484,52 @@ def search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _boost_sponsored_keyword_rows(results, smap):
+    """Label + bid-front sponsored items within a KEYWORD-ONLY result list."""
+    # BM25 rows have no rerank_score, so keyword top-k membership IS the relevance gate
+    if not smap:
+        return results
+    boosted, rest = [], []
+    for item in results:
+        asin = item.get("parent_asin")
+        asin = str(asin) if asin is not None else None
+        if asin and asin in smap:
+            item = dict(item)
+            item["is_sponsored"] = True
+            item["sponsor"] = smap[asin]["sponsor"]
+            boosted.append((smap[asin].get("bid", 0.0), item))
+        else:
+            rest.append(item)
+    if not boosted:
+        return results
+    boosted.sort(key=lambda t: t[0], reverse=True)
+    return [it for _, it in boosted] + rest
+
+
+@app.get("/keyword_search")
+def keyword_search(
+    query: str = Query(..., min_length=1, max_length=300),
+    top_k: int = Query(FINAL_TOP_K, ge=1, le=50),
+    sponsored: bool = Query(SPONSORED_ENABLED),
+):
+    """Pure lexical BM25 search: never falls back to CAS, zero LLM calls."""
+    if _keyword_engine is None:
+        raise HTTPException(status_code=503, detail="Keyword engine not ready.")
+    results, num_matched, top_relevance, top_coverage = _keyword_engine.search(
+        query, k=top_k
+    )
+    if sponsored:
+        results = _boost_sponsored_keyword_rows(results, sponsored_map())
+    return {
+        "user_query": query,
+        "results": results,
+        "no_match": num_matched == 0,
+        "num_matched": num_matched,
+        "top_relevance": round(top_relevance, 4),
+        "top_coverage": round(top_coverage, 4),
+    }
+
+
 @app.get("/unified_search")
 def unified_search(
     query: str = Query(..., min_length=1, max_length=300),
@@ -450,26 +547,15 @@ def unified_search(
         SPONSORED_ENABLED, description="Sponsored toggle for the CAS fallback path."
     ),
 ):
-    """Swiggy-model single entry point: keyword-first, context-aware fallback.
-
-    Runs the lexical keyword engine first (fast, the common case). If the top
-    keyword result doesn't cover enough of the query (an intent query the
-    keyword stack can't satisfy), falls back to the full CAS pipeline. Returns
-    which path served the query so the client can label/measure it."""
+    """Single entry point: keyword-first, context-aware fallback on a lexical miss."""
     if _keyword_engine is None:
         raise HTTPException(status_code=503, detail="Keyword engine not ready.")
 
-    # The intent fallback IS the real CAS pipeline (the existing /search flow).
-    # search() is a FastAPI endpoint function: when called directly like this,
-    # every parameter MUST be passed explicitly — any omitted one keeps its
-    # Query(...) default object instead of a real value (which otherwise trips
-    # search()'s own validation and 500s here). recommend=False because the
-    # results list doesn't show cross-sell (that lives on the product page).
-    # cas_context captures the full CAS payload so the intent path can surface
-    # interpreted_as / errors / no_match to the UI, not just the bare results.
+    # Full CAS payload, so the intent path can surface intents / errors / no_match
     cas_context: dict = {}
 
     def _cas_intent(q: str, k: int):
+        # search() is an endpoint fn: pass EVERY param or it keeps its Query() default
         payload = search(
             query=q,
             top_k=k,
@@ -491,10 +577,11 @@ def unified_search(
             min_coverage=min_coverage,
         )
         if result.get("path") == "intent" and cas_context:
-            # Pass the CAS pipeline's context through so the UI can show the
-            # interpreted intents, degradation warnings and no-match message
-            # exactly as it does in non-hybrid mode.
+            # Pass CAS context through so the UI reads the same as in non-hybrid mode
             result["interpreted_as"] = cas_context.get("interpreted_as", [])
+            result["constraints"] = cas_context.get("constraints", [])
+            result["is_recipe"] = cas_context.get("is_recipe", False)
+            result["bundle_type"] = cas_context.get("bundle_type")
             result["errors"] = cas_context.get("errors", [])
             result["no_match"] = cas_context.get("no_match", not result["results"])
             result["message"] = cas_context.get("message", "")
@@ -502,30 +589,12 @@ def unified_search(
             result["rerank_succeeded"] = cas_context.get("rerank_succeeded")
             result["latency_ms"] = cas_context.get("latency_ms", {})
         elif result.get("path") == "keyword" and sponsored:
-            # Sponsored parity with /search: label + bid-front sponsored items
-            # that EARNED a spot in the keyword top-k (lexical retrieval is the
-            # relevance gate here — nothing is injected that didn't match).
-            smap = sponsored_map()
-            if smap:
-                boosted, rest = [], []
-                for item in result["results"]:
-                    asin = item.get("parent_asin")
-                    asin = str(asin) if asin is not None else None
-                    if asin and asin in smap:
-                        item = dict(item)
-                        item["is_sponsored"] = True
-                        item["sponsor"] = smap[asin]["sponsor"]
-                        boosted.append((smap[asin].get("bid", 0.0), item))
-                    else:
-                        rest.append(item)
-                if boosted:
-                    boosted.sort(key=lambda t: t[0], reverse=True)
-                    result["results"] = [it for _, it in boosted] + rest
+            result["results"] = _boost_sponsored_keyword_rows(
+                result["results"], sponsored_map()
+            )
         return result
     except HTTPException:
-        # search() already logged and shaped its error — pass it through
-        # untouched instead of re-wrapping (which nested the detail as
-        # "500: <msg>" and double-logged every CAS-fallback failure).
+        # search() already logged and shaped it; re-wrapping nested "500: <msg>"
         raise
     except Exception as e:
         logger.exception("Unified search failed for query=%r", query)
@@ -552,6 +621,145 @@ def product(
         )
 
     return {"product": p, "recommendations": recommendations}
+
+
+class ChatTurn(BaseModel):
+    role: str = Field(..., description="'user' or 'assistant'")
+    content: str = Field(..., max_length=2000)
+
+
+class ChatIn(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000)
+    history: list[ChatTurn] = Field(default_factory=list)
+    top_k: int = Field(6, ge=1, le=20)
+    # Refinement context echoed back by the client each turn: the server is stateless
+    last_search_query: str = Field("", max_length=500)
+    exclusions: list[str] = Field(default_factory=list)
+
+
+def _matches_exclusion(product: dict, terms: list[str]) -> bool:
+    """True if the product matches any excluded term (title/category/intent)."""
+    # Word boundary + naive plural fold: plain substring made "pants" kill "pantry"
+    import re as _re
+
+    hay = " ".join(
+        str(product.get(f) or "")
+        for f in ("Product_title", "categ_lvl2_name", "source_intent")
+    ).lower()
+    for t in terms:
+        t = t.lower().strip()
+        if not t:
+            continue
+        variants = {t}
+        if t.endswith("s"):
+            variants.add(t[:-1])
+        else:
+            variants.add(t + "s")
+        for v in variants:
+            if _re.search(rf"\b{_re.escape(v)}\b", hay):
+                return True
+    return False
+
+
+@app.post("/chat")
+def chat(payload: ChatIn):
+    """On-site helper bot: one LLM call resolves the turn into reply/search/refine."""
+    errors: list = []
+    decision = interpret(
+        payload.message,
+        [t.model_dump() for t in payload.history],
+        last_search_query=payload.last_search_query,
+        errors=errors,
+    )
+
+    if decision["action"] == "reply":
+        return {
+            "reply": decision["reply"],
+            "action": "reply",
+            "new_topic": False,          # a chat reply never resets the page
+            "search_query": payload.last_search_query,
+            "exclusions": payload.exclusions,
+            "results": [],
+            "interpreted_as": [],
+            "errors": errors,
+        }
+
+    # search() is an endpoint fn: pass EVERY param or it keeps its Query() default
+    def _run_search(q: str, page: int = 1):
+        return search(
+            query=q,
+            top_k=payload.top_k,
+            page=page,
+            rerank=RERANK_ENABLED,
+            recommend=False,
+            sponsored=SPONSORED_ENABLED,
+            translator_mode=None,
+        )
+
+    if decision["action"] == "refine":
+        all_excl = list(dict.fromkeys(
+            [e.lower() for e in payload.exclusions] + decision["exclude_terms"]
+        ))
+        # Re-page the CACHED pool: re-retrieving here dropped unrelated items
+        kept: list = []
+        first_page = None
+        for pg in range(1, 6):  # cap: 5 pages of the pool is plenty to backfill
+            page_out = _run_search(payload.last_search_query, page=pg)
+            if first_page is None:
+                first_page = page_out
+            kept.extend(
+                r for r in page_out.get("results", [])
+                if not _matches_exclusion(r, all_excl)
+            )
+            if len(kept) >= payload.top_k or not page_out.get("has_next"):
+                break
+        results = kept[: payload.top_k]
+        reply = decision["reply"]
+        if not results:
+            reply = (
+                "Removing that doesn't leave anything else from this search — "
+                "want to try describing what you're after a bit differently?"
+            )
+        return {
+            "reply": reply,
+            "action": "refine",
+            "new_topic": False,          # a refinement continues the topic
+            # The base query stays on screen — future refinements stack on it
+            "search_query": payload.last_search_query,
+            "exclusions": all_excl,
+            "results": results,
+            "interpreted_as": (first_page or {}).get("interpreted_as", []),
+            "constraints": (first_page or {}).get("constraints", []),
+            "is_recipe": (first_page or {}).get("is_recipe", False),
+            "bundle_type": (first_page or {}).get("bundle_type"),
+            "no_match": not results,
+            "errors": errors + list((first_page or {}).get("errors", [])),
+        }
+
+    # action == "search": fresh pipeline run, page replaced, exclusions reset
+    payload_out = _run_search(decision["search_query"])
+    results = payload_out.get("results", [])
+    reply = decision["reply"]
+    if payload_out.get("no_match") or not results:
+        reply = (
+            "I couldn't find anything matching that in our catalogue. "
+            "Try describing it differently, or tell me more about what it's for."
+        )
+    return {
+        "reply": reply,
+        "action": "search",
+        # True => unrelated goal: the client starts a FRESH page, no appending
+        "new_topic": decision["new_topic"],
+        "search_query": decision["search_query"],
+        "exclusions": [],
+        "results": results,
+        "interpreted_as": payload_out.get("interpreted_as", []),
+        "constraints": payload_out.get("constraints", []),
+        "is_recipe": payload_out.get("is_recipe", False),
+        "bundle_type": payload_out.get("bundle_type"),
+        "no_match": payload_out.get("no_match", False),
+        "errors": errors + list(payload_out.get("errors", [])),
+    }
 
 
 class FeedbackIn(BaseModel):

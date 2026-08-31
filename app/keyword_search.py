@@ -1,12 +1,5 @@
-"""Keyword (lexical) search engine — the "existing retailer stack" that CAS
-plugs into. Modeled on eBay's Cassini: retrieve by keyword match over the
-title + item-specifics + category, then rank with a "Best Match" blend of text
-relevance and business signals (rating quality + review-count popularity).
-
-Deliberately NOT semantic. This is the baseline that context-aware search sits
-in front of, and the thing whose misses CAS is meant to catch. Self-contained
-BM25 (Okapi), no extra dependencies beyond numpy/pandas.
-"""
+"""Self-contained BM25 keyword search with a Best-Match blend of relevance and
+business signals. Deliberately NOT semantic — this is the CAS baseline."""
 
 import math
 import re
@@ -28,12 +21,7 @@ def _tokenize(text: str) -> List[str]:
 
 
 class KeywordSearchEngine:
-    """Okapi BM25 over a product catalog with Best-Match re-ranking.
-
-    text_fields are concatenated into the searchable document; title_weight
-    repeats the title so title matches count more (field boosting, like
-    Cassini weighting the title). Business signals: average_rating (quality)
-    and rating_number (popularity proxy — we have no sell-through data)."""
+    """Okapi BM25 over a product catalog with Best-Match re-ranking."""
 
     def __init__(
         self,
@@ -50,17 +38,7 @@ class KeywordSearchEngine:
         w_relevance: float = 0.7,
         w_popularity: float = 0.2,
         w_quality: float = 0.1,
-        # Fields the router's coverage (hit/miss) signal is measured against.
-        # Deliberately EXCLUDES prod_description: long descriptions contain
-        # incidental words ("breathable", "day"...) that inflate coverage and
-        # make intent queries look like keyword hits. Title + category +
-        # structured color/material is "what the product is" — the honest
-        # basis for "did the best lexical match actually contain what was
-        # asked?". color/material are short, precise values ("black",
-        # "cotton") that legit lexical queries name but titles sometimes omit.
-        # `occasion` is deliberately NOT here: its values (Casual, Party Wear,
-        # Wedding) overlap intent-query vocabulary and would false-hit the
-        # very queries the CAS fallback exists for.
+        # Hit/miss basis: excludes prod_description/occasion (they false-hit intents)
         coverage_fields: Tuple[str, ...] = (
             "Product_title", "categ_lvl2_name", "color", "material",
         ),
@@ -116,7 +94,7 @@ class KeywordSearchEngine:
             term: math.log(1 + (n - dfq + 0.5) / (dfq + 0.5))
             for term, dfq in df_count.items()
         }
-        # Business signals, coerced once (robust to messy numeric columns).
+        # Business signals, coerced once (robust to messy numeric columns)
         self._rating = self._numeric_column(self._df, self.rating_field)
         self._count = self._numeric_column(self._df, self.count_field)
 
@@ -140,10 +118,7 @@ class KeywordSearchEngine:
 
     @staticmethod
     def _numeric_column(df: pd.DataFrame, col: str) -> np.ndarray:
-        """Coerce a catalog column to a float array, robust to real-world mess:
-        object dtype, thousands separators ('1,203'), blanks, 'N/A', etc. all
-        become 0.0 rather than raising. Amazon data has these in rating_number
-        / average_rating, which otherwise crash the Best-Match math."""
+        """Coerce a column to floats; mess ('1,203', 'N/A', blanks) becomes 0.0."""
         if col not in df.columns:
             return np.zeros(len(df), dtype=float)
         s = df[col]
@@ -161,14 +136,9 @@ class KeywordSearchEngine:
         return (x - lo) / (hi - lo)
 
     def search(self, query: str, k: int = 12) -> Tuple[List[dict], int, float, float]:
-        """Return (results, num_matched, top_relevance, top_coverage).
+        """Return (results, num_matched, top_relevance, top_coverage), Best-Match ranked.
 
-        num_matched = docs sharing >=1 content term with the query.
-        top_relevance = best raw BM25 score.
-        top_coverage = fraction of the query's distinct content terms that
-        appear in the top-ranked result — the router's primary miss signal
-        ("did the best lexical match actually contain what was asked?").
-        Robust to result count and query length. Results are Best-Match ranked."""
+        top_coverage = fraction of the query's terms present in the top result."""
         if self._df is None:
             raise RuntimeError("KeywordSearchEngine.index() not called.")
         q_terms = _tokenize(query)
@@ -191,13 +161,7 @@ class KeywordSearchEngine:
         )
         order = np.argsort(-best_match)
 
-        # Coverage of the BEST LEXICAL match (BM25 argmax) — NOT the blended
-        # rank-1, whose popularity/quality terms can put a partial match on
-        # top and misreport an exact-match query as a miss. Measured against
-        # coverage_fields tokens only (title/category/color/material) — NOT
-        # the full document: a description mentioning "breathable"/"day" in
-        # passing must not make an intent query look like a keyword hit.
-        # (num_matched > 0 here, so argmax is a genuine positive match.)
+        # BM25 argmax, not blended rank-1: popularity can top-rank a partial match
         q_set = set(q_terms)
         top_doc_idx = int(np.argmax(bm25))
         top_tokens = self._coverage_tokens[top_doc_idx]
@@ -209,17 +173,12 @@ class KeywordSearchEngine:
         for j in order[:k]:
             cat_idx = int(idx[j])
             raw = self._df.iloc[cat_idx].to_dict()
-            # JSON-safe: ~99% of raw catalog rows carry NaN somewhere (price,
-            # color, rating...). Starlette serializes with allow_nan=False, so
-            # a NaN would 500 the endpoint after it returns; the UI's string
-            # handling (e.g. color.title()) also chokes on NaN floats.
+            # Starlette serializes with allow_nan=False — a NaN would 500 the endpoint
             row = {
                 key: (None if isinstance(v, float) and math.isnan(v) else v)
                 for key, v in raw.items()
             }
-            # The UI's click-through (/product detail page) is keyed on the
-            # catalog row id; the engine indexes the same catalog dataframe in
-            # the same order, so the positional index IS the catalog_index.
+            # Same catalog, same order — the positional index IS the catalog_index
             row["catalog_index"] = cat_idx
             row["keyword_score"] = round(float(bm25[idx[j]]), 4)
             row["best_match_score"] = round(float(best_match[j]), 4)

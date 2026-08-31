@@ -1,26 +1,4 @@
-"""Load Amazon Reviews 2023 metadata from LOCAL JSONL files.
-
-This loader matches the ACTUAL McAuley Lab JSONL schema, which differs
-from earlier doc examples in three ways:
-
-  1. images is a LIST of {hi_res, large, thumb, variant} dicts — not a
-     dict-of-lists. We prefer variant=MAIN and pick the best resolution.
-  2. details is ALREADY A DICT (e.g. {"Department": "womens", ...}) —
-     not a JSON-encoded string. We handle both for safety.
-  3. categories is empty [] in current dumps. We infer sub-category
-     from details.Department and from gender words in the title.
-
-Stream-reads with reservoir sampling, so even the 5 GB Electronics file
-never has to fit in memory.
-
-Usage:
-    python -m scripts.load_amazon_data                    # auto-detect, 20K per file
-    python -m scripts.load_amazon_data --n-per 50000      # larger sample
-    python -m scripts.load_amazon_data --files data/meta_Amazon_Fashion
-    python -m scripts.load_amazon_data --n-per -1         # take everything
-
-Output: data/products_amazon.csv
-"""
+"""Load Amazon Reviews 2023 meta_*.jsonl dumps into data/products_amazon.csv."""
 
 import argparse
 import json
@@ -124,8 +102,7 @@ def _parse_price(raw) -> Optional[float]:
 
 
 def _pick_image(images_field) -> str:
-    """images is a LIST of dicts: [{hi_res, large, thumb, variant}, ...].
-    Prefer variant=MAIN, then any. Within a dict prefer hi_res > large > thumb."""
+    """images is a LIST of dicts; prefer variant=MAIN, then hi_res > large > thumb."""
     if not isinstance(images_field, list) or not images_field:
         return ""
     main = [d for d in images_field if isinstance(d, dict) and d.get("variant") == "MAIN"]
@@ -139,7 +116,7 @@ def _pick_image(images_field) -> str:
 
 
 def _joined_description(desc_field) -> str:
-    """description is a list of strings. Join into one paragraph."""
+    """description is a list of strings in the dump, not a single string."""
     if isinstance(desc_field, list):
         return " ".join(d for d in desc_field if d)
     if isinstance(desc_field, str):
@@ -155,8 +132,7 @@ def _joined_features(features_field) -> str:
 
 
 def _extract_from_details(details_raw) -> dict:
-    """details is already a dict in the real dumps. Fall back to JSON parsing
-    for older formats. Pulls color/material/department/brand when present."""
+    """details is already a dict in the real dumps; JSON string is an older format."""
     out = {"color": "", "material": "", "department": "", "brand": ""}
     if not details_raw:
         return out
@@ -212,7 +188,7 @@ def _infer_category(title: str, dept: str, main_cat: str, vertical: str) -> str:
 
 
 def _infer_occasion(blob: str) -> str:
-    """Return the first matching occasion label, or '' if none."""
+    """First matching occasion label wins, or '' if none match."""
     t = (blob or "").lower()
     for label, patterns in _OCCASION_PATTERNS.items():
         for p in patterns:
@@ -269,11 +245,7 @@ def _convert_row(row: dict, vertical: str) -> dict:
 def _reservoir_sample_jsonl(
     path: Path, n: int, seed: int = 42, progress_every: int = 100_000
 ) -> list[dict]:
-    """One-pass uniform random sample of N parsed rows from a JSONL file.
-
-    Memory-bounded at O(N) regardless of file size. Skips malformed lines.
-    n < 0 means take everything.
-    """
+    """One-pass sample of N rows, memory-bounded at O(N); n < 0 takes everything."""
     rng = random.Random(seed)
     reservoir: list[dict] = []
     seen = 0
