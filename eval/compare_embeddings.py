@@ -1,29 +1,4 @@
-"""Compare embedding backends on the same eval set.
-
-Runs the eval pipeline once per model, swapping the global embedder. Pure
-retrieval comparison — reranker is disabled so we isolate the embedding model.
-
-Contenders (production default stays all-MiniLM-L6-v2 until this says otherwise):
-  - all-MiniLM-L6-v2        384-d, fast, free, CPU. Current production model.
-  - all-mpnet-base-v2       768-d, stronger, free, slower, CPU.
-  - BAAI/bge-m3             1024-d, MIT, multilingual; strong RAG baseline.
-                            Runs on CPU via sentence-transformers (no installer),
-                            ~2GB download, noticeably slower than MiniLM.
-  - Qwen/Qwen3-Embedding-8B top of the open MTEB leaderboard, but an 8B model:
-                            ~16GB RAM and very slow to encode 60K rows on CPU.
-                            Practical only on a GPU/cloud box — or swap to the
-                            lighter Qwen/Qwen3-Embedding-0.6B locally. Listed
-                            here so it's in the lineup; expect to run it elsewhere.
-
-All run through sentence-transformers (pip + HF download, no system installer).
-Anything starting with 'text-embedding-' would instead use the OpenAI path.
-
-Usage:
-    python -m eval.compare_embeddings
-    python -m eval.compare_embeddings --models all-MiniLM-L6-v2 BAAI/bge-m3
-
-Embeddings are cached per model name, so each model only re-embeds once.
-"""
+"""Compare embedding models on the same eval set, retrieval only."""
 
 import argparse
 import logging
@@ -43,6 +18,7 @@ def run_for_model(model_name: str):
 
     from app import search as search_module
 
+    # clear the cached df/embeddings so this model actually re-encodes
     search_module._df = None
     search_module._embeddings = None
     search_module._loaded_fields = ()

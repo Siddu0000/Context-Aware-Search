@@ -1,36 +1,4 @@
-"""Recipe-completeness eval for the grocery use case.
-
-  (2026-06-11) specified this QC: pick a few dishes, and check that
-the grocery search surfaces the INGREDIENTS needed to cook them. Target:
-70-80% of a dish's ingredients should appear in the top results.
-
-Methodology, per dish:
-  1. Query the pipeline with "ingredients to make <dish>".
-  2. Take the top-K result titles (default K=30 — recipes have many
-     ingredients, and   noted "the ingredients themselves would be
-     more than 10", so top-10 alone is too tight a window).
-  3. For each canonical ingredient, mark it FOUND if the ingredient word
-     (or any of its synonyms) appears in any result title.
-  4. coverage = found / total ingredients.
-
-Output: per-dish per-ingredient hit/miss grid, per-dish coverage, and an
-overall mean. Flags dishes below the target threshold.
-
-Notes / caveats this surfaces (worth telling  ):
-  - The "70 paneer sellers" problem: if the search returns 30 variants of
-    the headline ingredient, coverage of the OTHER ingredients suffers.
-    The per-ingredient grid makes this visible — you'll see paneer FOUND
-    but peas/cumin/cream MISSING. That argues for diversity/dedup in
-    retrieval (a separate P2 item).
-  - Requires the grocery catalog (Grocery_and_Gourmet_Food) to be loaded
-    into products.csv. If grocery rows are absent, coverage will be ~0 and
-    that's a data problem, not a ranking problem.
-
-Usage:
-    python -m eval.eval_recipe_completeness
-    python -m eval.eval_recipe_completeness --top-k 20
-    python -m eval.eval_recipe_completeness --query-template "buy ingredients for {dish}"
-"""
+"""Grocery eval: % of a dish's ingredients that appear in the top-K results."""
 
 import argparse
 import json
@@ -48,7 +16,6 @@ RECIPE_FILE = DATA_DIR / "recipe_eval.json"
 
 
 def _ingredient_terms(ingredient: str, synonyms: dict) -> list[str]:
-    """All title-substrings that count as a match for this ingredient."""
     terms = [ingredient.lower()]
     for syn in synonyms.get(ingredient, []):
         terms.append(syn.lower())
@@ -56,17 +23,11 @@ def _ingredient_terms(ingredient: str, synonyms: dict) -> list[str]:
 
 
 def _found_in_titles(terms: list[str], titles_blob: str) -> bool:
-    """True if any term appears as a substring in the concatenated titles."""
     return any(t in titles_blob for t in terms)
 
 
 def _search_titles(dish_query: str, top_k: int) -> list[str]:
-    """Run the pipeline (translate -> retrieve) and return top-K titles.
-
-    Rerank is intentionally skipped here: ingredient coverage is about what
-    the retrieval surfaces, and skipping rerank keeps the eval light on LLM
-    quota. (The reranker reorders but does not add new products.)
-    """
+    # rerank is skipped on purpose: it reorders but never adds products, and it costs quota
     intents = translate_query(dish_query)
     candidates = search_products(intents, top_k=top_k)
     return [c.get("Product_title", "") for c in candidates[:top_k]]

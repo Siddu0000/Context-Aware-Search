@@ -1,28 +1,4 @@
-"""End-to-end retrieval evaluation.
-
-Reads queries with relevance criteria from data/eval_queries.json, runs the
-pipeline on each, and computes:
-  - Precision@K (K=1,5,10)
-  - Recall@K   (K=10)
-  - MRR        (Mean Reciprocal Rank)
-  - NDCG@10
-  - Per-query latency per stage
-  - Token-cost proxy
-
-Usage:
-    python -m eval.run_eval                      # rerank ON, all fields
-    python -m eval.run_eval --no-rerank          # baseline HyDE-only
-    python -m eval.run_eval --exclude-description  # measure label-leakage
-    python -m eval.run_eval --tag custom         # name the output CSV
-
-Outputs land in eval_results/<tag>_<timestamp>.csv plus a stdout summary.
-
-Note on label leakage:
-The synthetic `prod_description` column was generated as a template from
-the color/material/occasion attributes — the same ones used here for
-relevance. Use --exclude-description to remove that column from the
-embedded search text and see how much of the precision was from leakage.
-"""
+"""End-to-end retrieval eval: runs data/eval_queries.json and writes eval_results/*.csv."""
 
 import argparse
 import csv
@@ -57,16 +33,7 @@ logging.basicConfig(level=logging.WARNING)
 
 
 def build_relevance_set(df: pd.DataFrame, criteria: dict) -> Set[str]:
-    """Resolve a query's relevance criteria against the catalog.
-
-    Supported keys:
-      - title_must_include:  all terms must appear in Product_title
-      - title_any_of:        any term may appear in Product_title
-      - color_in:            color matches one of these
-      - material_in:         material matches one of these
-      - occasion_in:         occasion matches one of these
-      - category_in:         bsns_vrtcl_name or categ_lvl2_name matches
-    """
+    """Resolve a query's relevance criteria into a set of matching Product_titles."""
     mask = pd.Series([True] * len(df))
 
     if "title_must_include" in criteria:

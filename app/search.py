@@ -1,9 +1,4 @@
-"""Retrieval over the product catalog.
-
-At boot: load CSV, build per-product search_text from configured fields,
-load embeddings from disk (cache keyed by CSV hash + model + field set) or
-compute and persist them.
-"""
+"""Cosine retrieval over the product catalog."""
 
 import hashlib
 import logging
@@ -116,13 +111,7 @@ def search_products(
     top_k: int = 30,
     per_intent_quota: Optional[int] = None,
 ) -> List[dict]:
-    """Scatter-gather retrieval: top_k candidates per intent, merged and
-    deduped by title, sorted by embedding score.
-
-    per_intent_quota (grocery mode): keep at most this many results from EACH
-    intent before merging, so no single intent (ingredient) crowds out the
-    others. None = no per-intent cap (default behaviour).
-    """
+    """Scatter-gather: top_k per intent, merged, deduped by title, score-sorted."""
     if _df is None or _embeddings is None:
         load_index()
     if not search_terms:
@@ -135,6 +124,7 @@ def search_products(
         indices, scores = search_vectors(vec, _embeddings, top_k=top_k)
         kept = 0
         for idx, score in zip(indices, scores):
+            # grocery mode: cap per intent so one ingredient can't crowd the rest out
             if per_intent_quota is not None and kept >= per_intent_quota:
                 break
             item = _df.iloc[int(idx)].to_dict()
@@ -157,8 +147,7 @@ def search_products(
 
 
 def best_score(candidates: List[dict]) -> float:
-    """Top embedding similarity in a candidate list (0.0 if empty).
-    Used to decide whether a query has any real match."""
+    """Top embedding similarity in a candidate list (0.0 if empty)."""
     scores = [
         c["score"] for c in candidates
         if isinstance(c.get("score"), (int, float))

@@ -1,29 +1,4 @@
-"""Cross-sell quality eval.
-
-The recommendation engine suggests COMPLEMENTARY products (things bought
-ALONGSIDE the anchor), grounded to real catalog items. This eval checks, per
-anchor query, whether the cross-sell results actually look complementary.
-
-Caveat (be honest about this): "complementary" is fuzzy and there is no ground
-truth in the data (no co-purchase signal — bought_together is empty). So this
-is a PROXY: for each anchor we list the complement categories a human would
-expect, and measure how many cross-sell results match one. It tells you the
-cross-sell is in the right ballpark, not that it is provably optimal.
-
-Per case it reports:
-  - complement_relevance: fraction of cross-sell items whose title matches an
-    expected complement term (higher is better).
-  - substitute_rate: fraction whose title matches a "substitute" term, i.e.
-    the engine suggested another of the same thing instead of a complement
-    (lower is better; optional per case).
-
-Needs the catalog loaded and the LLM configured (cross-sell makes an LLM call),
-same as eval/compare_llms.
-
-Usage:
-    python -m eval.eval_crosssell
-    python -m eval.eval_crosssell --top-k 12
-"""
+"""Cross-sell eval: proxy check that suggestions are complements, not substitutes."""
 
 import argparse
 import json

@@ -1,27 +1,11 @@
-"""LLM provider abstraction.
-
-Single interface across Gemini, OpenAI, Anthropic. Eval scripts swap
-providers (LLM_PROVIDER) and temperature (TEMPERATURE_OVERRIDE) at runtime
-without touching translator or reranker code.
-
-Why this module reads config dynamically (import app.config as cfg) instead
-of `from app.config import X`: a plain `from ... import X` binds a *copy* of
-the value at import time, so an eval script that sets `config.X = ...` later
-would have no effect here. Referencing cfg.X reads the live module attribute,
-so runtime overrides (provider switch, temperature sweep) work as expected.
-
-Lazy imports: a missing SDK (e.g. `openai` not installed) only errors when
-that provider is actually selected, not at import time.
-
-Determinism: when cfg.DETERMINISTIC is true, temperature resolves to 0 and a
-fixed seed is sent where the provider supports it. See cfg.effective_temperature.
-"""
+"""LLM provider abstraction — one interface over Gemini, OpenAI and Anthropic."""
 
 import json
 import logging
 import re
 from typing import Optional
 
+# Read as cfg.X, never `from app.config import X` — evals override cfg at runtime
 import app.config as cfg
 
 logger = logging.getLogger(__name__)
@@ -32,8 +16,7 @@ class LLMError(Exception):
 
 
 def error_code(exc: Exception) -> str:
-    """Extract a short, user-facing code from an exception (e.g. '503').
-    Falls back to the HTTP-like status in the message, then the class name."""
+    """Short code for an exception: explicit code, else HTTP status, else class name."""
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
     if code:
         return str(code)
@@ -135,11 +118,7 @@ _singleton_provider: Optional[str] = None
 
 
 def get_llm_client():
-    """Return the configured backend (singleton per provider).
-
-    Reads cfg.LLM_PROVIDER dynamically so eval scripts can switch providers
-    at runtime (reset the singleton by setting _singleton = None).
-    """
+    """Return the configured backend; rebuilt when cfg.LLM_PROVIDER changes."""
     global _singleton, _singleton_provider
     provider = cfg.LLM_PROVIDER
     if _singleton is not None and _singleton_provider == provider:
@@ -163,11 +142,7 @@ def get_llm_client():
 
 
 def generate_json(prompt: str, temperature: float = 0.2) -> dict:
-    """Convenience wrapper that parses the response as JSON.
-
-    Strips common code-fence wrappers some models add. Raises LLMError if
-    the response can't be parsed.
-    """
+    """Call the backend and parse the reply as JSON, tolerating code-fence wrappers."""
     client = get_llm_client()
     raw = client.generate_json(prompt, temperature)
     text = raw.strip().removeprefix("```json").removesuffix("```").strip()

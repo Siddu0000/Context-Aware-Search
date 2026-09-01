@@ -1,12 +1,4 @@
-"""Single in-memory result cache for search.
-
-Caches the full ranked pool for a query+settings combo. This makes both
-repeat searches and page 2+ of the same search instant (no LLM calls). Only
-clean runs are cached — the caller must NOT store a degraded result (e.g. one
-where the reranker fell back after an LLM error), so a retry can hit the LLM
-again. Process-local; cleared on restart. Separate from the on-disk catalog
-embedding cache.
-"""
+"""In-memory LRU cache of the ranked pool per query+settings, so page 2+ is instant."""
 
 from collections import OrderedDict
 from threading import Lock
@@ -31,6 +23,7 @@ def get(key: str) -> Optional[Any]:
 
 
 def put(key: str, value: Any) -> None:
+    # callers must only store clean runs, so a degraded LLM fallback retries next time
     with _lock:
         _store[key] = value
         _store.move_to_end(key)

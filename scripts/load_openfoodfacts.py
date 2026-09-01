@@ -1,19 +1,4 @@
-"""Optional supplement: load Open Food Facts grocery data with nutrition.
-
-Use this on top of the Amazon Grocery_and_Gourmet_Food data IF you want
-real nutrition columns (calories, protein, carbs, fat) for the diet /
-meal-plan use case   described. Amazon's grocery metadata has
-descriptions but no structured nutrition.
-
-ODbL-licensed (commercially usable, unlike Amazon Reviews 2023).
-
-Usage:
-    python -m scripts.load_openfoodfacts                # 5000 products, worldwide
-    python -m scripts.load_openfoodfacts --country india --n 2000
-    python -m scripts.load_openfoodfacts --n 10000
-
-Output: data/products_grocery.csv  (separate from products_amazon.csv)
-"""
+"""Load Open Food Facts grocery rows with nutrition (ODbL, commercially usable)."""
 
 import argparse
 import logging

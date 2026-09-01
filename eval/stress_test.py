@@ -1,28 +1,4 @@
-"""Stress test — robustness against weird / edge-case / nonsense queries.
-
-  (2026-06-11): "stress test this — take queries from GPT, try some
-edge cases, some really weird things, some nonsensical things, and see what
-comes out."
-
-This is NOT a precision test (these queries have no ground truth). It checks
-that the pipeline HANDLES every input GRACEFULLY:
-  - does it return without throwing?
-  - how many results come back?
-  - did the translator fall back to the raw query (a sign it couldn't make
-    sense of the input)?
-  - how long did it take?
-
-A healthy system never crashes here. Empty/nonsense queries should return
-*something* (or cleanly nothing) without a 500-style error. Injection-like
-strings ('; DROP TABLE ...) must be treated as plain text, never executed.
-
-Reads queries from data/stress_queries.json.
-
-Usage:
-    python -m eval.stress_test
-    python -m eval.stress_test --rerank          # also exercise the reranker
-    python -m eval.stress_test --top-k 5
-"""
+"""Stress test: measures graceful handling of edge/nonsense queries, not precision."""
 
 import argparse
 import json

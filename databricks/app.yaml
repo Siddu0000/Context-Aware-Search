@@ -1,0 +1,7 @@
+# Deploys the Streamlit UI on Databricks Apps. COST: bills while running - stop it outside demos.
+command: ["streamlit", "run", "ui.py", "--server.port", "8000", "--server.headless", "true"]
+env:
+  - name: "BACKEND_URL"
+    value: "http://127.0.0.1:8001"   # FastAPI runs alongside; see README
+  - name: "STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION"
+    value: "false"

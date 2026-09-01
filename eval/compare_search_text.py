@@ -1,24 +1,4 @@
-"""Compare different `search_text` constructions.
-
-In document RAG, "chunking" means deciding how to split a long document into
-pieces. In a product catalog there's no long doc — each product IS one chunk.
-The analogous question is: which FIELDS get concatenated into the searchable
-text per product?
-
-This script runs the eval N times with different field sets and reports
-retrieval quality so you can pick the best combination. The "fixed vs
-semantic chunking" framing from generic RAG translates here to:
-
-  - fixed/minimal  ->  Product_title only
-  - fixed/full     ->  every text field concatenated
-  - selective      ->  title + description (skip noisy color/category)
-  - semantic       ->  weighted: title + description (weighted heavier)
-
-Usage:
-    python -m eval.compare_search_text
-
-Reranker is disabled so the differences are purely from retrieval quality.
-"""
+"""Compare which catalog fields are concatenated into each product's search_text."""
 
 import logging
 import time

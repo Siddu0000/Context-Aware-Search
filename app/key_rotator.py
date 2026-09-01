@@ -1,17 +1,4 @@
-"""Multi-key Gemini API rotator with automatic 429 failover.
-
-Implements  's suggestion (June 4): create multiple free Gemini API
-keys with personal Gmail IDs, rotate between them when one hits quota.
-
-Strategy:
-1. Round-robin across the configured keys (load-balances burn).
-2. On 429 RESOURCE_EXHAUSTED, mark that key as cooling for `cool_seconds`
-   and immediately retry the next key.
-3. If ALL keys are cooling, raise — the caller's try/except will fall back.
-
-Why round-robin instead of "use key 1 until exhausted": round-robin distributes
-load and avoids one key burning to zero while others sit idle.
-"""
+"""Multi-key Gemini API rotator with automatic 429 failover."""
 
 import logging
 import threading
@@ -28,10 +15,7 @@ class KeyExhausted(Exception):
 
 
 class GeminiKeyRotator:
-    """Wraps a pool of API keys, presenting a single .generate_content() interface.
-
-    Thread-safe: a Lock guards the rotation pointer and cool-down map.
-    """
+    """Pool of API keys behind one .generate_content(); a Lock guards rotation state."""
 
     def __init__(self, api_keys: List[str], cool_seconds: int = 60):
         if not api_keys:
@@ -44,6 +28,7 @@ class GeminiKeyRotator:
         self._cool_seconds = cool_seconds
         logger.info("Gemini key rotator initialized with %d key(s).", len(self._keys))
 
+    # Round-robin, not use-until-exhausted: spreads burn instead of draining one key
     def _next_index(self, skip: Optional[set] = None) -> int:
         """Advance the round-robin cursor, skipping cooling keys."""
         skip = skip or set()
@@ -68,11 +53,7 @@ class GeminiKeyRotator:
         )
 
     def generate_content(self, model: str, contents: str, config: dict):
-        """Identical signature to genai.Client.models.generate_content().
-
-        Rotates keys on 429 errors. Raises the last error if all keys are
-        cooling.
-        """
+        """Mirrors genai.Client.models.generate_content(), rotating keys on 429."""
         tried = set()
         last_err: Optional[Exception] = None
         for _ in range(len(self._clients)):

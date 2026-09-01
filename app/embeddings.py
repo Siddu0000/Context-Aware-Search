@@ -1,14 +1,4 @@
-"""Embedding layer.
-
-Supports multiple backends behind a single interface so the eval harness can
-compare models on the same data without code changes elsewhere:
-- sentence-transformers (default, CPU-friendly, free)
-- OpenAI text-embedding-3-* (optional, requires OPENAI_API_KEY)
-
-The backend is selected by name. Anything starting with 'text-embedding-' is
-treated as OpenAI; everything else is treated as a sentence-transformers
-model name.
-"""
+"""Embedding layer: sentence-transformers or OpenAI behind one interface."""
 
 import logging
 import os
@@ -121,7 +111,6 @@ def get_default_embedder() -> Embedder:
 
 
 def embed_text(texts: List[str]) -> np.ndarray:
-    """Convenience wrapper that uses the default embedder."""
     return get_default_embedder().encode(texts)
 
 
