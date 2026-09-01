@@ -33,13 +33,20 @@ Rules:
     Components = shoppable ingredients. Omit water, salt/pepper to taste and
     equipment. Honor dietary constraints in the list itself (an eggless cake
     gets no eggs).
-  * "outfit" — clothing for a person/occasion ("outfit for a beach wedding",
-    "what to wear to an interview", "office look for men", "back to school
-    clothes for my son"). Components = the garment SLOTS that complete the
-    look: top, bottom (or a dress), footwear, outerwear if the weather/occasion
-    needs it, and 1-2 accessories. Apply the stated gender/age to EVERY
-    component ("men's oxford shirt", "boys' sneakers") — never mix genders in
-    one outfit. If no gender is stated, leave components gender-neutral.
+  * "outfit" — ONLY when the shopper explicitly asks to be STYLED or to have a
+    whole look assembled: "complete the outfit", "complete my look", "head to
+    toe", "style me", "what goes with a navy suit", "accessorise this". The
+    word "outfit" itself counts. Components = the garment SLOTS that complete
+    the look: top, bottom (or a dress), footwear, outerwear if the
+    weather/occasion needs it, and 1-2 accessories. Apply the stated gender/age
+    to EVERY component ("men's oxford shirt", "boys' sneakers") — never mix
+    genders in one outfit. If no gender is stated, leave components
+    gender-neutral.
+    NOT an outfit bundle: asking for GARMENTS for an occasion — "clothes for a
+    desert wedding", "what should I wear to an interview", "dress for a party",
+    "back to school clothes for my son". The shopper may only want the dress,
+    not shoes and earrings as well, so these are ORDINARY searches:
+    bundle_type is null and the normal {NUM_INTENTS}-intent rule applies.
   * "setup" — a multi-device/accessory arrangement ("home office setup",
     "gaming setup", "what do I need for a home studio", "travel tech kit").
     Components = the distinct devices/accessories that complete it, including
@@ -182,17 +189,14 @@ _RECIPE_PATTERNS = [
 
 
 # Cheap fast-path so obvious cases don't need the LLM, and a fallback if it fails
+# Outfit needs an EXPLICIT styling ask: "clothes for X" wants garments, not hats
 _OUTFIT_PATTERNS = [
     r"\boutfits?\b",
-    r"\b(what|something) to wear\b",
-    r"\bwhat should i wear\b",
-    r"\b(dress|dressed|dressing) (for|up)\b",
-    r"\b(complete|full|entire|whole) (the )?(look|outfit|ensemble)\b",
-    r"\b(look|ensemble|attire|wardrobe|clothing|clothes)\s+for\b",
+    r"\b(complete|full|entire|whole) (the |my |this )?(look|outfit|ensemble)\b",
     r"\bhead to toe\b",
-    r"\bstyle me\b",
-    r"\b(back to school|holiday|vacation|interview|wedding guest)\s+"
-    r"(clothes|clothing|outfit|wardrobe)\b",
+    r"\b(style|dress) me\b",
+    r"\bwhat (else )?goes with\b",
+    r"\baccessori[sz]e\b",
 ]
 _SETUP_PATTERNS = [
     r"\bsetups?\b",
