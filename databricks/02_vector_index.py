@@ -4,9 +4,17 @@ import sys
 
 from databricks.vector_search.client import VectorSearchClient
 
-ENDPOINT = "cas-search"
-TABLE = "main.cas.products"
-INDEX = "main.cas.products_index"
+import os
+
+# The workspace catalog. `dev` is what we have write access to on the LatentView
+# workspace; override with CAS_CATALOG / CAS_SCHEMA for any other workspace.
+CATALOG = os.getenv("CAS_CATALOG", "dev")
+SCHEMA = os.getenv("CAS_SCHEMA", "cas")
+ENDPOINT = os.getenv("CAS_ENDPOINT", "cas-search")
+TABLE = f"{CATALOG}.{SCHEMA}.products"
+INDEX = f"{CATALOG}.{SCHEMA}.products_index"
+
+print(f"endpoint: {ENDPOINT}\nindex: {INDEX}\nsource: {TABLE}")
 
 client = VectorSearchClient()  # picks up workspace auth / env vars
 

@@ -6,8 +6,14 @@ import os
 from databricks.vector_search.client import VectorSearchClient
 from openai import OpenAI  # FM APIs speak the OpenAI protocol
 
-ENDPOINT = "cas-search"
-INDEX = "main.cas.products_index"
+import os
+
+# The workspace catalog. `dev` is what we have write access to on the LatentView
+# workspace; override with CAS_CATALOG / CAS_SCHEMA for any other workspace.
+CATALOG = os.getenv("CAS_CATALOG", "dev")
+SCHEMA = os.getenv("CAS_SCHEMA", "cas")
+ENDPOINT = os.getenv("CAS_ENDPOINT", "cas-search")
+INDEX = f"{CATALOG}.{SCHEMA}.products_index"
 
 vs = VectorSearchClient()
 idx = vs.get_index(endpoint_name=ENDPOINT, index_name=INDEX)

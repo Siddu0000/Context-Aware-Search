@@ -1,9 +1,16 @@
 """Step 1: products.csv -> Unity Catalog Delta table (with Change Data Feed)."""
 
-CATALOG = "main"          # confirm the workspace catalog before running
-SCHEMA = "cas"
+import os
+
+# The workspace catalog. `dev` is what we have write access to on the LatentView
+# workspace; override with CAS_CATALOG / CAS_SCHEMA for any other workspace.
+CATALOG = os.getenv("CAS_CATALOG", "dev")
+SCHEMA = os.getenv("CAS_SCHEMA", "cas")
 TABLE = f"{CATALOG}.{SCHEMA}.products"
-CSV_PATH = "/Volumes/main/cas/raw/products.csv"  # upload CSV to a UC Volume first
+# Upload products.csv to this volume first -- it is gitignored (192MB)
+CSV_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw/products.csv"
+
+print(f"target table: {TABLE}\nreading: {CSV_PATH}")
 
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 
