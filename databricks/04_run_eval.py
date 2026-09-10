@@ -16,10 +16,12 @@ import sys
 from pathlib import Path
 
 # ---------------------------------------------------------------- config
-ENDPOINT = "cas-search"
-INDEX = "main.cas.products_index"
-TABLE = "main.cas.products"
-RESULTS_VOLUME = "/Volumes/main/cas/evals"   # durable; the repo dir is not
+CATALOG = os.getenv("CAS_CATALOG", "dev")
+SCHEMA = os.getenv("CAS_SCHEMA", "cas")
+ENDPOINT = os.getenv("CAS_ENDPOINT", "cas-search")
+INDEX = f"{CATALOG}.{SCHEMA}.products_index"
+TABLE = f"{CATALOG}.{SCHEMA}.products"
+RESULTS_VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/evals"   # durable; the repo dir is not
 
 # Every column app/reranker.py reads, plus the primary key. Miss one and the
 # reranker silently sees empty strings and scores worse for the wrong reason.
