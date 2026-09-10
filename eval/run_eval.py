@@ -94,10 +94,12 @@ def evaluate(
 
         timings = StageTimings()
         tokens_in = 0
+        # A silent LLM fallback makes a degraded run look like a clean one
+        stage_errors: list = []
 
         with timings.stage("translate"):
             if translate_on:
-                intents = translate_query(query)
+                intents = translate_query(query, errors=stage_errors)
                 tokens_in += approx_tokens(query)
             else:
                 intents = [query]
@@ -107,7 +109,9 @@ def evaluate(
 
         if rerank_on and candidates:
             with timings.stage("rerank"):
-                final = llm_rerank(query, candidates, top_k=FINAL_TOP_K)
+                final = llm_rerank(
+                    query, candidates, top_k=FINAL_TOP_K, errors=stage_errors
+                )
                 tokens_in += sum(
                     approx_tokens(c.get("Product_title", ""))
                     for c in candidates[: max(FINAL_TOP_K * 3, 30)]
@@ -132,6 +136,9 @@ def evaluate(
                 "ms_rerank": timings.timings_ms.get("rerank", 0),
                 "ms_total": timings.total_ms,
                 "tokens_in_approx": tokens_in,
+                "fell_back": ";".join(
+                    str(e.get("stage")) for e in stage_errors
+                ) or "",
             }
         )
 
@@ -149,6 +156,11 @@ def evaluate(
             writer.writerows(rows)
 
     print("\n=== Summary ===")
+    degraded = [r for r in rows if r["fell_back"]]
+    if degraded:
+        print(f"  !! {len(degraded)}/{len(rows)} QUERIES RAN DEGRADED "
+              f"({ {r['fell_back'] for r in degraded} }) -- these metrics do NOT "
+              "measure the full pipeline. Fix the cause before quoting them.")
     if rows:
         for col in ("P@1", "P@5", "P@10", "R@10", "MRR", "NDCG@10", "ms_total"):
             print(f"  mean_{col:9s} = {mean(r[col] for r in rows):.3f}")
