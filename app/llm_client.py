@@ -76,9 +76,10 @@ class _OpenAIBackend:
             "temperature": cfg.effective_temperature(temperature),
             "response_format": {"type": "json_object"},
         }
-        if _use_seed():
-            params["seed"] = cfg.LLM_SEED
         base = (cfg.OPENAI_BASE_URL or "").lower()
+        # Databricks FM APIs reject unknown fields: `seed` 400s the whole call
+        if _use_seed() and "serving-endpoints" not in base:
+            params["seed"] = cfg.LLM_SEED
         if "groq" in base and cfg.GROQ_REASONING_FORMAT:
             params["extra_body"] = {"reasoning_format": cfg.GROQ_REASONING_FORMAT}
         resp = self.client.chat.completions.create(**params)
