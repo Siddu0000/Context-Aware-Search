@@ -24,6 +24,36 @@ def error_code(exc: Exception) -> str:
     return m.group(1) if m else exc.__class__.__name__
 
 
+def _message_text(content) -> str:
+    """Flatten an assistant message to text.
+
+    Most providers return a plain string. Databricks FM APIs return a LIST of
+    typed blocks for reasoning models; the chain-of-thought arrives as
+    "reasoning" blocks which must be dropped, not parsed as JSON.
+    """
+    if isinstance(content, str):
+        return content
+    if content is None:
+        return ""
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+                continue
+            if isinstance(block, dict):
+                btype, text = block.get("type"), block.get("text")
+            else:
+                btype = getattr(block, "type", None)
+                text = getattr(block, "text", None)
+            if btype == "reasoning":
+                continue
+            if isinstance(text, str):
+                parts.append(text)
+        return "".join(parts)
+    return str(content)
+
+
 def _use_seed() -> bool:
     """Send a fixed seed only in true deterministic mode (not during a sweep)."""
     return cfg.DETERMINISTIC and cfg.TEMPERATURE_OVERRIDE is None
@@ -83,7 +113,7 @@ class _OpenAIBackend:
         if "groq" in base and cfg.GROQ_REASONING_FORMAT:
             params["extra_body"] = {"reasoning_format": cfg.GROQ_REASONING_FORMAT}
         resp = self.client.chat.completions.create(**params)
-        return resp.choices[0].message.content
+        return _message_text(resp.choices[0].message.content)
 
 
 class _AnthropicBackend:
@@ -146,7 +176,11 @@ def generate_json(prompt: str, temperature: float = 0.2) -> dict:
     """Call the backend and parse the reply as JSON, tolerating code-fence wrappers."""
     client = get_llm_client()
     raw = client.generate_json(prompt, temperature)
+    if not isinstance(raw, str):
+        raw = _message_text(raw)
     text = raw.strip().removeprefix("```json").removesuffix("```").strip()
+    if not text:
+        raise LLMError("LLM returned no text content (reasoning-only reply?)")
     try:
         return json.loads(text)
     except json.JSONDecodeError as e:
