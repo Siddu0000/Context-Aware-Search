@@ -39,5 +39,8 @@ index = client.create_delta_sync_index(
     embedding_source_column="search_text",
     embedding_model_endpoint_name="databricks-gte-large-en",
 )
-print(f"Index {INDEX} creating; initial sync of 300K rows runs on the platform "
-      "(minutes, not the 25 hours the local CPU encode took).")
+# Measured 2026-09-11: ~2,350 rows/min, so 300K rows = ~2 HOURS for the initial
+# snapshot. The endpoint bills hourly from creation, so a rebuild is never cheap.
+print(f"Index {INDEX} creating. Initial snapshot of 300K rows takes ~2 HOURS "
+      "on a STANDARD endpoint (measured ~2,350 rows/min) -- far better than the "
+      "25h local CPU encode, but it bills the whole time. Do not rebuild casually.")
