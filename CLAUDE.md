@@ -44,7 +44,11 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
   small models were tested. bge-m3 (568M) was worse AND ~5h to encode; 8B impractical on CPU. REVERT =
   EMBEDDING_MODEL=all-MiniLM-L6-v2 (one line). Switching invalidates the on-disk embedding cache ->
   next boot re-encodes 60K once. Shared weak queries ("warm wool sweater", "power bank", "chocolate
-  protein bars") are low for ALL models = catalog coverage gaps, not a ranking bug.
+  protein bars") are low for every SMALL model. This was recorded as "catalog
+  coverage gaps, not a ranking bug" — that was WRONG, disproven 2026-09-11:
+  databricks-gte-large-en recovers all three (NDCG 0.93 / 0.78 / 0.80). The
+  products were in the catalog; gte-small could not retrieve them. Treat weak
+  queries as a retrieval-capacity signal, not evidence of missing data.
 - **TRANSLATOR_MODE = query_expansion.** Benchmarked 2026-06-10 vs HyDE and hybrid
   (`eval/compare_translators.py`). query_expansion won decisively: P@1 1.000, NDCG 0.904
   vs HyDE 0.750/0.716. HyDE drifts lexically from short Amazon titles. Hybrid inherits
@@ -258,6 +262,90 @@ that demos stay clean.
 - `is_recipe` MUST come from the API response, never inferred from `source_intent`
   (which is set on every result for every query — inferring it labelled a
   wool-sweater search as a "Shopping list").
+
+## Databricks migration — VERIFIED RESULTS (2026-09-11)
+
+Ran end to end on Azure workspace `adb-7855330416659580`, catalog `dev`, schema
+`cas`. Everything below is measured, not projected.
+
+**Both models are now Databricks-hosted. No external API key, no Groq.**
+- embeddings: `databricks-gte-large-en` (1024-dim), managed delta-sync index
+  `dev.cas.products_index` — the platform embeds the `search_text` column, so
+  `app/embeddings.py` and the local encode are unused on this path.
+- LLM: `databricks-gpt-oss-120b` via Foundation Model APIs. Reached through the
+  existing OpenAI-compatible backend (`OPENAI_BASE_URL` = `<host>/serving-endpoints`,
+  `OPENAI_API_KEY` = a Databricks token). Those env names describe the PROTOCOL,
+  not the vendor — nothing leaves the workspace.
+
+### Retrieval quality: gte-large-en BEATS gte-small on every metric
+18-query 3-vertical set, rerank OFF, clean run (no degraded queries):
+
+| metric | gte-small 384d (local) | gte-large-en 1024d | delta |
+|---|---|---|---|
+| P@1     | 0.944 | **1.000** | +0.056 |
+| P@10    | 0.917 | **0.944** | +0.027 |
+| MRR     | 0.972 | **1.000** | +0.028 |
+| NDCG@10 | 0.927 | **0.955** | +0.028 |
+| ms_total| 3,230 | 3,797 | +567 (+18%) |
+
+MRR 1.000 = the top hit was relevant for all 18 queries. **DECISION: use managed
+embeddings.** The argument for a self-managed index (preserving gte-small's
+numbers) is dead — gte-large-en is simply better. Latency is +18% on the full
+pipeline, NOT the 10x an earlier note implied; that comparison wrongly used an
+isolated retrieval microbenchmark (~373ms) against a full-pipeline total.
+
+Lost on managed embeddings: the index embeds ONE column fixed at creation, so
+`--exclude-description` and `compare_search_text` have no cheap equivalent, and
+each extra embedding contender costs a whole index (see timing below).
+
+### Provider quirks that cost us three failed runs — all now handled in code
+1. **`seed` is REJECTED, not ignored.** `DETERMINISTIC=true` sends a fixed seed;
+   FM APIs 400 with `unknown field "seed"`. Gated on the base URL in
+   `llm_client.py`, same as GROQ_REASONING_FORMAT. Groq/OpenAI still get it.
+2. **Content comes back as TYPED BLOCKS, not a string.** Reasoning models return
+   `[{"type":"reasoning",...},{"type":"text","text":"{...}"}]`, so `raw.strip()`
+   raised `AttributeError: 'list' object has no attribute 'strip'`.
+   `_message_text()` drops reasoning blocks and keeps text ones — the structural
+   equivalent of Groq's `reasoning_format=hidden`, which does not exist here.
+3. **The prompt MUST contain the literal word "json"** when
+   `response_format={"type":"json_object"}` is sent, else 400. All 9 current
+   prompts satisfy this by luck ("Output ONLY valid JSON"). A new prompt saying
+   "return a dict" would work on Groq and 400 here.
+4. **Index build takes ~2 HOURS for 300K rows** (~2,350 rows/min), not "minutes".
+   The STANDARD endpoint bills hourly FROM CREATION, so teardown-and-rebuild is a
+   2-hour lead time and ~2 endpoint-hours — never a casual action.
+
+### Why (1) and (2) were dangerous rather than just annoying
+Both failed INVISIBLY: `translate_query` degrades to the raw query on error, so
+the eval measured raw-query retrieval and reported it as the CAS pipeline —
+plausible numbers (NDCG 0.654), completely invalid. Same failure that produced
+the bogus `gemma2-9b-it` row in `eval_results` (metrics identical to the
+embedding-only baseline, 66ms "rerank"). `run_eval.py` now threads an errors
+list through translate AND rerank, writes a **`fell_back`** column per query, and
+prints a loud banner. **Never read an eval number without checking `fell_back`.**
+
+### Running the eval on Databricks (databricks/)
+`vs_shim.py` holds the shared shim; it patches `eval.run_eval`'s globals —
+NOT `app.search`, because run_eval does `from app.search import search_products`
+which binds at import time. `compare_llms` and `compare_translators` both call
+`run_eval.evaluate()`, so the one patch covers all three harnesses (verified).
+- `04_run_eval.py` — retrieval eval; `--rerank` for the full pipeline
+- `05_compare_llms.py` — `list_models()` then `run([...])`; rerank ON, so it
+  tests intent generation AND reranking. Endpoint NAMES, not vendor model ids.
+- `06_compare_translators.py` — query_expansion vs hyde vs hybrid, rerank OFF,
+  isolating intent generation. The local verdict (query_expansion 0.904 vs HyDE
+  0.716) was measured on gte-small and is worth re-checking on gte-large-en.
+Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
+
+### Still open
+- `catalog_index` uses `monotonically_increasing_id()` — sparse and
+  partition-dependent, whereas locally it is a ROW POSITION used by
+  `GET /product?catalog_index=`. Harmless for the eval (which compares titles
+  only), MUST be fixed before pointing the API at Databricks.
+- No MLflow. `approx_tokens` is `len//4` on INPUT only, and `resp.usage` is
+  discarded — so real token cost is unknown, which matters now that tokens are
+  billed. `mlflow.openai.autolog()` is the cheap fix.
+- rerank-ON comparison vs the recorded Groq NDCG 0.950 not yet run.
 
 ## Conventions
 - Prose comments explaining WHY, not what. Keep functions small and pure where possible.
