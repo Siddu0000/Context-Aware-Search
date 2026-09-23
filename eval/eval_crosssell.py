@@ -15,12 +15,16 @@ logging.basicConfig(level=logging.WARNING)
 CROSS_SELL_FILE = DATA_DIR / "cross_sell_eval.json"
 
 
-def _cross_sell_titles(query: str, top_k: int) -> list[str]:
-    intents = translate_query(query)
+def _cross_sell_titles(query: str, top_k: int) -> tuple[list[str], str | None, list]:
+    """(titles, cross_sell_source, errors) -- a fallback source means look-alikes, not complements."""
+    errors: list = []
+    intents = translate_query(query, errors=errors)
     candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
     results = candidates[:top_k]
     rec = recommend(query, results)
-    return [c.get("Product_title", "") for c in rec.get("cross_sell", [])]
+    errors += rec.get("errors") or []
+    titles = [c.get("Product_title", "") for c in rec.get("cross_sell", [])]
+    return titles, rec.get("cross_sell_source"), errors
 
 
 def _any_match(terms: list[str], title_lower: str) -> bool:
@@ -37,14 +41,20 @@ def main():
     spec = json.loads(CROSS_SELL_FILE.read_text(encoding="utf-8"))
     cases = spec["cases"]
 
-    rel_scores, sub_scores = [], []
+    rel_scores, sub_scores, degraded = [], [], []
     print(f"\n=== Cross-sell eval — {len(cases)} anchors ===")
     for case in cases:
         query = case["query"]
         complement = case.get("expect_complement_any", [])
         substitute = case.get("avoid_substitute_any", [])
 
-        titles = _cross_sell_titles(query, args.top_k)
+        titles, source, errors = _cross_sell_titles(query, args.top_k)
+        if errors or (titles and source != "llm"):
+            # A fallback strip is embedding look-alikes: scoring it would reward substitutes
+            degraded.append(query)
+            stages = ", ".join(sorted({e.get("stage", "?") for e in errors})) or source
+            print(f"\nANCHOR: {query!r}\n  DEGRADED ({stages}) -- not scored")
+            continue
         if not titles:
             print(f"\nANCHOR: {query!r}\n  (no cross-sell returned — LLM/quota issue or empty pool)")
             continue
@@ -72,6 +82,8 @@ def main():
             print(r)
 
     print("\n" + "=" * 60)
+    if degraded:
+        print(f"!! {len(degraded)}/{len(cases)} anchors DEGRADED and excluded: {degraded}")
     if rel_scores:
         print(f"mean complement_relevance: {mean(rel_scores):.1%}")
     if sub_scores:

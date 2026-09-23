@@ -189,7 +189,40 @@ def _use_seed() -> bool:
     return cfg.DETERMINISTIC and cfg.TEMPERATURE_OVERRIDE is None
 
 
+def _openai_endpoint_takes_seed() -> bool:
+    # Databricks FM APIs reject unknown fields: `seed` 400s the whole call
+    return "serving-endpoints" not in (cfg.OPENAI_BASE_URL or "").lower()
+
+
+def seed_sent() -> bool:
+    """Whether LLM calls made now carry a fixed seed, i.e. can be reproduced.
+
+    DETERMINISTIC=true alone does not mean seeded: Databricks and Anthropic get none.
+    Mirrors the backends' own gates, so an eval can log what was actually sent.
+    """
+    if not _use_seed():
+        return False
+    if cfg.LLM_PROVIDER == "gemini":
+        return True
+    if cfg.LLM_PROVIDER == "openai":
+        return _openai_endpoint_takes_seed()
+    return False
+
+
+def param_downgrades() -> dict:
+    """Models that silently run WITHOUT JSON mode or temperature (learned on refusal).
+
+    Neither is an error, so fell_back never shows them; evals must report them.
+    """
+    return {
+        "json_mode_dropped": sorted(_NO_JSON_MODE),
+        "temperature_dropped": sorted(_NO_TEMPERATURE),
+    }
+
+
 class _GeminiBackend:
+    base_url = None  # identity for get_llm_client(); Gemini has no configurable endpoint
+
     def __init__(self):
         if not cfg.GOOGLE_API_KEYS:
             raise LLMError(
@@ -229,6 +262,7 @@ class _OpenAIBackend:
             **({"base_url": cfg.OPENAI_BASE_URL} if cfg.OPENAI_BASE_URL else {}),
         )
         self.model = cfg.OPENAI_MODEL
+        self.base_url = cfg.OPENAI_BASE_URL
 
     def _params(self, prompt: str, temperature: float, json_mode: bool,
                 send_temperature: bool = True) -> dict:
@@ -244,8 +278,7 @@ class _OpenAIBackend:
         if json_mode:
             params["response_format"] = {"type": "json_object"}
         base = (cfg.OPENAI_BASE_URL or "").lower()
-        # Databricks FM APIs reject unknown fields: `seed` 400s the whole call
-        if _use_seed() and "serving-endpoints" not in base:
+        if _use_seed() and _openai_endpoint_takes_seed():
             params["seed"] = cfg.LLM_SEED
         if "groq" in base and cfg.GROQ_REASONING_FORMAT:
             params["extra_body"] = {"reasoning_format": cfg.GROQ_REASONING_FORMAT}
@@ -280,6 +313,8 @@ class _OpenAIBackend:
 
 
 class _AnthropicBackend:
+    base_url = None  # identity for get_llm_client(); direct Anthropic has one endpoint
+
     def __init__(self):
         if not cfg.ANTHROPIC_API_KEY:
             raise LLMError("ANTHROPIC_API_KEY not set.")
@@ -308,15 +343,44 @@ class _AnthropicBackend:
         return resp.content[0].text
 
 
+# Set both to None to force a rebuild (eval/compare_llms.py does). The model and
+# base URL a backend was built for live on the backend itself, not here.
 _singleton: Optional[object] = None
 _singleton_provider: Optional[str] = None
 
 
+def _wanted() -> tuple:
+    """(provider, model, base_url) that cfg selects right now."""
+    provider = cfg.LLM_PROVIDER
+    if provider == "openai":
+        return provider, cfg.OPENAI_MODEL, cfg.OPENAI_BASE_URL
+    model = {"gemini": cfg.GEMINI_MODEL, "anthropic": cfg.ANTHROPIC_MODEL}.get(provider)
+    return provider, model, None
+
+
+def _is_current(backend) -> bool:
+    # Keyed on model and endpoint too: a notebook that changes cfg.OPENAI_MODEL
+    # must not keep calling the old model while evals log the new name
+    built_for = (_singleton_provider, getattr(backend, "model", None),
+                 getattr(backend, "base_url", None))
+    return backend is not None and built_for == _wanted()
+
+
+def configured_model() -> Optional[str]:
+    """The model cfg selects now; get_llm_client() rebuilds to match it."""
+    return _wanted()[1]
+
+
+def active_model() -> Optional[str]:
+    """Model of the backend already built for the CURRENT cfg, else None. Never builds."""
+    return getattr(_singleton, "model", None) if _is_current(_singleton) else None
+
+
 def get_llm_client():
-    """Return the configured backend; rebuilt when cfg.LLM_PROVIDER changes."""
+    """Return the configured backend; rebuilt when provider, model or base URL changes."""
     global _singleton, _singleton_provider
     provider = cfg.LLM_PROVIDER
-    if _singleton is not None and _singleton_provider == provider:
+    if _is_current(_singleton):
         return _singleton
 
     if provider == "gemini":
@@ -332,7 +396,7 @@ def get_llm_client():
         )
 
     _singleton_provider = provider
-    logger.info("LLM provider initialized: %s", provider)
+    logger.info("LLM provider initialized: %s (model=%s)", provider, _singleton.model)
     return _singleton
 
 

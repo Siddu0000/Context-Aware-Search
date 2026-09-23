@@ -9,6 +9,7 @@ from statistics import mean
 import pandas as pd
 
 import app.config as cfg
+import eval.run_eval as run_eval
 from app.search import get_dataframe, load_index, search_products
 from app.translator import translate_query
 from eval.run_eval import evaluate
@@ -30,33 +31,39 @@ def _run_quality_at(temp: float, rerank_on: bool):
         cfg.DETERMINISTIC, cfg.TEMPERATURE_OVERRIDE = orig_det, orig_ovr
 
 
-def _pipeline_titles(query: str, rerank_on: bool, top_k: int = 10):
+def _pipeline_titles(query: str, rerank_on: bool, top_k: int = 10, errors: list | None = None):
     """Run one query through the pipeline and return its ordered result titles."""
-    intents = translate_query(query)
+    intents = translate_query(query, errors=errors)
     candidates = search_products(intents, top_k=max(top_k * 3, 30))
     if rerank_on and candidates:
         from app.reranker import rerank as llm_rerank
 
-        ranked = llm_rerank(query, candidates, top_k=top_k)
+        ranked = llm_rerank(query, candidates, top_k=top_k, errors=errors)
         return tuple(p.get("Product_title", "") for p in ranked[:top_k])
     return tuple(c.get("Product_title", "") for c in candidates[:top_k])
 
 
 def _run_stability_at(temp: float, queries: list[str], repeats: int, rerank_on: bool):
-    """Returns query -> distinct top-10 orderings across repeats (1 == stable)."""
+    """Returns (query -> distinct top-10 orderings, query -> degraded repeats).
+
+    A fallback skips the LLM, so it looks perfectly stable; count it separately.
+    """
     orig_det, orig_ovr = cfg.DETERMINISTIC, cfg.TEMPERATURE_OVERRIDE
     cfg.DETERMINISTIC = False
     cfg.TEMPERATURE_OVERRIDE = temp
-    out = {}
+    out, degraded = {}, {}
     try:
         for q in queries:
-            seen = set()
+            seen, n_bad = set(), 0
             for _ in range(repeats):
-                seen.add(_pipeline_titles(q, rerank_on))
-            out[q] = len(seen)
+                errs: list = []
+                seen.add(_pipeline_titles(q, rerank_on, errors=errs))
+                # A partial rerank still ranked with the LLM, so its wobble is real
+                n_bad += any(e.get("code") != "partial" for e in errs)
+            out[q], degraded[q] = len(seen), n_bad
     finally:
         cfg.DETERMINISTIC, cfg.TEMPERATURE_OVERRIDE = orig_det, orig_ovr
-    return out
+    return out, degraded
 
 
 def main():
@@ -93,12 +100,17 @@ def main():
     args = p.parse_args()
 
     rerank_on = args.rerank
+    # Resolve at CALL time (a notebook sets EVAL_QUERIES_JSON after importing config),
+    # and point run_eval at it too so the quality and stability halves use ONE set
+    queries_path = cfg.eval_queries_path()
+    run_eval.EVAL_QUERIES_JSON = queries_path
 
     print("\n" + "=" * 78)
     print("TEMPERATURE SWEEP")
     print(f"  temps         = {args.temps}")
     print(f"  rerank        = {rerank_on}  (off = translator-only, lighter on quota)")
     print(f"  seed          = DISABLED during sweep (so temperature is observable)")
+    print(f"  eval set      = {queries_path.name}")
     print("=" * 78)
 
     quality_rows = []
@@ -107,6 +119,7 @@ def main():
         try:
             out_path, elapsed = _run_quality_at(temp, rerank_on)
             df = pd.read_csv(out_path)
+            fell_back = df["fell_back"].fillna("").astype(str) if "fell_back" in df else None
             quality_rows.append(
                 {
                     "temperature": temp,
@@ -115,6 +128,9 @@ def main():
                     "MRR": round(df["MRR"].mean(), 3),
                     "NDCG@10": round(df["NDCG@10"].mean(), 3),
                     "ms_total": round(df["ms_total"].mean(), 0),
+                    # Non-zero = those queries measured the fallback, not this temperature
+                    "degraded": int(fell_back.map(run_eval.is_degraded).sum())
+                    if fell_back is not None else 0,
                     "csv": out_path.name,
                 }
             )
@@ -126,7 +142,7 @@ def main():
     if not args.no_stability:
         load_index()
         df_all = get_dataframe()
-        with open(cfg.EVAL_QUERIES_JSON, encoding="utf-8") as f:
+        with open(queries_path, encoding="utf-8") as f:
             all_queries = [q["query"] for q in json.load(f)]
         stab_queries = all_queries[: args.stability_queries]
 
@@ -138,7 +154,7 @@ def main():
         print("(distinct top-10 orderings; 1 = perfectly stable/deterministic)")
         print("=" * 78)
         for temp in args.temps:
-            res = _run_stability_at(
+            res, bad = _run_stability_at(
                 temp, stab_queries, args.stability_repeats, rerank_on
             )
             stability_summary[temp] = res
@@ -146,6 +162,8 @@ def main():
             print(f"\n  temperature={temp:.2f}  (avg distinct orderings: {avg:.2f})")
             for q, n in res.items():
                 flag = "stable" if n == 1 else f"WOBBLES ({n} orderings)"
+                if bad[q]:
+                    flag = f"DEGRADED {bad[q]}/{args.stability_repeats}"
                 print(f"    [{flag:>22}]  {q[:50]}")
 
     print("\n" + "=" * 78)

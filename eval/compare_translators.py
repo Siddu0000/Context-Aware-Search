@@ -4,6 +4,7 @@ import argparse
 import logging
 import time
 
+import app.config as cfg
 import app.translator as translator_module
 from eval.run_eval import evaluate
 
@@ -16,7 +17,11 @@ def run_for_mode(mode: str):
     translator_module.TRANSLATOR_MODE = mode
     try:
         t0 = time.perf_counter()
-        out_path = evaluate(rerank_on=False, tag=f"translator_{mode}")
+        # The CSV has no model column, so the name must say which LLM translated
+        model = {"openai": cfg.OPENAI_MODEL, "gemini": cfg.GEMINI_MODEL,
+                 "anthropic": cfg.ANTHROPIC_MODEL}.get(cfg.LLM_PROVIDER, "?")
+        tag = f"translator_{mode}_{model.replace('/', '_')}"
+        out_path = evaluate(rerank_on=False, tag=tag)
         elapsed = time.perf_counter() - t0
         return out_path, elapsed
     finally:

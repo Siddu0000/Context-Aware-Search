@@ -22,6 +22,7 @@ import statistics
 
 import app.config as cfg
 from app.config import RETRIEVAL_TOP_K
+from app.llm_client import configured_model
 from app.search import best_score, search_products
 
 logging.basicConfig(level=logging.WARNING)
@@ -47,16 +48,30 @@ OUT_OF_CATALOG = [
 GIBBERISH = ["asdfghjkl", "zxqv wprt", "qqqqqq"]
 
 
-def _top_score(query: str, translate: bool):
+def _top_score(query: str, translate: bool, errors: list | None = None):
     if translate:
         from app.translator import understand_query
 
-        intents = understand_query(query)["intents"]
+        # A fallback to the raw query would score raw retrieval as if it were /search
+        intents = understand_query(query, errors=errors)["intents"]
         if not intents:
             return None     # judged gibberish upstream; no threshold involved
     else:
         intents = [query]
     return best_score(search_products(intents, top_k=RETRIEVAL_TOP_K))
+
+
+def _score_all(queries, translate: bool, degraded: dict) -> dict:
+    """query -> top score for CLEAN runs only; fallbacks go to `degraded` instead."""
+    scores = {}
+    for q in queries:
+        errs: list = []
+        s = _top_score(q, translate, errs)
+        if errs:
+            degraded[q] = ";".join(str(e.get("stage")) for e in errs)
+        else:
+            scores[q] = s
+    return scores
 
 
 def _stats(xs):
@@ -74,12 +89,24 @@ def run(translate: bool = False, margin: float = 0.02, queries: str | None = Non
         in_domain = [q["query"] for q in json.load(f)]
 
     backend = (cfg.SEARCH_BACKEND or "local").lower()
+    # The floor depends on the translator's wording, so the result is per-LLM
+    llm = (configured_model() or cfg.LLM_PROVIDER) if translate else "off"
     print(f"\n=== MIN_RESULT_RELEVANCE calibration ===")
-    print(f"backend={backend}  translate={translate}  current floor={cfg.MIN_RESULT_RELEVANCE}  set={path.name}\n")
+    print(f"backend={backend}  translate={translate}  llm={llm}  "
+          f"current floor={cfg.MIN_RESULT_RELEVANCE}  set={path.name}\n")
 
-    ins = {q: _top_score(q, translate) for q in in_domain}
-    outs = {q: _top_score(q, translate) for q in OUT_OF_CATALOG}
+    degraded: dict = {}
+    ins = _score_all(in_domain, translate, degraded)
+    outs = _score_all(OUT_OF_CATALOG, translate, degraded)
     gib = {} if translate else {q: _top_score(q, False) for q in GIBBERISH}
+
+    if degraded:
+        print(f"!! {len(degraded)}/{len(in_domain) + len(OUT_OF_CATALOG)} QUERIES RAN "
+              "DEGRADED (an LLM stage fell back to the raw query). They are EXCLUDED "
+              "from the stats and the recommendation -- fix the cause and re-run:")
+        for q, stages in degraded.items():
+            print(f"     [{stages}] {q}")
+        print()
 
     print("SHOULD match (eval set):   ", _stats(ins.values()))
     print("should NOT (out-of-catalog):", _stats(outs.values()))
@@ -96,17 +123,23 @@ def run(translate: bool = False, margin: float = 0.02, queries: str | None = Non
           + ("   <-- would hide real results" if blocked_now else ""))
     if floor is not None:
         print(f"recommended   {floor}: blocks 0/{len(real)} real queries, "
-              f"rejects {caught}/{len(OUT_OF_CATALOG)} out-of-catalog")
+              f"rejects {caught}/{len(outs)} out-of-catalog"
+              + (f"   (from CLEAN queries only; {len(degraded)} degraded excluded)"
+                 if degraded else ""))
         top_out = max((s for s in outs.values() if s is not None), default=None)
         if top_out is not None and top_out >= min(real):
             print("  note: score ranges OVERLAP -- no floor separates them. Out-of-catalog "
                   "rejection then rests on the translator and the reranker, not this knob.")
+    else:
+        print("no recommendation: no real query produced a clean score")
 
     worst = sorted(((s, q) for q, s in ins.items() if s is not None))[:3]
     print("\nlowest-scoring REAL queries (these set the floor):")
     for s, q in worst:
         print(f"  {s:.3f}  {q}")
-    return {"recommended": floor, "in_domain": ins, "out_of_catalog": outs, "gibberish": gib}
+    # in_domain / out_of_catalog hold clean scores only; degraded maps query -> stage
+    return {"recommended": floor, "in_domain": ins, "out_of_catalog": outs,
+            "gibberish": gib, "degraded": degraded, "llm": llm}
 
 
 def main():
