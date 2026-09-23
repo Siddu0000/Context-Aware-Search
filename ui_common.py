@@ -168,7 +168,8 @@ def fetch_product(catalog_index: int, query: str, recommend: bool):
             PRODUCT_URL,
             params={
                 "catalog_index": catalog_index,
-                "query": query,
+                # /product caps query at 300; a long chat message must not 422 the page
+                "query": (query or "")[:300],
                 "recommend": str(recommend).lower(),
             },
             timeout=60,
@@ -440,7 +441,15 @@ def render_detail_page(*, show_recs: bool, show_back_button: bool = True):
 
     if cross:
         st.divider()
-        st.subheader("🧺 Frequently bought together")
+        # Embedding look-alikes are NOT complements: never call them "bought together"
+        similar = recs.get("cross_sell_source") == "fallback" or all(
+            c.get("recommend_type") == "similar" for c in cross
+        )
+        st.subheader("👀 Similar items" if similar else "🧺 Frequently bought together")
+        rec_errors = resp.get("errors") or recs.get("errors") or []
+        if rec_errors and _dev_details():
+            codes = ", ".join(str(e.get("code", "?")) for e in rec_errors)
+            st.caption(f"_cross-sell LLM unavailable (error {codes})_")
         cols = st.columns(len(cross))
         for col, item in zip(cols, cross):
             with col:

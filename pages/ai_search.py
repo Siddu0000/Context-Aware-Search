@@ -155,7 +155,11 @@ def _render_search_results():
     for err in data.get("errors", []):
         stage = err.get("stage")
         code = err.get("code", "?")
-        if stage == "rerank":
+        if stage == "rerank" and code == "partial":
+            # The AI ranking WAS applied; only some of the model's entries were unusable
+            if show_debug:
+                st.caption(f"⚠️ AI ranking partly applied: {err.get('detail', '')}")
+        elif stage == "rerank":
             st.warning(
                 f"⚠️ AI ranking is temporarily unavailable (error {code}) — "
                 "showing results ranked by similarity instead."

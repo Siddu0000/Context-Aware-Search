@@ -1,12 +1,13 @@
 """Cross-sell (LLM complements grounded in the catalog) and upsell suggestions."""
 
+import json
 import logging
 from typing import List, Optional
 
 import pandas as pd
 
 import app.config as cfg
-from app.llm_client import LLMError, generate_json
+from app.llm_client import LLMError, error_code, generate_json
 from app.scoring import bayesian_rating
 from app.search import search_products
 
@@ -18,7 +19,7 @@ COMPLEMENTARY_PROMPT = """\
 You are a retail cross-sell assistant.
 
 A shopper searched for a product and we are showing them this top result:
-  search query: "{query}"
+  search query: {query}
   top product:  "{title}"
   category:     "{category}"
 
@@ -41,19 +42,34 @@ def _clean_row(row: dict) -> dict:
     return {k: (None if isinstance(v, float) and pd.isna(v) else v) for k, v in row.items()}
 
 
-def _complementary_phrases(query: str, anchor: dict, k: int) -> List[str]:
-    """Ask the LLM for complementary product phrases. [] on any failure."""
+def _as_phrases(value) -> List[str]:
+    """'complementary' as a list of str; a bare string is ONE phrase, not letters."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        raise LLMError(f"Bad shape: complementary={value!r}"[:200])
+    return [p.strip() for p in value if isinstance(p, str) and p.strip()]
+
+
+def _complementary_phrases(
+    query: str, anchor: dict, k: int, errors: Optional[list] = None
+) -> List[str]:
+    """Ask the LLM for complementary product phrases. [] on any failure (logged to errors)."""
     prompt = COMPLEMENTARY_PROMPT.format(
-        query=query,
+        # JSON literal (quotes included): a quote in the query can't escape the data
+        query=json.dumps(query, ensure_ascii=False),
         title=anchor.get("Product_title", ""),
         category=anchor.get("categ_lvl2_name") or anchor.get("bsns_vrtcl_name") or "",
         k=k,
     )
     try:
         parsed = generate_json(prompt, temperature=0.3)
-        phrases = parsed.get("complementary", [])
-        return [str(p).strip() for p in phrases if str(p).strip()][:k]
-    except (LLMError, Exception) as e:
+        return _as_phrases(parsed.get("complementary"))[:k]
+    except Exception as e:  # noqa: BLE001 — best-effort, the embedding fallback covers it
+        if errors is not None:
+            errors.append(
+                {"stage": "cross_sell", "code": error_code(e), "detail": str(e)[:200]}
+            )
         logger.warning("Complementary-phrase LLM call failed (%s).", repr(e))
         return []
 
@@ -167,13 +183,19 @@ def recommend(
     max_cross_sell: int = None,
     use_llm: bool = None,
 ) -> dict:
-    """Returns {"cross_sell": [...], "upsell": [...]}; anchored on the top result."""
+    """Returns {"cross_sell", "upsell", "cross_sell_source", "errors"}; anchored on the top result.
+
+    cross_sell_source is "llm" (grounded complements), "fallback" (embedding
+    look-alikes, NOT complements) or None (no cross-sell), so a caller can
+    never mistake substitutes for "frequently bought together".
+    """
     if max_cross_sell is None:
         max_cross_sell = cfg.RECOMMEND_MAX
     if use_llm is None:
         use_llm = cfg.RECOMMEND_USE_LLM
 
-    empty = {"cross_sell": [], "upsell": []}
+    errors: list = []
+    empty = {"cross_sell": [], "upsell": [], "cross_sell_source": None, "errors": errors}
     # page 1 only: cross-sell costs an LLM call, so deeper pages skip it
     if page != 1 or not results:
         return empty
@@ -183,15 +205,19 @@ def recommend(
 
     try:
         cross: List[dict] = []
+        source = None
         if use_llm:
-            phrases = _complementary_phrases(query, anchor, max_cross_sell)
+            phrases = _complementary_phrases(query, anchor, max_cross_sell, errors)
             cross = _ground_phrases(phrases, on_page, max_cross_sell)
+            source = "llm" if cross else None
         if not cross:
             cross = _embedding_fallback(anchor, on_page, max_cross_sell)
+            source = "fallback" if cross else None
 
         exclude = on_page | {c.get("Product_title", "") for c in cross}
         up = _upsell(anchor, exclude)
-        return {"cross_sell": cross, "upsell": up}
+        return {"cross_sell": cross, "upsell": up, "cross_sell_source": source, "errors": errors}
     except Exception as e:
+        errors.append({"stage": "recommend", "code": error_code(e), "detail": str(e)[:200]})
         logger.warning("recommend() failed (%s); returning empty.", repr(e))
         return empty

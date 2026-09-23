@@ -101,6 +101,11 @@ RECOMMEND_USE_LLM = os.getenv("RECOMMEND_USE_LLM", "true").lower() in {"1", "tru
 
 SPONSORED_ENABLED = os.getenv("SPONSORED_ENABLED", "true").lower() in {"1", "true", "yes"}
 SPONSORED_CONFIG = DATA_DIR / "sponsored.json"
+# A FLAT-results ad is promoted only if its raw 0-100 rerank_score is ABOVE this.
+# The rerank prompt caps constraint violators at 40, so a women's dress scored 40
+# on a men's-shirt query stays organic instead of jumping to position 1. Bundles
+# (_promote_sponsored_options) still gate on slot membership only: owner decision.
+SPONSORED_MIN_RERANK_SCORE = float(os.getenv("SPONSORED_MIN_RERANK_SCORE", "40"))
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
