@@ -17,7 +17,22 @@ for d in (CACHE_DIR, LOGS_DIR, EVAL_RESULTS_DIR):
     d.mkdir(exist_ok=True)
 
 PRODUCTS_CSV = DATA_DIR / "products.csv"
-EVAL_QUERIES_JSON = DATA_DIR / "eval_queries.json"
+
+
+def eval_queries_path(value: str | None = None) -> Path:
+    """The eval query set: EVAL_QUERIES_JSON env (relative = repo root), else the default.
+
+    data/eval_queries.json is keyword-only and SATURATES (raw retrieval ~0.95);
+    data/eval_queries_context.json needs the product to be INFERRED.
+    """
+    value = value if value is not None else os.getenv("EVAL_QUERIES_JSON")
+    if not value:
+        return DATA_DIR / "eval_queries.json"
+    p = Path(value)
+    return p if p.is_absolute() else PROJECT_ROOT / p
+
+
+EVAL_QUERIES_JSON = eval_queries_path()
 FEEDBACK_LOG = LOGS_DIR / "feedback.jsonl"
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()

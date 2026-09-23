@@ -1,0 +1,529 @@
+[
+  {
+    "query": "something breathable to wear on a humid summer day",
+    "_context": "infer light, breathable fabrics (the eval.md example) -- not winter cotton",
+    "relevance": {
+      "title_any_of": [
+        "linen",
+        "seersucker",
+        "moisture wicking",
+        "moisture-wicking",
+        "quick dry",
+        "quick-dry",
+        "cotton"
+      ],
+      "title_none_of": [
+        "sweater",
+        "sweatshirt",
+        "hoodie",
+        "fleece",
+        "thermal",
+        "winter",
+        "jacket",
+        "coat",
+        "flannel"
+      ],
+      "category_in": [
+        "women's clothing",
+        "men's clothing",
+        "unisex clothing"
+      ]
+    }
+  },
+  {
+    "query": "something for her to wear to a black-tie gala",
+    "_context": "infer a formal gown (women's). Raw retrieval tends to match 'black tie' literally (neckties)",
+    "relevance": {
+      "title_any_of": [
+        "evening gown",
+        "ball gown",
+        "formal gown",
+        "gown"
+      ],
+      "title_none_of": [
+        "nightgown",
+        "night gown",
+        "sleep",
+        "bolero",
+        "shrug"
+      ],
+      "category_in": [
+        "women's clothing"
+      ]
+    }
+  },
+  {
+    "query": "keep my feet dry walking to work in the rain",
+    "_context": "infer adult waterproof footwear",
+    "relevance": {
+      "title_any_of": [
+        "rain boot",
+        "rain boots",
+        "waterproof boot",
+        "waterproof shoe",
+        "rain shoe",
+        "galoshes",
+        "wellington"
+      ],
+      "title_none_of": [
+        "sock",
+        "liner",
+        "toddler",
+        "kids",
+        "baby",
+        "daniel wellington",
+        "strap",
+        "watch"
+      ],
+      "category_in": [
+        "women's clothing",
+        "men's clothing",
+        "unisex clothing"
+      ]
+    }
+  },
+  {
+    "query": "cozy clothes for a lazy sunday at home",
+    "_context": "infer loungewear",
+    "relevance": {
+      "title_any_of": [
+        "lounge",
+        "pajama",
+        "pyjama",
+        "sweatpants",
+        "jogger",
+        "sleepwear",
+        "sweatshirt",
+        "hoodie"
+      ],
+      "title_none_of": [
+        "upf",
+        "sun shirt",
+        "fishing",
+        "hiking",
+        "running",
+        "workout",
+        "gym",
+        "rash guard"
+      ],
+      "category_in": [
+        "women's clothing",
+        "men's clothing",
+        "unisex clothing"
+      ]
+    }
+  },
+  {
+    "query": "shoes I can stand in all day as a nurse",
+    "_context": "infer adult clogs / slip-resistant work shoes",
+    "relevance": {
+      "title_any_of": [
+        "clog",
+        "nursing shoe",
+        "nurse shoe",
+        "nursing clog",
+        "work shoe for women",
+        "healthcare"
+      ],
+      "title_none_of": [
+        "toddler",
+        "kids",
+        "garden",
+        "baby",
+        "sandal",
+        "slipper",
+        "house",
+        "plush",
+        "fleece lined",
+        "fuzzy",
+        "charm",
+        "steel toe",
+        "construction",
+        "industrial"
+      ],
+      "category_in": [
+        "women's clothing",
+        "men's clothing",
+        "unisex clothing"
+      ]
+    }
+  },
+  {
+    "query": "keep my phone alive on a weekend camping trip",
+    "_context": "infer a power bank / solar charger (a phone battery case also counts). Excludes gadgets that merely mention power banks. BUNDLE-SENSITIVE: may become a 'setup'",
+    "relevance": {
+      "title_any_of": [
+        "power bank",
+        "powerbank",
+        "solar charger"
+      ],
+      "title_none_of": [
+        "speaker",
+        "headphone",
+        "earbud",
+        "watch",
+        "projector",
+        "camera",
+        "flashlight",
+        "lantern",
+        "fan",
+        "lamp",
+        "reading light",
+        "heated",
+        "vest",
+        "radio",
+        "organizer",
+        "bag",
+        "car charger",
+        "for powerbank",
+        "for power bank",
+        "gps",
+        "sleeve",
+        "pouch",
+        "holder",
+        "adapter",
+        "replacement",
+        "module",
+        "board",
+        "pcb",
+        "diy",
+        "switch",
+        "hub",
+        "ethernet"
+      ]
+    }
+  },
+  {
+    "query": "stop my laptop from overheating",
+    "_context": "infer laptop cooling pad / external cooler",
+    "relevance": {
+      "title_any_of": [
+        "cooling pad",
+        "laptop cooler",
+        "cooling stand",
+        "cooler pad",
+        "laptop fan cooler"
+      ],
+      "title_none_of": [
+        "replacement",
+        "nvme",
+        "ssd",
+        "m.2",
+        "thermal pad",
+        "heatsink",
+        "cpu"
+      ]
+    }
+  },
+  {
+    "query": "watch movies on my bedroom wall",
+    "_context": "infer a projector: 'projector' AND a projector spec, since titles are keyword-stuffed. BUNDLE-SENSITIVE: may be built as a home-theatre 'setup'",
+    "relevance": {
+      "title_must_include": [
+        "projector"
+      ],
+      "title_any_of": [
+        "lumen",
+        "1080p",
+        "720p",
+        "4k",
+        "dlp",
+        "lcd",
+        "native",
+        "ansi",
+        "keystone",
+        "home theater",
+        "home cinema",
+        "mini projector",
+        "portable projector",
+        "pico"
+      ],
+      "title_none_of": [
+        "mount",
+        "bracket",
+        "screen",
+        "ceiling",
+        "bag",
+        "case",
+        "cover",
+        "remote",
+        "replacement",
+        "lamp",
+        "bulb",
+        "filter",
+        "lens",
+        "glasses",
+        "cable",
+        "hdmi",
+        "adapter",
+        "sound",
+        "speaker",
+        "star",
+        "galaxy",
+        "night light",
+        "hologram",
+        "holographic",
+        "toy",
+        "kids",
+        "watch",
+        "switch",
+        "module",
+        "holiday",
+        "christmas",
+        "slides",
+        "power supply"
+      ]
+    }
+  },
+  {
+    "query": "never lose my keys again",
+    "_context": "infer a bluetooth item tracker -- not tracker cases, not fitness trackers",
+    "relevance": {
+      "title_any_of": [
+        "key finder",
+        "item finder",
+        "item tracker",
+        "bluetooth tracker",
+        "airtag",
+        "smart tracker",
+        "tile mate",
+        "tile pro",
+        "key tracker"
+      ],
+      "title_none_of": [
+        "case",
+        "cover",
+        "remote",
+        "replacement",
+        "adapter",
+        "cable",
+        "mount",
+        "holder",
+        "sleeve",
+        "skin",
+        "protector",
+        "power supply",
+        "charger for",
+        "bracelet",
+        "wristband",
+        "collar",
+        "strap",
+        "screen for",
+        "bulb",
+        "lamp for",
+        "keychain case",
+        "loop",
+        "pet",
+        "dog",
+        "stylus",
+        "pen",
+        "headphone",
+        "earbud"
+      ]
+    }
+  },
+  {
+    "query": "listen to music in the shower",
+    "_context": "infer a waterproof speaker",
+    "relevance": {
+      "title_any_of": [
+        "shower speaker",
+        "waterproof speaker",
+        "waterproof bluetooth speaker",
+        "ipx7 speaker",
+        "ipx7 bluetooth speaker"
+      ],
+      "title_none_of": [
+        "case",
+        "cover",
+        "remote",
+        "replacement",
+        "adapter",
+        "cable",
+        "mount",
+        "holder",
+        "sleeve",
+        "skin",
+        "protector",
+        "power supply",
+        "charger for",
+        "bracelet",
+        "wristband",
+        "collar",
+        "strap",
+        "screen for",
+        "bulb",
+        "lamp for"
+      ]
+    }
+  },
+  {
+    "query": "baking for a friend with celiac disease",
+    "_context": "infer gluten-free baking products",
+    "relevance": {
+      "title_must_include": [
+        "gluten"
+      ],
+      "title_any_of": [
+        "flour",
+        "baking mix",
+        "bread mix",
+        "cake mix",
+        "muffin mix",
+        "pancake mix",
+        "pizza crust",
+        "brownie mix",
+        "cookie mix",
+        "xanthan"
+      ],
+      "title_none_of": [
+        "vital wheat gluten",
+        "wheat gluten",
+        "seitan",
+        "bar",
+        "protein powder",
+        "snack",
+        "peanut",
+        "cracker",
+        "chip",
+        "low gluten",
+        "high gluten",
+        "pasta",
+        "noodle",
+        "spaghetti",
+        "wine"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "healthy snack to keep at my desk",
+    "_context": "infer nuts / trail mix / protein bars / dried fruit / jerky",
+    "relevance": {
+      "title_any_of": [
+        "almonds",
+        "cashews",
+        "mixed nuts",
+        "trail mix",
+        "protein bar",
+        "dried fruit",
+        "jerky",
+        "pistachios",
+        "walnuts"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "something warm to drink before bed that won't keep me awake",
+    "_context": "infer caffeine-free / herbal / decaf drinks",
+    "relevance": {
+      "title_any_of": [
+        "chamomile",
+        "herbal tea",
+        "decaf",
+        "caffeine free",
+        "caffeine-free",
+        "sleepytime",
+        "rooibos",
+        "golden milk"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "a gift for someone who loves spicy food",
+    "_context": "infer hot sauces / chili products",
+    "relevance": {
+      "title_any_of": [
+        "hot sauce",
+        "chili sauce",
+        "sriracha",
+        "chili crisp",
+        "habanero",
+        "ghost pepper",
+        "chili oil"
+      ],
+      "title_none_of": [
+        "holster",
+        "holder",
+        "shirt"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "breakfast I can make in two minutes before work",
+    "_context": "infer instant oatmeal / granola / cereal -- not oatmeal cookies",
+    "relevance": {
+      "title_any_of": [
+        "instant oatmeal",
+        "oatmeal",
+        "granola",
+        "breakfast cereal",
+        "cereal bar",
+        "breakfast bar",
+        "overnight oats"
+      ],
+      "title_none_of": [
+        "cookie",
+        "soap",
+        "lotion",
+        "bath"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "cut sugar from my coffee without losing the sweetness",
+    "_context": "infer zero-calorie sweeteners",
+    "relevance": {
+      "title_any_of": [
+        "sweetener",
+        "sugar substitute",
+        "stevia drops",
+        "liquid stevia",
+        "stevia extract",
+        "splenda",
+        "erythritol",
+        "sucralose"
+      ],
+      "title_none_of": [
+        "granola",
+        "bar",
+        "chocolate",
+        "drink mix",
+        "shake",
+        "protein",
+        "cookie",
+        "candy",
+        "gum",
+        "cereal",
+        "snack",
+        "tea",
+        "honey",
+        "agave",
+        "frosting",
+        "maple",
+        "cane sugar",
+        "coconut sugar",
+        "brown sugar",
+        "molasses",
+        "date sugar"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  }
+]

@@ -335,7 +335,13 @@ each extra embedding contender costs a whole index (see timing below).
    raised `AttributeError: 'list' object has no attribute 'strip'`.
    `_message_text()` drops reasoning blocks and keeps text ones — the structural
    equivalent of Groq's `reasoning_format=hidden`, which does not exist here.
-3. **The prompt MUST contain the literal word "json"** when
+3. **Claude endpoints REJECT JSON mode entirely** (`Response format type json_object is
+   not supported for this model`, 2026-09-23) — both Haiku and Sonnet runs silently
+   measured the no-LLM baseline. `_OpenAIBackend` now retries once without
+   `response_format`, remembers the model in `_NO_JSON_MODE`, restates "JSON only"
+   in the prompt, and `_parse_json_reply()` tolerates fences and prose around the
+   object. A `finish_reason=length` reply now raises "truncated", not "invalid JSON".
+3b. **The prompt MUST contain the literal word "json"** when
    `response_format={"type":"json_object"}` is sent, else 400. All 9 current
    prompts satisfy this by luck ("Output ONLY valid JSON"). A new prompt saying
    "return a dict" would work on Groq and 400 here.
@@ -387,7 +393,20 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
   because hydration and `GET /product` use it as a ROW POSITION.
 - `MIN_RESULT_RELEVANCE` not yet calibrated for the Vector Search score scale —
   run `databricks/07` and set the env var for the deployed app (see Gotchas).
-- rerank-ON, LLM (05) and translator (06) comparisons not yet run.
+- LLM comparison (05) run 2026-09-23 on the KEYWORD set: Qwen3-Next matched
+  gpt-oss-120b (NDCG 0.953 vs 0.943) at 2.9x the speed (10.4s vs 30.3s/query) and
+  3.3x fewer completion tokens -- but a no-LLM control scored the SAME (0.954), so
+  that set cannot rank LLMs on quality. Re-run on `data/eval_queries_context.json`
+  (see .claude/rules/eval.md). Provisional: Qwen for the demo, on latency alone.
+- **The SETUP bundle over-triggers** the way OUTFIT did before Aug 31: "watch
+  movies on my bedroom wall" becomes a 6-part home theatre (projector, mount,
+  screen, soundbar, HDMI cable, streaming player); "keep my phone alive camping" a
+  4-part setup. Niharika's principle (don't make the upsell obvious) suggests gating
+  setups behind an explicit ask too -- a PRODUCT decision, not yet made or changed.
+- Local-only bug, pre-existing: `_build_search_text` lowercases display columns IN
+  PLACE, so the local app shows titles like "yullser wireless mouse" and blanks
+  become "". The Databricks backend reads the Delta table and is unaffected -- so
+  the two backends now DISPLAY differently (and dedup by title differently).
 - The app itself is not yet deployed (`app.yaml` untested). Databricks Apps have
   no Spark, so `load_catalog()` falls back to `VS_CATALOG_CSV` on the UC Volume —
   confirm the App can read `/Volumes/...` before relying on that path.
@@ -413,6 +432,14 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
 - Tracking can NEVER break a search or an eval: every mlflow call is wrapped, and a
   failed `start_run` just runs untracked (verified against a real failure).
 - MLflow metric keys reject `@`: `P@10` is logged as `P_at_10`.
+- **Databricks does not break out reasoning tokens** (verified 2026-09-23: a
+  `{"ok": true}` reply cost 61 completion tokens, `reasoning_tokens` 0). gpt-oss's
+  reasoning is billed INSIDE `completion_tokens`, so `tokens_reasoning=0` there means
+  "not reported", not "no reasoning". Compare models on `tokens_completion` /
+  `tokens_total`. Groq and api.openai.com do report it.
+- Traces go to the workspace MLflow store (100K-trace limit). Fine for evals; a
+  DEPLOYED app traces every request, so decide on Unity Catalog trace storage or
+  sampling before turning MLFLOW_ENABLED on in production.
 
 
 ## Conventions
