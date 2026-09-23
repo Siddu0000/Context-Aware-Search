@@ -21,7 +21,7 @@ import logging
 import statistics
 
 import app.config as cfg
-from app.config import EVAL_QUERIES_JSON, RETRIEVAL_TOP_K
+from app.config import RETRIEVAL_TOP_K
 from app.search import best_score, search_products
 
 logging.basicConfig(level=logging.WARNING)
@@ -67,13 +67,15 @@ def _stats(xs):
             f"max {max(xs):.3f}  (n={len(xs)})")
 
 
-def run(translate: bool = False, margin: float = 0.02) -> dict:
-    with open(EVAL_QUERIES_JSON, "r", encoding="utf-8") as f:
+def run(translate: bool = False, margin: float = 0.02, queries: str | None = None) -> dict:
+    # Resolve at CALL time: a notebook usually sets EVAL_QUERIES_JSON after importing config
+    path = cfg.eval_queries_path(queries)
+    with open(path, "r", encoding="utf-8") as f:
         in_domain = [q["query"] for q in json.load(f)]
 
     backend = (cfg.SEARCH_BACKEND or "local").lower()
     print(f"\n=== MIN_RESULT_RELEVANCE calibration ===")
-    print(f"backend={backend}  translate={translate}  current floor={cfg.MIN_RESULT_RELEVANCE}\n")
+    print(f"backend={backend}  translate={translate}  current floor={cfg.MIN_RESULT_RELEVANCE}  set={path.name}\n")
 
     ins = {q: _top_score(q, translate) for q in in_domain}
     outs = {q: _top_score(q, translate) for q in OUT_OF_CATALOG}
@@ -112,8 +114,10 @@ def main():
     p.add_argument("--translate", action="store_true",
                    help="Score the translator's intents (faithful to /search; costs LLM calls).")
     p.add_argument("--margin", type=float, default=0.02)
+    p.add_argument("--queries", default=None,
+                   help="Eval set JSON (default: EVAL_QUERIES_JSON env, else the keyword set).")
     a = p.parse_args()
-    run(translate=a.translate, margin=a.margin)
+    run(translate=a.translate, margin=a.margin, queries=a.queries)
 
 
 if __name__ == "__main__":
