@@ -345,8 +345,11 @@ each extra embedding contender costs a whole index (see timing below).
    OFFLINE_FAILED cost $23.39 on its own (cause never pinned down), which is why the
    first round totalled ~$44. Split: ~79% is the sync/embedding pipeline at
    $0.45/DBU (unlabelled VECTOR_SEARCH rows); ~21% is the `cas-search` endpoint at
-   $0.07/DBU, i.e. **~$4-5 per day it merely exists**. Rule: keep the index up if
-   (days until next use × ~$5) < ~$20, else delete and rebuild. `02` now uses
+   $0.07/DBU: 130.75 DBU = $9.15 over Sep 10-11, but the endpoint existed only
+   PART of each day (~29-48h), so the true idle rate is **~$5-8/day**, not the
+   $4-5 first recorded here. Rule: keep the index up if (days until next use ×
+   ~$7) < ~$20 -- a break-even of ~3 days -- else delete and rebuild. Once the app
+   is deployed it must stay up: ~$150-240/month at list price. `02` now uses
    TRIGGERED sync (the catalog is static) so an idle index costs only the endpoint.
    When querying billing as a shared account, `current_user()` returns that
    account's whole usage (e.g. $23.59 of unrelated Genie) — attribute by endpoint.

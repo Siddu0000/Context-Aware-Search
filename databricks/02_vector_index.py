@@ -25,11 +25,16 @@ if "--teardown" in sys.argv:
     print(f"Deleted {INDEX}. Endpoint billing stops ~24h after last index.")
     sys.exit(0)
 
+# Wait for ONLINE before creating the index. Likely cause of the Sep 10
+# OFFLINE_FAILED build ($23.39 for nothing): the index was created seconds after
+# a brand-new endpoint, while it was still PROVISIONING. Sep 11's rebuild, on an
+# endpoint that already existed, succeeded. (Hypothesis -- never confirmed.)
 try:
-    client.create_endpoint(name=ENDPOINT, endpoint_type="STANDARD")
-    print(f"Created endpoint {ENDPOINT}")
-except Exception as e:  # already exists is fine
+    client.create_endpoint_and_wait(name=ENDPOINT, endpoint_type="STANDARD", verbose=True)
+    print(f"Created endpoint {ENDPOINT}; ONLINE")
+except Exception as e:  # already exists is fine -- but it must still be ONLINE
     print(f"Endpoint: {e}")
+    client.wait_for_endpoint(ENDPOINT, verbose=True)
 
 # Managed embeddings: the platform embeds search_text, replacing app/embeddings.py
 index = client.create_delta_sync_index(

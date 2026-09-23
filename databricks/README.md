@@ -76,10 +76,13 @@ fell back and the numbers measure something else.
 ## Cost guardrails (treat as rules)
 
 - **Measured (list prices):** one clean index build ≈ **$20** (~79% sync/embedding
-  at $0.45/DBU, ~21% endpoint); the endpoint alone ≈ **$4-5/day** while it exists.
+  at $0.45/DBU, ~21% endpoint); the endpoint alone ≈ **$5-8/day** while it exists
+  (billing days were partial, so $/calendar-day understated it).
   A failed build costs the same as a good one (Sep 10's OFFLINE_FAILED: $23.39),
   so delete a FAILED index immediately. Keep the index up if (days until next
-  use × ~$5) < ~$20; otherwise delete and rebuild.
+  use × ~$7) < ~$20 -- break-even ~3 days; otherwise delete and rebuild.
+- `02` waits for the endpoint to be ONLINE before creating the index (likely cause
+  of the Sep 10 OFFLINE_FAILED build).
 - `02` uses TRIGGERED sync: the catalog never changes, and CONTINUOUS would keep a
   streaming pipeline billing while the index sits idle.
 - Teardown (the `--teardown` flag does not work under `exec`; use this):
