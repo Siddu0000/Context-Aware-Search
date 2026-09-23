@@ -15,7 +15,7 @@ short Amazon titles. Worth re-checking here because gte-large-en is a stronger
 embedding model and may tolerate HyDE's verbosity better; that result was
 measured on a model we no longer use.
 
-Cost: 1 LLM call per query x 18 queries = 18 calls per mode.
+Cost: 1 LLM call per query per mode: 18 on the keyword set, 16 on the context set.
 
 Usage in a notebook:
     exec(open("databricks/06_compare_translators.py").read())

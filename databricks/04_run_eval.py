@@ -26,7 +26,10 @@ def main():
     vs_shim.patch_eval_harness(spark)
 
     rerank_on = "--rerank" in sys.argv
-    tag = "databricks_gte_large_" + ("rerank_on" if rerank_on else "rerank_off")
+    # The CSV has no model column: without it in the name, Qwen and gpt-oss runs
+    # in the Volume are indistinguishable whenever MLflow is off
+    model = vs_shim.llm_model().replace("/", "_")
+    tag = f"databricks_gte_large_{model}_" + ("rerank_on" if rerank_on else "rerank_off")
     return run_eval.evaluate(rerank_on=rerank_on, tag=tag)
 
 

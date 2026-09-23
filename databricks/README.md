@@ -20,12 +20,13 @@ identical row shapes (images, `parent_asin` for sponsored ads, etc.).
 |---|---|---|---|
 | `01_catalog_to_delta.py` | CSV → Delta table, CDF on, **dense** `catalog_index` | 0 | compute minutes |
 | `02_vector_index.py` | endpoint + delta-sync index (`databricks-gte-large-en`) | 0 | **endpoint bills hourly from here** |
-| `03_smoke_test.py` | one similarity query + one LLM call | 1 | — |
+| `03_smoke_test.py` | one similarity query + one JSON-mode LLM call, both asserted | 1 | — |
 | `04_run_eval.py` | retrieval eval; `--rerank` for the full pipeline | 18 / 36 | — |
-| `05_compare_llms.py` | `list_models()` then `run([...])` — intent gen + rerank | 36 per model | — |
-| `06_compare_translators.py` | query_expansion vs hyde vs hybrid, rerank off | 18 per mode | — |
-| `07_calibrate_threshold.py` | calibrates `MIN_RESULT_RELEVANCE` for the VS score scale | ~28 | — |
-| `vs_shim.py` | shared setup: switch backend, results → UC Volume, MLflow on | — | — |
+| `05_compare_llms.py` | `list_models()`, `run([...])` — intent gen + rerank; `control()` = no-LLM baseline | 36 / 32 per model (keyword / context); control 0 | — |
+| `06_compare_translators.py` | query_expansion vs hyde vs hybrid, rerank off | 18 / 16 per mode (keyword / context) | — |
+| `07_calibrate_threshold.py` | calibrates `MIN_RESULT_RELEVANCE` for the VS score scale | ~28 keyword / ~26 context | — |
+| `08_llm_smoke.py` | LLM-only acceptance check: every LLM call site once with the configured model (translator + bundles, rerank, chat assistant, cross-sell, injection x3), asserting no fallback, no JSON-mode/temperature downgrade | 25 | — (**no index needed**) |
+| `vs_shim.py` | shared setup: switch backend, results → UC Volume, MLflow on, prints the live `llm :` | — | — |
 
 ## The one-window run (do it all in one sitting)
 
@@ -50,22 +51,52 @@ os.environ.update({
     "DATABRICKS_TOKEN": TOKEN, "DATABRICKS_HOST": HOST,
     "LLM_PROVIDER": "openai", "OPENAI_API_KEY": TOKEN,
     "OPENAI_BASE_URL": HOST + "/serving-endpoints",
-    "OPENAI_MODEL": "databricks-gpt-oss-120b",
+    # Chosen 2026-09-24 (latency; quality tied on the keyword set). Revert: "databricks-gpt-oss-120b"
+    "OPENAI_MODEL": "databricks-qwen3-next-80b-a3b-instruct",
     "MLFLOW_ENABLED": "true",
     "MLFLOW_EXPERIMENT": f"/Users/{ctx.userName().get()}/cas-evals",
 })
 ```
+`app.config` reads this env ONCE, at the first `import app...`. Changed Cell 2
+later? `dbutils.library.restartPython()` and re-run it. Before reading any number,
+check the model the run ACTUALLY used: run_eval's summary line `llm = <model>`
+(`off` for a no-LLM control), or 07's `llm=` header. The setup header's `llm :` is
+cfg's LIVE model; 05's `run()` prints the list it will run instead, and `control()`
+prints `off`.
 
 **Order:**
-1. `dev.cas.products` is already verified dense (2026-09-23): **skip `01`** unless
+1. `08` — the LLM acceptance check. It needs no index, so run it BEFORE paying for
+   one: every row PASS (read the WARNs) or stop here. Re-run it after any model change.
+2. `dev.cas.products` is already verified dense (2026-09-23): **skip `01`** unless
    the catalog changes. If you do re-run it, delete the index first.
-2. Check whether the index still exists; only build it if it does not.
-3. `02` — then poll until `ONLINE` with 299,972 rows (~2h).
-4. `03` smoke test.
-5. `04 --rerank` → the full-pipeline number vs the recorded Groq NDCG 0.950.
-6. `05` → pick the LLM. `06` → confirm or overturn query_expansion.
-7. `07` → set `MIN_RESULT_RELEVANCE` for the deployed app.
-8. Tear down (below).
+3. Check whether the index still exists; only build it if it does not.
+4. `02` — then poll until `ONLINE` with 299,972 rows (~2h).
+5. `03` smoke test.
+6. `04 --rerank` → the full-pipeline number vs the recorded Groq NDCG 0.950.
+7. `05` → CONFIRM Qwen on the CONTEXT set (the keyword set saturates: a no-LLM
+   control scored the same there), against gpt-oss-120b and the no-LLM control.
+   Then `06` on the same set → confirm or overturn query_expansion with Qwen
+   intents. Compare its modes with EACH OTHER only: the recorded 0.904 / 0.716
+   came from an older eval set.
+   ```python
+   os.environ["EVAL_QUERIES_JSON"] = "data/eval_queries_context.json"
+   exec(open("databricks/05_compare_llms.py").read())
+   run(["databricks-qwen3-next-80b-a3b-instruct", "databricks-gpt-oss-120b"])
+   control()
+   exec(open("databricks/06_compare_translators.py").read())
+   run()                                 # now 06's run(): all three modes
+   os.environ.pop("EVAL_QUERIES_JSON", None)  # read on EVERY call: left set, 07 below runs it twice
+   ```
+8. `07` → set `MIN_RESULT_RELEVANCE` for the deployed app. Re-run it with Qwen on
+   BOTH sets — the 2026-09-23 value (0.638) came from gpt-oss intents — naming each
+   set explicitly, and take the LOWER recommendation:
+   ```python
+   exec(open("databricks/07_calibrate_threshold.py").read())
+   kw = run(translate=True, queries="data/eval_queries.json")
+   ctx = run(translate=True, queries="data/eval_queries_context.json")
+   ```
+   The two `set=` header lines must name different files.
+9. Tear down (below).
 
 Every eval writes a CSV to `/Volumes/dev/cas/evals/` **and** an MLflow run
 (params = models/modes, metrics = quality + real token totals, the CSV as an

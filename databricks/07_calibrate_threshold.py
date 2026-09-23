@@ -7,8 +7,9 @@ because run_eval never applies the floor.
 
 Usage in a notebook (after Cell 2):
     exec(open("databricks/07_calibrate_threshold.py").read())
-    result = run(translate=True)     # faithful; ~28 LLM calls
-    ctx = run(translate=True, queries="data/eval_queries_context.json")  # ~26 calls
+    # Name both sets: queries=None would inherit a leftover EVAL_QUERIES_JSON
+    result = run(translate=True, queries="data/eval_queries.json")          # ~28 LLM calls
+    ctx = run(translate=True, queries="data/eval_queries_context.json")     # ~26 calls
     # then set MIN_RESULT_RELEVANCE to the LOWER of the two recommendations
 """
 
