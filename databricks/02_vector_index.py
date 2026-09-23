@@ -36,7 +36,10 @@ index = client.create_delta_sync_index(
     endpoint_name=ENDPOINT,
     index_name=INDEX,
     source_table_name=TABLE,
-    pipeline_type="CONTINUOUS",          # standard endpoints support continuous
+    # The catalog is static, so TRIGGERED: the initial snapshot costs the same either
+    # way, but CONTINUOUS keeps a streaming pipeline billing while the index sits idle.
+    # If the table ever changes, call index.sync().
+    pipeline_type=os.getenv("VS_PIPELINE_TYPE", "TRIGGERED").upper(),
     primary_key="catalog_index",
     embedding_source_column="search_text",
     # Read from config so run_eval logs the model the index actually uses

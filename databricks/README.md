@@ -57,8 +57,9 @@ os.environ.update({
 ```
 
 **Order:**
-1. Delete any existing index (a rewrite of the table re-embeds everything anyway).
-2. `01` — must print `catalog_index dense 0..299,971`.
+1. `dev.cas.products` is already verified dense (2026-09-23): **skip `01`** unless
+   the catalog changes. If you do re-run it, delete the index first.
+2. Check whether the index still exists; only build it if it does not.
 3. `02` — then poll until `ONLINE` with 299,972 rows (~2h).
 4. `03` smoke test.
 5. `04 --rerank` → the full-pipeline number vs the recorded Groq NDCG 0.950.
@@ -74,9 +75,13 @@ fell back and the numbers measure something else.
 
 ## Cost guardrails (treat as rules)
 
-- The vector endpoint bills from creation and only stops **~24h after the last
-  index is deleted** — idle is not free. A rebuild costs ~2 endpoint-hours
-  before the first query, so it is never a casual action.
+- **Measured (list prices):** one clean index build ≈ **$20** (~79% sync/embedding
+  at $0.45/DBU, ~21% endpoint); the endpoint alone ≈ **$4-5/day** while it exists.
+  A failed build costs the same as a good one (Sep 10's OFFLINE_FAILED: $23.39),
+  so delete a FAILED index immediately. Keep the index up if (days until next
+  use × ~$5) < ~$20; otherwise delete and rebuild.
+- `02` uses TRIGGERED sync: the catalog never changes, and CONTINUOUS would keep a
+  streaming pipeline billing while the index sits idle.
 - Teardown (the `--teardown` flag does not work under `exec`; use this):
   ```python
   from databricks.vector_search.client import VectorSearchClient

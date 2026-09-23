@@ -340,8 +340,16 @@ each extra embedding contender costs a whole index (see timing below).
    prompts satisfy this by luck ("Output ONLY valid JSON"). A new prompt saying
    "return a dict" would work on Groq and 400 here.
 4. **Index build takes ~2 HOURS for 300K rows** (~2,350 rows/min), not "minutes".
-   The STANDARD endpoint bills hourly FROM CREATION, so teardown-and-rebuild is a
-   2-hour lead time and ~2 endpoint-hours — never a casual action.
+   MEASURED COST (system.billing.usage, list prices, 2026-09-23): **one clean build
+   ≈ $20** — Sep 11's successful build + eval was $20.27. The Sep 10 build that went
+   OFFLINE_FAILED cost $23.39 on its own (cause never pinned down), which is why the
+   first round totalled ~$44. Split: ~79% is the sync/embedding pipeline at
+   $0.45/DBU (unlabelled VECTOR_SEARCH rows); ~21% is the `cas-search` endpoint at
+   $0.07/DBU, i.e. **~$4-5 per day it merely exists**. Rule: keep the index up if
+   (days until next use × ~$5) < ~$20, else delete and rebuild. `02` now uses
+   TRIGGERED sync (the catalog is static) so an idle index costs only the endpoint.
+   When querying billing as a shared account, `current_user()` returns that
+   account's whole usage (e.g. $23.59 of unrelated Genie) — attribute by endpoint.
 
 ### Why (1) and (2) were dangerous rather than just annoying
 Both failed INVISIBLY: `translate_query` degrades to the raw query on error, so
@@ -370,8 +378,9 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
 
 ### Still open
 - `catalog_index`: FIXED in `01` (dense `row_number()` over file order + an
-  assertion), but the live table predates the fix — re-run `01` before the next
-  index build. `vector_search.load_catalog()` refuses a non-dense key loudly,
+  assertion). The live table `dev.cas.products` was VERIFIED dense and aligned with
+  the local CSV on 2026-09-23 (the multiLine read was a single partition), so `01`
+  does NOT need re-running — only `02`. `vector_search.load_catalog()` refuses a non-dense key loudly,
   because hydration and `GET /product` use it as a ROW POSITION.
 - `MIN_RESULT_RELEVANCE` not yet calibrated for the Vector Search score scale —
   run `databricks/07` and set the env var for the deployed app (see Gotchas).
