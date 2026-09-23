@@ -1,0 +1,12 @@
+# Extra packages for running CAS on Databricks (notebooks, jobs, Databricks Apps).
+# Local dev uses requirements.txt; none of these are needed there.
+#
+# Lower bounds are only the versions actually exercised (2026-09): the notebook
+# ran the latest databricks-vectorsearch, and app/tracking.py was tested against
+# mlflow 3.16. Older versions may work but were never tried.
+databricks-vectorsearch
+databricks-sdk
+mlflow>=3.16
+openai>=1.30.0
+python-dotenv>=1.0.0
+scikit-learn>=1.3.0

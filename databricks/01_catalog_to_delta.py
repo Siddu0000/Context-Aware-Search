@@ -19,7 +19,7 @@ df = (
     .option("escape", '"').csv(CSV_PATH)
 )
 
-from pyspark.sql import functions as F, types as T
+from pyspark.sql import Window, functions as F, types as T
 df = (
     df.withColumn("average_rating", F.col("average_rating").cast(T.DoubleType()))
       .withColumn("rating_number", F.col("rating_number").cast(T.LongType()))
@@ -33,8 +33,16 @@ df = (
               "prod_description", "color", "material", "occasion",
           )),
       )
-      # Stable primary key for the index and /product lookups
-      .withColumn("catalog_index", F.monotonically_increasing_id())
+      # catalog_index MUST be dense 0..N-1 in FILE order: app/search.py uses it
+      # as a ROW POSITION to hydrate results and serve GET /product, exactly as it
+      # does locally. monotonically_increasing_id() alone is only dense when the
+      # read happens to be one partition; row_number() over it makes that explicit.
+      .withColumn("_file_order", F.monotonically_increasing_id())
+      .withColumn(
+          "catalog_index",
+          (F.row_number().over(Window.orderBy("_file_order")) - 1).cast(T.LongType()),
+      )
+      .drop("_file_order")
 )
 
 # CDF must be enabled for the delta-sync vector index
@@ -43,4 +51,11 @@ df = (
     .option("delta.enableChangeDataFeed", "true")
     .saveAsTable(TABLE)
 )
-print(f"Wrote {df.count():,} rows to {TABLE} (CDF enabled)")
+stats = spark.table(TABLE).selectExpr(
+    "count(*) AS n", "min(catalog_index) AS lo",
+    "max(catalog_index) AS hi", "count(DISTINCT catalog_index) AS d",
+).first()
+assert stats.lo == 0 and stats.hi == stats.n - 1 and stats.d == stats.n, (
+    f"catalog_index is not dense 0..N-1: {stats}"
+)
+print(f"Wrote {stats.n:,} rows to {TABLE} (CDF enabled); catalog_index dense 0..{stats.hi:,}")

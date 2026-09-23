@@ -3,12 +3,99 @@
 import json
 import logging
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Optional
 
 # Read as cfg.X, never `from app.config import X` — evals override cfg at runtime
 import app.config as cfg
 
 logger = logging.getLogger(__name__)
+
+# Stack of active usage scopes. A tuple (not a list) so each scope set/reset is
+# isolated per context; the dicts inside are MUTATED in place, which is what lets
+# a scope opened in async middleware see calls made in the threadpool endpoint.
+_USAGE_STACK: ContextVar[tuple] = ContextVar("llm_usage_stack", default=())
+
+
+def _new_usage() -> dict:
+    return {
+        "calls": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+    }
+
+
+@contextmanager
+def track_usage():
+    """Accumulate REAL provider-reported token usage for every LLM call in scope.
+
+    Nested scopes are additive: a call counts toward every enclosing scope.
+    Calls made outside any scope are simply not counted.
+    """
+    usage = _new_usage()
+    token = _USAGE_STACK.set(_USAGE_STACK.get() + (usage,))
+    try:
+        yield usage
+    finally:
+        _USAGE_STACK.reset(token)
+
+
+def _record_usage(prompt=None, completion=None, total=None, reasoning=None) -> None:
+    """Add one call's usage to every open scope. Never raises."""
+    stack = _USAGE_STACK.get()
+    if not stack:
+        return
+    try:
+        p, c = int(prompt or 0), int(completion or 0)
+        t = int(total) if total else p + c
+        r = int(reasoning or 0)
+    except (TypeError, ValueError):
+        p = c = t = r = 0
+    for u in stack:
+        u["calls"] += 1
+        u["prompt_tokens"] += p
+        u["completion_tokens"] += c
+        u["total_tokens"] += t
+        u["reasoning_tokens"] += r
+
+
+def _usage_openai(resp) -> None:
+    # Reasoning tokens are billed as completion tokens but never shown in the reply
+    u = getattr(resp, "usage", None)
+    if u is None:
+        _record_usage()
+        return
+    details = getattr(u, "completion_tokens_details", None)
+    _record_usage(
+        getattr(u, "prompt_tokens", None),
+        getattr(u, "completion_tokens", None),
+        getattr(u, "total_tokens", None),
+        getattr(details, "reasoning_tokens", None) if details is not None else None,
+    )
+
+
+def _usage_gemini(response) -> None:
+    m = getattr(response, "usage_metadata", None)
+    if m is None:
+        _record_usage()
+        return
+    _record_usage(
+        getattr(m, "prompt_token_count", None),
+        getattr(m, "candidates_token_count", None),
+        getattr(m, "total_token_count", None),
+        getattr(m, "thoughts_token_count", None),
+    )
+
+
+def _usage_anthropic(resp) -> None:
+    u = getattr(resp, "usage", None)
+    if u is None:
+        _record_usage()
+        return
+    _record_usage(getattr(u, "input_tokens", None), getattr(u, "output_tokens", None))
 
 
 class LLMError(Exception):
@@ -80,6 +167,7 @@ class _GeminiBackend:
         response = self.rotator.generate_content(
             model=self.model, contents=prompt, config=config
         )
+        _usage_gemini(response)
         return response.text
 
 
@@ -113,6 +201,7 @@ class _OpenAIBackend:
         if "groq" in base and cfg.GROQ_REASONING_FORMAT:
             params["extra_body"] = {"reasoning_format": cfg.GROQ_REASONING_FORMAT}
         resp = self.client.chat.completions.create(**params)
+        _usage_openai(resp)
         return _message_text(resp.choices[0].message.content)
 
 
@@ -141,6 +230,7 @@ class _AnthropicBackend:
                 }
             ],
         )
+        _usage_anthropic(resp)
         return resp.content[0].text
 
 

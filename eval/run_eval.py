@@ -12,7 +12,11 @@ from typing import List, Set, Tuple
 
 import pandas as pd
 
+import app.config as cfg
+import app.translator as translator_module
+from app import tracking
 from app.config import EVAL_QUERIES_JSON, EVAL_RESULTS_DIR, FINAL_TOP_K, RETRIEVAL_TOP_K
+from app.llm_client import track_usage
 from app.metrics import StageTimings, approx_tokens
 from app.reranker import rerank as llm_rerank
 from app.search import (
@@ -72,12 +76,60 @@ def build_relevance_set(df: pd.DataFrame, criteria: dict) -> Set[str]:
     return set(df.loc[mask, "Product_title"].astype(str).tolist())
 
 
+USAGE_COLUMNS = ("llm_calls", "tokens_prompt", "tokens_completion",
+                 "tokens_reasoning", "tokens_total")
+
+
+def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) -> dict:
+    """What produced these numbers: models, backend, modes. Read LIVE -- the
+    comparison harnesses mutate cfg / translator_module between runs."""
+    provider = cfg.LLM_PROVIDER
+    backend = (cfg.SEARCH_BACKEND or "local").lower()
+    return {
+        "llm_provider": provider,
+        "llm_model": {
+            "openai": cfg.OPENAI_MODEL,
+            "gemini": cfg.GEMINI_MODEL,
+            "anthropic": cfg.ANTHROPIC_MODEL,
+        }.get(provider, "?"),
+        "search_backend": backend,
+        "embedding_model": (
+            cfg.VS_EMBEDDING_MODEL if backend == "databricks" else cfg.EMBEDDING_MODEL
+        ),
+        "translator_mode": translator_module.TRANSLATOR_MODE if translate_on else "off",
+        "rerank_on": rerank_on,
+        "rerank_input_k": cfg.RERANK_INPUT_K,
+        "retrieval_top_k": RETRIEVAL_TOP_K,
+        "deterministic": cfg.DETERMINISTIC,
+        "fields": ",".join(fields),
+    }
+
+
 def evaluate(
     rerank_on: bool,
     tag: str,
     fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS,
     translate_on: bool = True,
 ) -> Path:
+    """Run the eval set; CSV always, plus one MLflow run when tracking is on."""
+    with tracking.eval_run(tag) as run:
+        out_path, summary = _evaluate(rerank_on, tag, fields, translate_on)
+        degraded = int(summary.get("n_degraded", 0))
+        run.log(
+            params=_run_params(rerank_on, fields, translate_on),
+            metrics=summary,
+            artifact=out_path if out_path.exists() else None,
+            tags={"valid": str(degraded == 0).lower(), "tag": tag},
+        )
+    return out_path
+
+
+def _evaluate(
+    rerank_on: bool,
+    tag: str,
+    fields: Tuple[str, ...],
+    translate_on: bool,
+):
     load_index(fields=fields)
     df = get_dataframe()
 
@@ -97,27 +149,30 @@ def evaluate(
         # A silent LLM fallback makes a degraded run look like a clean one
         stage_errors: list = []
 
-        with timings.stage("translate"):
-            if translate_on:
-                intents = translate_query(query, errors=stage_errors)
-                tokens_in += approx_tokens(query)
+        # REAL provider-reported tokens; tokens_in_approx (len//4, input only)
+        # badly understates a reasoning model and is kept only for old CSVs
+        with track_usage() as usage:
+            with timings.stage("translate"):
+                if translate_on:
+                    intents = translate_query(query, errors=stage_errors)
+                    tokens_in += approx_tokens(query)
+                else:
+                    intents = [query]
+
+            with timings.stage("retrieve"):
+                candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
+
+            if rerank_on and candidates:
+                with timings.stage("rerank"):
+                    final = llm_rerank(
+                        query, candidates, top_k=FINAL_TOP_K, errors=stage_errors
+                    )
+                    tokens_in += sum(
+                        approx_tokens(c.get("Product_title", ""))
+                        for c in candidates[: max(FINAL_TOP_K * 3, 30)]
+                    )
             else:
-                intents = [query]
-
-        with timings.stage("retrieve"):
-            candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
-
-        if rerank_on and candidates:
-            with timings.stage("rerank"):
-                final = llm_rerank(
-                    query, candidates, top_k=FINAL_TOP_K, errors=stage_errors
-                )
-                tokens_in += sum(
-                    approx_tokens(c.get("Product_title", ""))
-                    for c in candidates[: max(FINAL_TOP_K * 3, 30)]
-                )
-        else:
-            final = candidates[:FINAL_TOP_K]
+                final = candidates[:FINAL_TOP_K]
 
         retrieved_titles = [p.get("Product_title", "") for p in final]
 
@@ -136,6 +191,11 @@ def evaluate(
                 "ms_rerank": timings.timings_ms.get("rerank", 0),
                 "ms_total": timings.total_ms,
                 "tokens_in_approx": tokens_in,
+                "llm_calls": usage["calls"],
+                "tokens_prompt": usage["prompt_tokens"],
+                "tokens_completion": usage["completion_tokens"],
+                "tokens_reasoning": usage["reasoning_tokens"],
+                "tokens_total": usage["total_tokens"],
                 "fell_back": ";".join(
                     str(e.get("stage")) for e in stage_errors
                 ) or "",
@@ -161,13 +221,27 @@ def evaluate(
         print(f"  !! {len(degraded)}/{len(rows)} QUERIES RAN DEGRADED "
               f"({ {r['fell_back'] for r in degraded} }) -- these metrics do NOT "
               "measure the full pipeline. Fix the cause before quoting them.")
+    summary = {"n_queries": len(rows), "n_degraded": len(degraded)}
     if rows:
         for col in ("P@1", "P@5", "P@10", "R@10", "MRR", "NDCG@10", "ms_total"):
-            print(f"  mean_{col:9s} = {mean(r[col] for r in rows):.3f}")
+            summary[f"mean_{col}"] = mean(r[col] for r in rows)
+            print(f"  mean_{col:9s} = {summary[f'mean_{col}']:.3f}")
+        for col in USAGE_COLUMNS:
+            summary[f"mean_{col}"] = mean(r[col] for r in rows)
+            summary[f"sum_{col}"] = sum(r[col] for r in rows)
+        print(f"  llm_calls    = {summary['sum_llm_calls']} "
+              f"({summary['mean_llm_calls']:.1f}/query)")
+        print(f"  tokens       = {summary['sum_tokens_total']:,} total "
+              f"({summary['mean_tokens_total']:,.0f}/query; prompt "
+              f"{summary['sum_tokens_prompt']:,}, completion "
+              f"{summary['sum_tokens_completion']:,}, of which reasoning "
+              f"{summary['sum_tokens_reasoning']:,})")
+        if summary["sum_llm_calls"] and not summary["sum_tokens_total"]:
+            print("  !! provider returned no usage data -- token counts are 0, not free")
     print(f"  rerank_on    = {rerank_on}")
     print(f"  fields       = {fields}")
     print(f"  saved to     = {out_path}")
-    return out_path
+    return out_path, summary
 
 
 def main():

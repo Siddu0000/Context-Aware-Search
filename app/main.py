@@ -1,13 +1,14 @@
 """FastAPI service exposing the search, chat, product and feedback endpoints."""
 
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app import page_cache
+from app import page_cache, tracking
 from app.config import (
     FINAL_TOP_K,
     GEMINI_MODEL,
@@ -25,6 +26,7 @@ from app.config import (
 from app.feedback import record_feedback
 from app.hybrid_router import route as hybrid_route
 from app.keyword_search import KeywordSearchEngine
+from app.llm_client import track_usage
 from app.metrics import StageTimings
 from app.recommendations import recommend as build_recommendations
 from app.reranker import rerank as llm_rerank
@@ -50,6 +52,7 @@ async def lifespan(app: FastAPI):
         LLM_PROVIDER,
         TRANSLATOR_MODE,
     )
+    tracking.enable_autolog()   # no-op unless MLFLOW_ENABLED and mlflow installed
     load_index()
     # Indexed on the same catalog so both search paths cover the same items
     global _keyword_engine
@@ -60,6 +63,29 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Context-Aware Agentic Search", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def _track_request(request, call_next):
+    """Per-request REAL token usage (headers + log) and one MLflow trace per request."""
+    t0 = time.perf_counter()
+    with track_usage() as usage, tracking.request_span(
+        f"{request.method} {request.url.path}"
+    ) as span:
+        response = await call_next(request)
+        tracking.set_span_attributes(span, {f"llm.{k}": v for k, v in usage.items()})
+    response.headers["X-LLM-Calls"] = str(usage["calls"])
+    response.headers["X-LLM-Prompt-Tokens"] = str(usage["prompt_tokens"])
+    response.headers["X-LLM-Completion-Tokens"] = str(usage["completion_tokens"])
+    if usage["calls"]:
+        # Path and counts only -- never the query text (safety.md: no PII in logs)
+        logger.info(
+            "%s %s llm_calls=%d prompt_tok=%d completion_tok=%d reasoning_tok=%d %.0fms",
+            request.method, request.url.path, usage["calls"], usage["prompt_tokens"],
+            usage["completion_tokens"], usage["reasoning_tokens"],
+            (time.perf_counter() - t0) * 1000,
+        )
+    return response
 
 
 @app.get("/healthz")
