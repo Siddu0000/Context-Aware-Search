@@ -87,7 +87,8 @@ def load_catalog():
 def query(term: str, top_k: int) -> List[Tuple[int, float]]:
     """[(catalog_index, similarity), ...] for one intent, best first."""
     res = get_index().similarity_search(
-        query_text=term, columns=["catalog_index"], num_results=top_k
+        query_text=term, columns=["catalog_index"], num_results=top_k,
+        disable_notice=True,  # printed per call otherwise; the client flag doesn't cover it
     )
     rows = (res.get("result") or {}).get("data_array") or []
     out = []

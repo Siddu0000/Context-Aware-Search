@@ -150,9 +150,19 @@ _NO_JSON_MODE: set = set()
 _JSON_ONLY_SUFFIX = "\n\nRespond with ONLY the JSON object, no prose or markdown."
 
 
+# Models that 400 on any `temperature` (claude-sonnet-5 on Databricks). They run
+# at the provider default, so their runs are not reproducible call to call.
+_NO_TEMPERATURE: set = set()
+
+
 def _rejects_json_mode(exc: Exception) -> bool:
     msg = str(exc).lower()
     return "json_object" in msg and ("not supported" in msg or "unsupported" in msg)
+
+
+def _rejects_temperature(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "temperature" in msg and ("not support" in msg or "unsupported" in msg)
 
 
 def _parse_json_reply(raw: str):
@@ -220,15 +230,17 @@ class _OpenAIBackend:
         )
         self.model = cfg.OPENAI_MODEL
 
-    def _params(self, prompt: str, temperature: float, json_mode: bool) -> dict:
+    def _params(self, prompt: str, temperature: float, json_mode: bool,
+                send_temperature: bool = True) -> dict:
         params = {
             "model": self.model,
             "messages": [{
                 "role": "user",
                 "content": prompt if json_mode else prompt + _JSON_ONLY_SUFFIX,
             }],
-            "temperature": cfg.effective_temperature(temperature),
         }
+        if send_temperature:
+            params["temperature"] = cfg.effective_temperature(temperature)
         if json_mode:
             params["response_format"] = {"type": "json_object"}
         base = (cfg.OPENAI_BASE_URL or "").lower()
@@ -240,19 +252,25 @@ class _OpenAIBackend:
         return params
 
     def generate_json(self, prompt: str, temperature: float) -> str:
-        json_mode = self.model not in _NO_JSON_MODE
-        try:
-            resp = self.client.chat.completions.create(
-                **self._params(prompt, temperature, json_mode)
-            )
-        except Exception as e:
-            if not (json_mode and _rejects_json_mode(e)):
-                raise
-            _NO_JSON_MODE.add(self.model)
-            logger.info("%s rejects JSON mode; prompting for JSON instead.", self.model)
-            resp = self.client.chat.completions.create(
-                **self._params(prompt, temperature, json_mode=False)
-            )
+        # Each refusal permanently drops one param, so this ends within 3 attempts
+        while True:
+            json_mode = self.model not in _NO_JSON_MODE
+            send_temperature = self.model not in _NO_TEMPERATURE
+            try:
+                resp = self.client.chat.completions.create(
+                    **self._params(prompt, temperature, json_mode, send_temperature)
+                )
+                break
+            except Exception as e:
+                if json_mode and _rejects_json_mode(e):
+                    _NO_JSON_MODE.add(self.model)
+                    logger.info("%s rejects JSON mode; prompting for JSON instead.", self.model)
+                elif send_temperature and _rejects_temperature(e):
+                    _NO_TEMPERATURE.add(self.model)
+                    logger.warning("%s rejects temperature; using the provider default "
+                                   "(runs are not reproducible).", self.model)
+                else:
+                    raise
         _usage_openai(resp)
         choice = resp.choices[0]
         # A truncated reply is unparseable JSON; say so instead of "invalid JSON"

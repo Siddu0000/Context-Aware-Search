@@ -341,6 +341,12 @@ each extra embedding contender costs a whole index (see timing below).
    `response_format`, remembers the model in `_NO_JSON_MODE`, restates "JSON only"
    in the prompt, and `_parse_json_reply()` tolerates fences and prose around the
    object. A `finish_reason=length` reply now raises "truncated", not "invalid JSON".
+3a. **claude-sonnet-5 REJECTS `temperature` altogether** (`does not support the
+   temperature parameter`, 2026-09-23 -- all 18 queries fell back; Haiku 4.5 accepts
+   it). Same learn-once pattern: `_NO_TEMPERATURE`, retry without it. The first
+   Sonnet call costs 3 round trips (temperature refused, then JSON mode refused).
+   Consequence: Sonnet 5 runs at the provider's default temperature with no seed,
+   so its runs are NOT reproducible -- judge it on the mean of repeats, not one run.
 3b. **The prompt MUST contain the literal word "json"** when
    `response_format={"type":"json_object"}` is sent, else 400. All 9 current
    prompts satisfy this by luck ("Output ONLY valid JSON"). A new prompt saying
@@ -391,12 +397,25 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
   the local CSV on 2026-09-23 (the multiLine read was a single partition), so `01`
   does NOT need re-running — only `02`. `vector_search.load_catalog()` refuses a non-dense key loudly,
   because hydration and `GET /product` use it as a ROW POSITION.
-- `MIN_RESULT_RELEVANCE` not yet calibrated for the Vector Search score scale —
-  run `databricks/07` and set the env var for the deployed app (see Gotchas).
-- LLM comparison (05) run 2026-09-23 on the KEYWORD set: Qwen3-Next matched
-  gpt-oss-120b (NDCG 0.953 vs 0.943) at 2.9x the speed (10.4s vs 30.3s/query) and
-  3.3x fewer completion tokens -- but a no-LLM control scored the SAME (0.954), so
-  that set cannot rank LLMs on quality. Re-run on `data/eval_queries_context.json`
+- `MIN_RESULT_RELEVANCE`, calibrated 2026-09-23 on the KEYWORD set (07,
+  translate=True, gte-large-en): real queries top-score 0.658-0.817 (median 0.749),
+  out-of-catalog 0.524-0.665 (median 0.610) -- the ranges OVERLAP. 0.638 blocks 0/18
+  real and rejects 7/10 out-of-catalog. NOT yet set: the context set's inferred
+  queries ("never lose my keys again") may score lower, so calibrate that set too
+  (`run(translate=True, queries="data/eval_queries_context.json")`) and take the
+  LOWER recommendation. Rejection still rests mainly on the translator/reranker.
+- LLM comparison (05) run 2026-09-23 on the KEYWORD set, rerank ON, all valid:
+
+  | model | ms/query | prompt tok | completion tok | NDCG@10 | P@10 |
+  |---|---|---|---|---|---|
+  | claude-haiku-4-5 | 9,657 (~9,240 excl. cold 1st query) | 3,080 | 718 | 0.950 | 0.939 |
+  | qwen3-next-80b-a3b-instruct | 10,391 | 2,709 | 658 | 0.953 | 0.939 |
+  | gpt-oss-120b | 30,280 | 2,806 | 2,177 | 0.943 | 0.943 |
+
+  claude-sonnet-5 fell back on every query (quirk 3a, now fixed; re-run pending).
+  Token counts are NOT comparable across model families (different tokenizers);
+  compare cost in dollars from `system.billing.usage`. A no-LLM control scored the
+  SAME (0.954), so that set cannot rank LLMs on quality. Re-run on `data/eval_queries_context.json`
   (see .claude/rules/eval.md). Provisional: Qwen for the demo, on latency alone.
 - **The SETUP bundle over-triggers** the way OUTFIT did before Aug 31: "watch
   movies on my bedroom wall" becomes a 6-part home theatre (projector, mount,
