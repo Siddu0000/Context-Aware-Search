@@ -413,6 +413,14 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
 - Tracking can NEVER break a search or an eval: every mlflow call is wrapped, and a
   failed `start_run` just runs untracked (verified against a real failure).
 - MLflow metric keys reject `@`: `P@10` is logged as `P_at_10`.
+- **Databricks does not break out reasoning tokens** (verified 2026-09-23: a
+  `{"ok": true}` reply cost 61 completion tokens, `reasoning_tokens` 0). gpt-oss's
+  reasoning is billed INSIDE `completion_tokens`, so `tokens_reasoning=0` there means
+  "not reported", not "no reasoning". Compare models on `tokens_completion` /
+  `tokens_total`. Groq and api.openai.com do report it.
+- Traces go to the workspace MLflow store (100K-trace limit). Fine for evals; a
+  DEPLOYED app traces every request, so decide on Unity Catalog trace storage or
+  sampling before turning MLFLOW_ENABLED on in production.
 
 
 ## Conventions

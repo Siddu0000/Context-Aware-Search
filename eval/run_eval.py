@@ -231,11 +231,15 @@ def _evaluate(
             summary[f"sum_{col}"] = sum(r[col] for r in rows)
         print(f"  llm_calls    = {summary['sum_llm_calls']} "
               f"({summary['mean_llm_calls']:.1f}/query)")
+        # Databricks FM APIs bill reasoning INSIDE completion_tokens without breaking
+        # it out, so 0 there means "not reported", never "the model did not reason"
+        reasoning = (f"of which reasoning {summary['sum_tokens_reasoning']:,}"
+                     if summary["sum_tokens_reasoning"]
+                     else "reasoning not broken out by this provider")
         print(f"  tokens       = {summary['sum_tokens_total']:,} total "
               f"({summary['mean_tokens_total']:,.0f}/query; prompt "
               f"{summary['sum_tokens_prompt']:,}, completion "
-              f"{summary['sum_tokens_completion']:,}, of which reasoning "
-              f"{summary['sum_tokens_reasoning']:,})")
+              f"{summary['sum_tokens_completion']:,}, {reasoning})")
         if summary["sum_llm_calls"] and not summary["sum_tokens_total"]:
             print("  !! provider returned no usage data -- token counts are 0, not free")
     print(f"  rerank_on    = {rerank_on}")
