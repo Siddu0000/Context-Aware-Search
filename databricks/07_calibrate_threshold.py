@@ -8,7 +8,8 @@ because run_eval never applies the floor.
 Usage in a notebook (after Cell 2):
     exec(open("databricks/07_calibrate_threshold.py").read())
     result = run(translate=True)     # faithful; ~28 LLM calls
-    # then set MIN_RESULT_RELEVANCE=<result["recommended"]> for the deployed app
+    ctx = run(translate=True, queries="data/eval_queries_context.json")  # ~26 calls
+    # then set MIN_RESULT_RELEVANCE to the LOWER of the two recommendations
 """
 
 import sys
@@ -17,10 +18,10 @@ sys.path.insert(0, "databricks")
 import vs_shim  # noqa: E402
 
 
-def run(translate=True, margin=0.02):
+def run(translate=True, margin=0.02, queries=None):
     from pyspark.sql import SparkSession
 
     from eval import calibrate_relevance
 
     vs_shim.patch_eval_harness(SparkSession.builder.getOrCreate())
-    return calibrate_relevance.run(translate=translate, margin=margin)
+    return calibrate_relevance.run(translate=translate, margin=margin, queries=queries)
