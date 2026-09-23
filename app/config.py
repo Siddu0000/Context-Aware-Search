@@ -67,6 +67,9 @@ def effective_temperature(requested: float) -> float:
 
 RATING_BOOST_WEIGHT = float(os.getenv("RATING_BOOST_WEIGHT", "0.05"))
 
+# Absolute "no products match" floor on the retrieval score. Tuned on gte-small
+# cosine; the Vector Search score scale differs -- recalibrate per backend with
+# eval/calibrate_relevance.py (databricks/07) before trusting it there.
 MIN_RESULT_RELEVANCE = float(os.getenv("MIN_RESULT_RELEVANCE", "0.5"))
 
 RERANK_POOL_K = int(os.getenv("RERANK_POOL_K", "30"))
@@ -85,3 +88,25 @@ SPONSORED_ENABLED = os.getenv("SPONSORED_ENABLED", "true").lower() in {"1", "tru
 SPONSORED_CONFIG = DATA_DIR / "sponsored.json"
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+
+# Retrieval backend. "local" = in-process gte-small + numpy (dev laptop);
+# "databricks" = Mosaic AI Vector Search over the managed gte-large-en index.
+# Read DYNAMICALLY via cfg.SEARCH_BACKEND so notebooks/evals can switch it.
+SEARCH_BACKEND = os.getenv("SEARCH_BACKEND", "local").lower()
+CAS_CATALOG = os.getenv("CAS_CATALOG", "dev")
+CAS_SCHEMA = os.getenv("CAS_SCHEMA", "cas")
+VS_ENDPOINT = os.getenv("CAS_ENDPOINT", "cas-search")
+VS_INDEX = f"{CAS_CATALOG}.{CAS_SCHEMA}.products_index"
+VS_TABLE = f"{CAS_CATALOG}.{CAS_SCHEMA}.products"
+# Must match embedding_model_endpoint_name used when the index was built (02)
+VS_EMBEDDING_MODEL = os.getenv("VS_EMBEDDING_MODEL", "databricks-gte-large-en")
+# Catalog source when Spark is unavailable (Databricks Apps). Row position must
+# equal catalog_index -- guaranteed by the dense row_number() in databricks/01.
+VS_CATALOG_CSV = os.getenv(
+    "VS_CATALOG_CSV", f"/Volumes/{CAS_CATALOG}/{CAS_SCHEMA}/raw/products.csv"
+)
+
+# Experiment tracking. Opt-in: needs MLFLOW_ENABLED=true AND mlflow installed;
+# otherwise every tracking call is a no-op, so local dev never needs mlflow.
+MLFLOW_ENABLED = os.getenv("MLFLOW_ENABLED", "false").lower() in {"1", "true", "yes"}
+MLFLOW_EXPERIMENT = os.getenv("MLFLOW_EXPERIMENT")  # e.g. /Users/<you>/cas-evals

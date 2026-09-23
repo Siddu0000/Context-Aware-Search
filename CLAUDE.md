@@ -19,12 +19,25 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
 
 ## Architecture (the pipeline, in order)
 1. `app/translator.py` — query → N search intents. THREE modes; we use `query_expansion`.
-2. `app/embeddings.py` — sentence-transformers (`all-MiniLM-L6-v2`) or OpenAI backend.
-3. `app/search.py` — cosine retrieval, scatter-gather across intents, dedup. NaN-safe.
+2. `app/embeddings.py` — sentence-transformers (`thenlper/gte-small`) or OpenAI backend.
+3. `app/search.py` — scatter-gather retrieval across intents, dedup, NaN-safe. TWO
+   backends behind one interface (`SEARCH_BACKEND`): `local` = gte-small + numpy
+   cosine; `databricks` = Mosaic AI Vector Search (`app/vector_search.py`). Every
+   consumer goes through this module, so the switch moves the whole app AND evals.
 4. `app/reranker.py` — LLM reranks a deep pool (RERANK_POOL_K, default 30) with reasons, then blends rating.
 5. `app/scoring.py` — Bayesian rating shrinkage + blend into final score.
 6. `app/main.py` — paginates the reranked pool (`?page=`, `top_k`=page size); `GET /product?catalog_index=` powers the per-product detail page (product + its own recs).
-7. `app/sponsored.py` — featured/paid-ad layer. Reads `data/sponsored.json`, returns a SEPARATE `sponsored` list (never blended into organic — see safety.md). RELEVANCE-GATED: an ad shows only if its similarity to the query intents ≥ SPONSORED_REL_RATIO×median organic score, else none (fixes off-topic ads like a women's dress on a men's-shirt query).
+7. `app/sponsored.py` — featured/paid-ad layer. Reads `data/sponsored.json` (keyed by
+   `parent_asin`). **Gate = membership in the RERANKED pool** (`_boost_sponsored`: an ad
+   needs a `rerank_score`), so an off-topic ad never shows — e.g. no women's dress on a
+   men's-shirt query. Bundles gate within a slot (`_promote_sponsored_options`);
+   keyword search gates on BM25 top-k membership. **Placement: gated ads are moved to
+   the FRONT of the organic `results` list, bid-ordered, and labelled `is_sponsored` +
+   `sponsor`; they are ALSO mirrored into a separate `sponsored` field.** `_bid` is
+   stripped before any response. (Corrected 2026-09-23: this line used to say ads were
+   "never blended into organic" and gated by a `SPONSORED_REL_RATIO`×median-score
+   rule — neither exists in the code. Auditability rests on the `is_sponsored` label.
+   Evals are unaffected: run_eval calls the reranker directly and never boosts ads.)
 8. `app/recommendations.py` — cross-sell (LLM-proposed complements grounded in the catalog) + upsell (higher Bayesian-rated embedding neighbour). Surfaced on the PRODUCT DETAIL page (per-product), not the results list.
 - `app/llm_client.py` — provider abstraction (Gemini/OpenAI/Anthropic). Reads config DYNAMICALLY (see below).
 - `app/key_rotator.py` — multi-key Gemini 429 failover.
@@ -120,6 +133,21 @@ prod_description, average_rating, rating_number, store, parent_asin`
 - **Embedding cache** (on-disk, `.cache/`) is keyed by CSV content hash — swapping the catalog
   triggers a ~5-min re-encode on next boot. This is separate from the (disabled) LLM cache.
 - Windows: torch CPU-only + MSVC redistributable needed (past WinError 1114 on `c10.dll`).
+- **`MIN_RESULT_RELEVANCE` differs by machine and has never actually fired.** The
+  local `.env` sets 0.28, but `.env` is gitignored, so Databricks gets the config
+  default 0.5. And on gte-small EVERY query scores 0.83–0.94 — gibberish like
+  `asdfghjkl` scores ~0.85 (gte's high baseline cosine) — so locally "no products
+  found" has only ever come from the translator's gibberish detection. Measure it
+  with `python -m eval.calibrate_relevance` rather than trusting any old value.
+- **Never add `databricks/__init__.py`.** That folder merges with the pip
+  `databricks` namespace package; a regular package there would shadow
+  `databricks.sdk` and `databricks.vector_search`.
+- **MLflow 3.x refuses the old `./mlruns` file store** (raises unless
+  `MLFLOW_ALLOW_FILE_STORE=true`). Locally use `MLFLOW_TRACKING_URI=sqlite:///mlflow.db`;
+  Databricks notebooks track to the workspace and are unaffected.
+- Databricks returns reasoning replies as a LIST where the OpenAI SDK schema says
+  `str`, so MLflow autolog would print a Pydantic serializer warning on every
+  call. `tracking.enable_autolog()` silences exactly that message.
 
 ## Open work (priority order)
 - P2: diversity/dedup ("70 paneer sellers" problem — recipe eval grid exposes it). STILL OPEN.
@@ -324,11 +352,14 @@ embedding-only baseline, 66ms "rerank"). `run_eval.py` now threads an errors
 list through translate AND rerank, writes a **`fell_back`** column per query, and
 prints a loud banner. **Never read an eval number without checking `fell_back`.**
 
-### Running the eval on Databricks (databricks/)
-`vs_shim.py` holds the shared shim; it patches `eval.run_eval`'s globals —
-NOT `app.search`, because run_eval does `from app.search import search_products`
-which binds at import time. `compare_llms` and `compare_translators` both call
-`run_eval.evaluate()`, so the one patch covers all three harnesses (verified).
+### Running the eval on Databricks (databricks/) — full runbook in databricks/README.md
+`vs_shim.patch_eval_harness(spark)` sets `cfg.SEARCH_BACKEND="databricks"`, loads the
+catalog and points eval CSVs at the UC Volume. There is NO monkey-patching any more:
+the earlier shim patched `run_eval` with a parallel retrieval function that returned
+only 11 index columns — fine for the eval, but in the app it would have blanked
+`img_url` and broken sponsored matching (keyed by `parent_asin`). Now the index
+returns only `catalog_index` + score and rows are HYDRATED from the catalog, so both
+backends return identical row shapes and the eval runs the app's real code.
 - `04_run_eval.py` — retrieval eval; `--rerank` for the full pipeline
 - `05_compare_llms.py` — `list_models()` then `run([...])`; rerank ON, so it
   tests intent generation AND reranking. Endpoint NAMES, not vendor model ids.
@@ -338,14 +369,39 @@ which binds at import time. `compare_llms` and `compare_translators` both call
 Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
 
 ### Still open
-- `catalog_index` uses `monotonically_increasing_id()` — sparse and
-  partition-dependent, whereas locally it is a ROW POSITION used by
-  `GET /product?catalog_index=`. Harmless for the eval (which compares titles
-  only), MUST be fixed before pointing the API at Databricks.
-- No MLflow. `approx_tokens` is `len//4` on INPUT only, and `resp.usage` is
-  discarded — so real token cost is unknown, which matters now that tokens are
-  billed. `mlflow.openai.autolog()` is the cheap fix.
-- rerank-ON comparison vs the recorded Groq NDCG 0.950 not yet run.
+- `catalog_index`: FIXED in `01` (dense `row_number()` over file order + an
+  assertion), but the live table predates the fix — re-run `01` before the next
+  index build. `vector_search.load_catalog()` refuses a non-dense key loudly,
+  because hydration and `GET /product` use it as a ROW POSITION.
+- `MIN_RESULT_RELEVANCE` not yet calibrated for the Vector Search score scale —
+  run `databricks/07` and set the env var for the deployed app (see Gotchas).
+- rerank-ON, LLM (05) and translator (06) comparisons not yet run.
+- The app itself is not yet deployed (`app.yaml` untested). Databricks Apps have
+  no Spark, so `load_catalog()` falls back to `VS_CATALOG_CSV` on the UC Volume —
+  confirm the App can read `/Volumes/...` before relying on that path.
+
+## MLflow + real token accounting (2026-09-23)
+- `app/llm_client.py` now records the PROVIDER-REPORTED usage of every call
+  (`resp.usage`, Gemini `usage_metadata`, Anthropic `usage`) — including
+  **reasoning tokens**, which are billed but never visible in the reply. Collect it
+  with `with track_usage() as u:`; scopes nest additively and are ContextVar-based,
+  so a scope opened in async middleware sees calls made in the threadpool endpoint.
+  `approx_tokens` (`len//4`, input only) is kept only so old CSVs stay comparable.
+- Every HTTP response carries `X-LLM-Calls` / `X-LLM-Prompt-Tokens` /
+  `X-LLM-Completion-Tokens`, and requests with LLM calls log counts (never the
+  query text — safety.md).
+- Eval CSVs gained `llm_calls, tokens_prompt, tokens_completion, tokens_reasoning,
+  tokens_total`; the summary prints totals.
+- `app/tracking.py` (opt-in, `MLFLOW_ENABLED=true` + mlflow installed; otherwise
+  every call is a no-op): `mlflow.openai.autolog()` traces each LLM call, the request
+  middleware groups one request's calls into ONE trace (verified:
+  `GET /search` -> 2 nested `Completions` spans), and `run_eval.evaluate()` logs one
+  MLflow run per eval — params (models/backend/modes), metrics (quality + tokens),
+  the CSV as an artifact, tag `valid=true|false` from `fell_back`.
+- Tracking can NEVER break a search or an eval: every mlflow call is wrapped, and a
+  failed `start_run` just runs untracked (verified against a real failure).
+- MLflow metric keys reject `@`: `P@10` is logged as `P_at_10`.
+
 
 ## Conventions
 - Prose comments explaining WHY, not what. Keep functions small and pure where possible.

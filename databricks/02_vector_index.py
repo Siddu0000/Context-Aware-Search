@@ -4,6 +4,8 @@ import sys
 
 from databricks.vector_search.client import VectorSearchClient
 
+import app.config as cfg
+
 import os
 
 # The workspace catalog. `dev` is what we have write access to on the LatentView
@@ -37,7 +39,8 @@ index = client.create_delta_sync_index(
     pipeline_type="CONTINUOUS",          # standard endpoints support continuous
     primary_key="catalog_index",
     embedding_source_column="search_text",
-    embedding_model_endpoint_name="databricks-gte-large-en",
+    # Read from config so run_eval logs the model the index actually uses
+    embedding_model_endpoint_name=cfg.VS_EMBEDDING_MODEL,
 )
 # Measured 2026-09-11: ~2,350 rows/min, so 300K rows = ~2 HOURS for the initial
 # snapshot. The endpoint bills hourly from creation, so a rebuild is never cheap.
