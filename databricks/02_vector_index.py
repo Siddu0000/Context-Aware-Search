@@ -25,18 +25,26 @@ if "--teardown" in sys.argv:
     print(f"Deleted {INDEX}. Endpoint billing stops ~24h after last index.")
     sys.exit(0)
 
+# Wait for ONLINE before creating the index. Likely cause of the Sep 10
+# OFFLINE_FAILED build ($23.39 for nothing): the index was created seconds after
+# a brand-new endpoint, while it was still PROVISIONING. Sep 11's rebuild, on an
+# endpoint that already existed, succeeded. (Hypothesis -- never confirmed.)
 try:
-    client.create_endpoint(name=ENDPOINT, endpoint_type="STANDARD")
-    print(f"Created endpoint {ENDPOINT}")
-except Exception as e:  # already exists is fine
+    client.create_endpoint_and_wait(name=ENDPOINT, endpoint_type="STANDARD", verbose=True)
+    print(f"Created endpoint {ENDPOINT}; ONLINE")
+except Exception as e:  # already exists is fine -- but it must still be ONLINE
     print(f"Endpoint: {e}")
+    client.wait_for_endpoint(ENDPOINT, verbose=True)
 
 # Managed embeddings: the platform embeds search_text, replacing app/embeddings.py
 index = client.create_delta_sync_index(
     endpoint_name=ENDPOINT,
     index_name=INDEX,
     source_table_name=TABLE,
-    pipeline_type="CONTINUOUS",          # standard endpoints support continuous
+    # The catalog is static, so TRIGGERED: the initial snapshot costs the same either
+    # way, but CONTINUOUS keeps a streaming pipeline billing while the index sits idle.
+    # If the table ever changes, call index.sync().
+    pipeline_type=os.getenv("VS_PIPELINE_TYPE", "TRIGGERED").upper(),
     primary_key="catalog_index",
     embedding_source_column="search_text",
     # Read from config so run_eval logs the model the index actually uses
