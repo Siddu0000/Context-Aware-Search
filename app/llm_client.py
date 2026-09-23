@@ -141,6 +141,39 @@ def _message_text(content) -> str:
     return str(content)
 
 
+# Models that 400 on response_format=json_object. Learned on first refusal so
+# later calls skip the doomed attempt instead of paying a round trip each time.
+_NO_JSON_MODE: set = set()
+
+# Only JSON-mode-less models get this appended: without the API guarantee they
+# need the format restated (the Anthropic backend already does the same).
+_JSON_ONLY_SUFFIX = "\n\nRespond with ONLY the JSON object, no prose or markdown."
+
+
+def _rejects_json_mode(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "json_object" in msg and ("not supported" in msg or "unsupported" in msg)
+
+
+def _parse_json_reply(raw: str):
+    """Parse a reply that should be one JSON object, tolerating fences and prose."""
+    text = raw.strip()
+    if text.startswith("```"):
+        # drop the opening fence line (```json, ``` or any language tag)
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0]
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Models without a JSON mode sometimes wrap the object in a sentence
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        return json.loads(text[start:end + 1])
+    raise json.JSONDecodeError("no JSON object in reply", text, 0)
+
+
 def _use_seed() -> bool:
     """Send a fixed seed only in true deterministic mode (not during a sweep)."""
     return cfg.DETERMINISTIC and cfg.TEMPERATURE_OVERRIDE is None
@@ -187,22 +220,45 @@ class _OpenAIBackend:
         )
         self.model = cfg.OPENAI_MODEL
 
-    def generate_json(self, prompt: str, temperature: float) -> str:
+    def _params(self, prompt: str, temperature: float, json_mode: bool) -> dict:
         params = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [{
+                "role": "user",
+                "content": prompt if json_mode else prompt + _JSON_ONLY_SUFFIX,
+            }],
             "temperature": cfg.effective_temperature(temperature),
-            "response_format": {"type": "json_object"},
         }
+        if json_mode:
+            params["response_format"] = {"type": "json_object"}
         base = (cfg.OPENAI_BASE_URL or "").lower()
         # Databricks FM APIs reject unknown fields: `seed` 400s the whole call
         if _use_seed() and "serving-endpoints" not in base:
             params["seed"] = cfg.LLM_SEED
         if "groq" in base and cfg.GROQ_REASONING_FORMAT:
             params["extra_body"] = {"reasoning_format": cfg.GROQ_REASONING_FORMAT}
-        resp = self.client.chat.completions.create(**params)
+        return params
+
+    def generate_json(self, prompt: str, temperature: float) -> str:
+        json_mode = self.model not in _NO_JSON_MODE
+        try:
+            resp = self.client.chat.completions.create(
+                **self._params(prompt, temperature, json_mode)
+            )
+        except Exception as e:
+            if not (json_mode and _rejects_json_mode(e)):
+                raise
+            _NO_JSON_MODE.add(self.model)
+            logger.info("%s rejects JSON mode; prompting for JSON instead.", self.model)
+            resp = self.client.chat.completions.create(
+                **self._params(prompt, temperature, json_mode=False)
+            )
         _usage_openai(resp)
-        return _message_text(resp.choices[0].message.content)
+        choice = resp.choices[0]
+        # A truncated reply is unparseable JSON; say so instead of "invalid JSON"
+        if getattr(choice, "finish_reason", None) == "length":
+            raise LLMError(f"{self.model} reply truncated (hit max_tokens).")
+        return _message_text(choice.message.content)
 
 
 class _AnthropicBackend:
@@ -268,10 +324,9 @@ def generate_json(prompt: str, temperature: float = 0.2) -> dict:
     raw = client.generate_json(prompt, temperature)
     if not isinstance(raw, str):
         raw = _message_text(raw)
-    text = raw.strip().removeprefix("```json").removesuffix("```").strip()
-    if not text:
+    if not raw.strip():
         raise LLMError("LLM returned no text content (reasoning-only reply?)")
     try:
-        return json.loads(text)
+        return _parse_json_reply(raw)
     except json.JSONDecodeError as e:
         raise LLMError(f"LLM returned invalid JSON: {raw!r}") from e

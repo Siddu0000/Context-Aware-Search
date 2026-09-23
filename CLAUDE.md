@@ -335,7 +335,13 @@ each extra embedding contender costs a whole index (see timing below).
    raised `AttributeError: 'list' object has no attribute 'strip'`.
    `_message_text()` drops reasoning blocks and keeps text ones — the structural
    equivalent of Groq's `reasoning_format=hidden`, which does not exist here.
-3. **The prompt MUST contain the literal word "json"** when
+3. **Claude endpoints REJECT JSON mode entirely** (`Response format type json_object is
+   not supported for this model`, 2026-09-23) — both Haiku and Sonnet runs silently
+   measured the no-LLM baseline. `_OpenAIBackend` now retries once without
+   `response_format`, remembers the model in `_NO_JSON_MODE`, restates "JSON only"
+   in the prompt, and `_parse_json_reply()` tolerates fences and prose around the
+   object. A `finish_reason=length` reply now raises "truncated", not "invalid JSON".
+3b. **The prompt MUST contain the literal word "json"** when
    `response_format={"type":"json_object"}` is sent, else 400. All 9 current
    prompts satisfy this by luck ("Output ONLY valid JSON"). A new prompt saying
    "return a dict" would work on Groq and 400 here.
