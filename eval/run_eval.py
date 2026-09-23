@@ -54,6 +54,14 @@ def build_relevance_set(df: pd.DataFrame, criteria: dict) -> Set[str]:
             )
         mask &= any_mask
 
+    if "title_none_of" in criteria:
+        # Excludes accessories that NAME the product: "roku remote", "airtag case",
+        # "nightgown" for gown. Inferred-intent queries need it; keyword ones rarely do.
+        for term in criteria["title_none_of"]:
+            mask &= ~df["Product_title"].astype(str).str.lower().str.contains(
+                re.escape(term.lower())
+            )
+
     if "color_in" in criteria:
         colors = [c.lower() for c in criteria["color_in"]]
         mask &= df["color"].astype(str).str.lower().isin(colors)
@@ -102,6 +110,8 @@ def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) ->
         "retrieval_top_k": RETRIEVAL_TOP_K,
         "deterministic": cfg.DETERMINISTIC,
         "fields": ",".join(fields),
+        # Scores on different sets are NOT comparable (keyword set ~0.95 raw, context ~0.3)
+        "eval_set": Path(EVAL_QUERIES_JSON).name,
     }
 
 
@@ -257,7 +267,14 @@ def main():
         help="Exclude prod_description from search text — diagnoses label leakage.",
     )
     p.add_argument("--tag", default=None, help="Filename tag for the output CSV.")
+    p.add_argument("--queries", default=None,
+                   help="Eval set JSON, e.g. data/eval_queries_context.json.")
+    p.add_argument("--no-translate", action="store_true",
+                   help="Search the raw query: the no-LLM control.")
     args = p.parse_args()
+    if args.queries:
+        global EVAL_QUERIES_JSON
+        EVAL_QUERIES_JSON = cfg.eval_queries_path(args.queries)
 
     fields = DEFAULT_SEARCH_FIELDS
     if args.exclude_description:
@@ -268,7 +285,9 @@ def main():
     if args.exclude_description:
         default_tag += "_no_desc"
     tag = args.tag or default_tag
-    evaluate(rerank_on=rerank_on, tag=tag, fields=fields)
+    if args.no_translate:
+        tag += "_no_translate"
+    evaluate(rerank_on=rerank_on, tag=tag, fields=fields, translate_on=not args.no_translate)
 
 
 if __name__ == "__main__":

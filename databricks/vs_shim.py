@@ -28,6 +28,9 @@ def patch_eval_harness(spark, verbose=True):
     vector_search.set_spark(spark)
     search.load_index()           # raises loudly if catalog_index is not dense
 
+    # Read the env NOW: a notebook usually imported run_eval before setting it
+    run_eval.EVAL_QUERIES_JSON = cfg.eval_queries_path()
+
     out = Path(f"/Volumes/{cfg.CAS_CATALOG}/{cfg.CAS_SCHEMA}/evals")
     out.mkdir(parents=True, exist_ok=True)
     run_eval.EVAL_RESULTS_DIR = out
@@ -37,5 +40,6 @@ def patch_eval_harness(spark, verbose=True):
         print(f"catalog : {len(search.get_dataframe()):,} rows")
         print(f"index   : {cfg.VS_INDEX} ({cfg.VS_EMBEDDING_MODEL})")
         print(f"results : {out}")
+        print(f"eval set: {run_eval.EVAL_QUERIES_JSON.name}")
         print(f"mlflow  : {'ON -> ' + str(cfg.MLFLOW_EXPERIMENT) if tracked else 'off'}")
     return vector_search.get_index()
