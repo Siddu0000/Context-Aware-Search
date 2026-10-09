@@ -13,6 +13,7 @@ from typing import List, Set, Tuple
 import pandas as pd
 
 import app.config as cfg
+import app.search as search_module
 import app.translator as translator_module
 from app import tracking
 from app.config import EVAL_QUERIES_JSON, EVAL_RESULTS_DIR, FINAL_TOP_K, RETRIEVAL_TOP_K
@@ -145,6 +146,12 @@ def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) ->
         "embedding_model": (
             cfg.VS_EMBEDDING_MODEL if backend == "databricks" else cfg.EMBEDDING_MODEL
         ),
+        # vector = self-managed index + app-side query embedding (2026-10-09 on);
+        # text = the old managed-embedding index. Runs of the two are not comparable.
+        "vs_query_mode": cfg.VS_QUERY_MODE if backend == "databricks" else "n/a",
+        "catalog": cfg.VS_TABLE if backend == "databricks" else cfg.PRODUCTS_CSV.name,
+        # Content hash: the names above stay the same when the catalog text changes
+        "catalog_fp": search_module.catalog_fingerprint(),
         "translator_mode": translator_module.TRANSLATOR_MODE if translate_on else "off",
         "rerank_on": rerank_on,
         "rerank_input_k": cfg.RERANK_INPUT_K,
@@ -152,7 +159,8 @@ def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) ->
         # The knob; seed_sent says whether it took effect (Databricks never gets a seed)
         "deterministic": cfg.DETERMINISTIC,
         **_llm_facts(rerank_on, translate_on),
-        "fields": ",".join(fields),
+        # What was EMBEDDED (the enriched tags join the default set), not just requested
+        "fields": ",".join(search_module.embedded_fields() or fields),
         # Scores on different sets are NOT comparable (keyword set ~0.95 raw, context ~0.3)
         "eval_set": Path(EVAL_QUERIES_JSON).name,
     }
@@ -306,7 +314,7 @@ def _evaluate(
           f"(seed sent: {'yes' if llm['seed_sent'] else 'no'})")
     _print_downgrades(llm["llm_model_used"])
     print(f"  rerank_on    = {rerank_on}")
-    print(f"  fields       = {fields}")
+    print(f"  fields       = {search_module.embedded_fields() or fields}")
     print(f"  saved to     = {out_path}")
     return out_path, summary
 

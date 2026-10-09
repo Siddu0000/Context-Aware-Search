@@ -88,6 +88,21 @@ def inject_css():
     st.markdown(_CARD_CSS, unsafe_allow_html=True)
 
 
+def price_label(product: dict) -> str | None:
+    """'$X' for a listed price, '≈ $X (est.)' for an estimate, None if neither.
+
+    Estimates come from similar products (scripts/enrich_catalog.py); they are
+    always marked so a shopper never mistakes one for the listed price.
+    """
+    p = product.get("price")
+    if p is not None and not is_nan(p):
+        return f"${float(p):,.2f}"
+    e = product.get("price_estimate")
+    if e is not None and not is_nan(e):
+        return f"≈ ${float(e):,.2f} (est.)"
+    return None
+
+
 def is_nan(x) -> bool:
     """True if x is float NaN. None and other types return False."""
     try:
@@ -272,8 +287,8 @@ def render_card(
                 meta.append(f"by {product['store']}")
             if product.get("color"):
                 meta.append(f"Color: {product['color']}")
-            if product.get("price") is not None and not is_nan(product.get("price")):
-                meta.append(f"**${product['price']}**")
+            if price_label(product):
+                meta.append(f"**{price_label(product)}**")
             st.markdown(" · ".join(meta))
 
             rating_line(product)
@@ -340,8 +355,10 @@ def grid_product_body(product: dict, key_ns: str = ""):
     if bits:
         st.caption(" · ".join(bits))
 
-    if product.get("price") is not None and not is_nan(product.get("price")):
-        st.markdown(f"**${product['price']}**")
+    if price_label(product):
+        st.markdown(f"**{price_label(product)}**")
+        if product.get("price") is None or is_nan(product.get("price")):
+            st.caption("No listed price -- estimated from similar products.")
 
     rating = product.get("average_rating")
     rating_n = product.get("rating_number")
@@ -400,8 +417,8 @@ def render_mini(item: dict, key_prefix: str):
             st.image(item["img_url"], width=120)
         title = item.get("Product_title", "Untitled")
         st.markdown(f"**{title[:60]}{'…' if len(title) > 60 else ''}**")
-        if item.get("price") is not None and not is_nan(item.get("price")):
-            st.caption(f"${item['price']}")
+        if price_label(item):
+            st.caption(price_label(item))
         if item.get("recommend_reason"):
             st.caption(f"_{item['recommend_reason']}_")
         cidx = item.get("catalog_index")

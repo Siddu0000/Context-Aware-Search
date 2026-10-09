@@ -80,9 +80,17 @@ def _format_candidate(i: int, product: dict) -> str:
     occasion = product.get("occasion", "")
     rating = product.get("average_rating")
     rating_n = product.get("rating_number")
-    desc = (product.get("prod_description") or "")[:100]
+    # A generated summary stands in only where the listing has no description
+    desc = (product.get("prod_description") or product.get("gen_description") or "")[:100]
 
-    price_str = f"${price}" if price is not None else "?"
+    est = product.get("price_estimate")
+    if price is not None:
+        price_str = f"${price}"
+    elif est is not None:
+        # Flagged so a budget judgement knows it rests on an estimate
+        price_str = f"~${est} (estimated)"
+    else:
+        price_str = "?"
     confidence = rating_quality_tag(rating_n)
     if confidence == "no_ratings":
         rating_str = "rating=none"

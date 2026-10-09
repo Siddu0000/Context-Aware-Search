@@ -59,7 +59,7 @@ def patch_eval_harness(spark, verbose=True, llm=None):
     tracked = tracking.enable_autolog()
     if verbose:
         print(f"catalog : {len(search.get_dataframe()):,} rows")
-        print(f"index   : {cfg.VS_INDEX} ({cfg.VS_EMBEDDING_MODEL})")
+        print(f"index   : {cfg.VS_INDEX} ({cfg.VS_EMBEDDING_MODEL}, query={cfg.VS_QUERY_MODE})")
         print(f"results : {out}")
         print(f"eval set: {run_eval.EVAL_QUERIES_JSON.name}")
         print(f"llm     : {llm or f'{cfg.LLM_PROVIDER} / {llm_model()}'}")

@@ -22,7 +22,8 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
 2. `app/embeddings.py` — sentence-transformers (`thenlper/gte-small`) or OpenAI backend.
 3. `app/search.py` — scatter-gather retrieval across intents, dedup, NaN-safe. TWO
    backends behind one interface (`SEARCH_BACKEND`): `local` = gte-small + numpy
-   cosine; `databricks` = Mosaic AI Vector Search (`app/vector_search.py`). Every
+   cosine; `databricks` = Mosaic AI Vector Search (`app/vector_search.py`, which
+   embeds each query with `databricks-gte-large-en` and sends `query_vector`). Every
    consumer goes through this module, so the switch moves the whole app AND evals.
 4. `app/reranker.py` — LLM reranks the top RERANK_INPUT_K (default 15) candidates with reasons,
    then blends rating. The prompt asks for min(top_k, candidates sent) entries: 15 in /search
@@ -104,6 +105,17 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
   `app/cache.py` LRU was removed. The on-disk embedding cache is separate and stays.
 - **Data is Amazon Reviews 2023** (McAuley Lab), not the original synthetic eBay catalog. Real
   titles/prices/images/ratings. License is RESEARCH-ONLY — fine for PoC, flag before client demo.
+- **The ENRICHED catalog is the default** (Sai, 2026-10-09): `data/products_enriched.csv`
+  (`scripts/enrich_catalog.py`: fields recovered from the raw JSONL, cleaned text, rule-based
+  gender/use_case/dietary/occasion tags with `*_src` provenance, kNN `price_estimate` shown only
+  as "≈ $X (est.)" and never in cart totals) whenever the file exists; `PRODUCTS_CSV=data/products.csv`
+  forces the raw one. Evidence, context set, gte-small, query expansion ON, rerank OFF, 3 runs
+  each, no fallbacks: P@10 0.408 -> **0.521** (every enriched run above every base run), NDCG
+  0.430 -> 0.527, MRR 0.616 -> 0.656, P@1 tie (0.521 vs 0.500). With NO translator it is a tie
+  (P@10 0.325 vs 0.319): the tags help when expanded intents use their words ("lounge",
+  "gluten-free", "snack"). Not yet measured: rerank ON, the keyword set, gte-large-en. LLM
+  descriptions (`gen_description`) are empty: CPU generation was 64-196h, deferred. The local
+  re-encode of the longer text took ~24h on CPU (cached in `.cache/` now).
 
 ## Data schema gotchas (Amazon Reviews 2023 JSONL — verified against real files)
 The McAuley JSONL differs from older docs. `scripts/load_amazon_data.py` already handles these:
@@ -326,8 +338,15 @@ Ran end to end on Azure workspace `adb-7855330416659580`, catalog `dev`, schema
 `cas`. Everything below is measured, not projected.
 
 **Both models are now Databricks-hosted. No external API key, no Groq.**
-- embeddings: `databricks-gte-large-en` (1024-dim), managed delta-sync index
-  `dev.cas.products_index` — the platform embeds the `search_text` column, so
+- embeddings: `databricks-gte-large-en` (1024-dim). Until 2026-10-09 a MANAGED delta-sync
+  index (the platform embedded `search_text`). Since then (Sai, 2026-10-09, after the
+  Databricks manager asked to stop re-embedding on every rebuild): `02 embed()` embeds the
+  catalog ONCE through `app.vector_search.embed_texts` into `dev.cas.products_embeddings`
+  (keyed by model + `text_hash`, so a catalog change re-embeds only changed text),
+  `products_vectors` is the index source, and `02 resume()` builds a SELF-MANAGED index
+  from it -- no embedding calls. The app embeds each query itself (`VS_QUERY_MODE=vector`,
+  one call per search for all intents). One-way per index: a self-managed index cannot be
+  converted back; REVERT = the pre-2026-10-09 `02` from git + `VS_QUERY_MODE=text`.
   `app/embeddings.py` and the local encode are unused on this path.
 - LLM: `databricks-qwen3-next-80b-a3b-instruct` via Foundation Model APIs since 2026-09-24
   (see "Decisions already made"); every number in this section dated before then used
@@ -348,7 +367,8 @@ Ran end to end on Azure workspace `adb-7855330416659580`, catalog `dev`, schema
 | ms_total| 3,230 | 3,797 | +567 (+18%) |
 
 MRR 1.000 = the top hit was relevant for all 18 queries. **DECISION: use managed
-embeddings.** The argument for a self-managed index (preserving gte-small's
+embeddings** (the MODEL decision stands; since 2026-10-09 its vectors are stored and
+the index is self-managed -- see "embeddings:" above). The argument for a self-managed index (preserving gte-small's
 numbers) is dead — gte-large-en is simply better. Latency is +18% on the full
 pipeline, NOT the 10x an earlier note implied; that comparison wrongly used an
 isolated retrieval microbenchmark (~373ms) against a full-pipeline total.
@@ -382,7 +402,15 @@ each extra embedding contender costs a whole index (see timing below).
    `response_format={"type":"json_object"}` is sent, else 400. All 9 current
    prompts satisfy this by luck ("Output ONLY valid JSON"). A new prompt saying
    "return a dict" would work on Groq and 400 here.
-4. **Index build takes ~2 HOURS for 300K rows** (~2,350 rows/min), not "minutes".
+4. **Managed index build took ~2 HOURS for 300K rows** (~2,350 rows/min), not "minutes".
+   CORRECTED 2026-10-09 (docs check, adversarially verified): (a) an AI Search endpoint
+   bills only while it hosts an index, and stops 24h after its LAST index is deleted
+   (since 2026-03-13; https://learn.microsoft.com/en-us/azure/databricks/ai-search/cost-management)
+   -- "bills hourly from creation" below is out of date; (b) there is NO pause/stop/scale-
+   to-zero for AI Search endpoints or indexes (scale-to-zero is custom Model Serving only);
+   (c) the "~79% sync/embedding" rows are what Databricks labels INGEST -- whether the
+   embedding tokens are inside the $20 or separate MODEL_SERVING rows is unknown, so how
+   much a stored-vector rebuild saves is UNMEASURED: run `02 costs()` after the next run.
    MEASURED COST (system.billing.usage, list prices, 2026-09-23): **one clean build
    ≈ $20** — Sep 11's successful build + eval was $20.27. The Sep 10 build that went
    OFFLINE_FAILED cost $23.39 on its own (cause never pinned down), which is why the
@@ -390,8 +418,10 @@ each extra embedding contender costs a whole index (see timing below).
    $0.45/DBU (unlabelled VECTOR_SEARCH rows); ~21% is the `cas-search` endpoint at
    $0.07/DBU: 130.75 DBU = $9.15 over Sep 10-11, but the endpoint existed only
    PART of each day (~29-48h), so the true idle rate is **~$5-8/day**, not the
-   $4-5 first recorded here. Rule: keep the index up if (days until next use ×
-   ~$7) < ~$20 -- a break-even of ~3 days -- else delete and rebuild. Once the app
+   $4-5 first recorded here. Rule (2026-10-09, same as databricks/README.md): keep the
+   index up if days-until-next-use × ~$6.72 < rebuild cost + ~$6.72 (the 24h the
+   endpoint still bills after the delete) -- ~4 days for a ~$20 MANAGED rebuild; a
+   stored-vector rebuild is unmeasured and probably cheaper. Once the app
    is deployed it must stay up: ~$150-240/month at list price. `02` now uses
    TRIGGERED sync (the catalog is static) so an idle index costs only the endpoint.
    When querying billing as a shared account, `current_user()` returns that
@@ -431,8 +461,10 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
 ### Still open
 - `catalog_index`: FIXED in `01` (dense `row_number()` over file order + an
   assertion). The live table `dev.cas.products` was VERIFIED dense and aligned with
-  the local CSV on 2026-09-23 (the multiLine read was a single partition), so `01`
-  does NOT need re-running — only `02`. `vector_search.load_catalog()` refuses a non-dense key loudly,
+  the local CSV on 2026-09-23 (the multiLine read was a single partition). SUPERSEDED
+  2026-10-09: `01` MUST be re-run once to load `products_enriched.csv` and add `text_hash`
+  (after `02 pause()` -- it refuses while the index exists), and after any catalog change;
+  its density assertion still guards. `vector_search.load_catalog()` refuses a non-dense key loudly,
   because hydration and `GET /product` use it as a ROW POSITION.
 - `MIN_RESULT_RELEVANCE`, calibrated 2026-09-23 on the KEYWORD set (07,
   translate=True, gte-large-en): real queries top-score 0.658-0.817 (median 0.749),
@@ -474,7 +506,9 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
   listens on the BACKEND_URL :8001 it points at) and sets no LLM_PROVIDER / OPENAI_* /
   SEARCH_BACKEND / CAS_* / MIN_RESULT_RELEVANCE, so a deployed App would fall back to the
   Groq defaults with no key and every LLM stage would degrade. Needs uvicorn + env + an App
-  secret or service-principal token -- part of the deployment task.
+  secret or service-principal token -- part of the deployment task. With `VS_QUERY_MODE=vector`
+  the App also embeds every query itself: its service principal needs CAN QUERY on
+  `databricks-gte-large-en` (add it as a "Model serving endpoint" App resource).
 
 ## MLflow + real token accounting (2026-09-23)
 - `app/llm_client.py` now records the PROVIDER-REPORTED usage of every call
