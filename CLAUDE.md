@@ -440,7 +440,11 @@ prints a loud banner. **Never read an eval number without checking `fell_back`.*
 COMPUTE (2026-10-10): the runbook now runs on serverless OR a classic cluster (Sai uses
 `Retail_DE_cluster`). A cluster needs Standard or Dedicated-to-a-USER access mode (no-isolation
 has no Unity Catalog; group-assigned Dedicated cannot reach serving/AI Search) and DBR 14.3+
-(15.4/16.4/17.3 LTS; DBR 19's protobuf 6 clashes with databricks-vectorsearch). Cell 2 gets the
+(15.4/16.4/17.3 LTS; Retail_DE_cluster is DBR 19). **databricks-vectorsearch is NOT used any more**
+(2026-10-10): it pins protobuf<6, and `%pip install`ing it on DBR 19 (protobuf 6.33.5) downgraded
+protobuf until the kernel could not start. `app/vector_search.rest()` calls the Vector Search REST
+API through the preinstalled databricks-sdk instead (same JSON the old client returned), and Cell 1
+installs only `databricks-sdk>=0.117.0 openai python-dotenv`, never `--upgrade`. Cell 2 gets the
 token from the SDK (`WorkspaceClient().config.authenticate()`), because `getContext().apiToken()`
 is undocumented on Standard. `00_preflight.py preflight()` checks it all first. On a cluster,
 `costs()` adds its DBUs (ALL_PURPOSE rows by cluster_id) but NOT its Azure VM cost, and an idle

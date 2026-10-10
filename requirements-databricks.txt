@@ -1,11 +1,17 @@
 # Extra packages for running CAS on Databricks (notebooks, jobs, Databricks Apps).
 # Local dev uses requirements.txt; none of these are needed there.
 #
-# Lower bounds are only the versions actually exercised (2026-09): the notebook
-# ran the latest databricks-vectorsearch, and app/tracking.py was tested against
-# mlflow 3.16. Older versions may work but were never tried.
-databricks-vectorsearch
-databricks-sdk
+# Lower bounds are only the versions actually exercised (2026-09): app/tracking.py
+# was tested against mlflow 3.16. Older versions may work but were never tried.
+#
+# NOT databricks-vectorsearch (removed 2026-10-10): it pins protobuf<6, and on DBR 19
+# (protobuf 6.33.5) installing it killed the notebook kernel. app/vector_search.py
+# calls the Vector Search REST API through databricks-sdk instead.
+#
+# In a NOTEBOOK do not pip-install this file: runtimes already ship mlflow and
+# scikit-learn, and re-installing / upgrading them moves core kernel packages. Use
+# the runbook's Cell 1 (databricks/README.md). This file is for Apps / jobs envs.
+databricks-sdk>=0.117.0
 mlflow>=3.16
 openai>=1.30.0
 python-dotenv>=1.0.0

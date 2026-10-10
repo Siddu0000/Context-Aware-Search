@@ -23,18 +23,10 @@ print(f"target table: {TABLE}\nreading: {CSV_PATH}")
 
 # Overwriting the table under a live index would leave the index serving vectors
 # of the OLD catalog against the NEW row positions. Delete it first (02 pause()).
-from databricks.vector_search.client import VectorSearchClient
+from app import vector_search
 
-try:
-    _live = VectorSearchClient(disable_notice=True).index_exists(
-        endpoint_name=cfg.VS_ENDPOINT, index_name=cfg.VS_INDEX)
-except Exception as e:  # noqa: BLE001
-    # No endpoint means no index; any other failure must not let us overwrite blind
-    if getattr(e, "status_code", None) != 404 and "not found" not in str(e).lower():
-        raise
-    print(f"(no endpoint {cfg.VS_ENDPOINT}: {type(e).__name__})")
-    _live = False
-if _live:
+# index_info() is None only on a 404; any other failure raises, so we never overwrite blind
+if vector_search.index_info() is not None:
     raise RuntimeError(
         f"{cfg.VS_INDEX} still exists. Run 02's pause() first, then this, then "
         "02's embed() and resume()."

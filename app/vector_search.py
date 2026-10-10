@@ -11,6 +11,13 @@ databricks/02 builds holds self-managed vectors, so it has no query-time model.
 databricks/02 embeds the catalog through the same embed_texts, so document and
 query vectors cannot drift apart (different endpoint, different preprocessing).
 
+Vector Search is reached through its REST API with the databricks-sdk client
+every runtime already ships -- NOT the databricks-vectorsearch package (now a
+deprecated shim over databricks-ai-search). That package pins protobuf<6, and
+installing it on DBR 19 (protobuf 6.33.5) downgraded protobuf until the notebook
+kernel could not start (Spark Connect gencode 6.33.5 vs runtime 5.29.6, 2026-10-10).
+REST paths: https://docs.databricks.com/api/workspace/vectorsearchindexes
+
 Imports of databricks/pyspark are lazy so local dev never needs them.
 """
 
@@ -21,9 +28,9 @@ import app.config as cfg
 
 logger = logging.getLogger(__name__)
 
-_index = None
 _spark = None
 _workspace = {}
+_VS_API = "/api/2.0/vector-search"
 
 
 def set_spark(spark) -> None:
@@ -32,21 +39,51 @@ def set_spark(spark) -> None:
     _spark = spark
 
 
-def set_index(index) -> None:
-    """Inject an index handle (tests, or a notebook that already has one)."""
-    global _index
-    _index = index
+def rest(method: str, path: str, body: dict = None, query: dict = None) -> dict:
+    """One Vector Search REST call (path relative to /api/2.0/vector-search), as a dict.
+
+    Same JSON the old VectorSearchClient returned (it wrapped these endpoints), so
+    callers parse what they always parsed. Auth and 429/503 retries: the SDK's.
+    """
+    out = _workspace_client().api_client.do(
+        method, f"{_VS_API}{path}", body=body, query=query,
+        # what the SDK's typed vector-search methods send; a raw do() would not
+        headers={"Accept": "application/json", "Content-Type": "application/json"})
+    return out if isinstance(out, dict) else {}
 
 
-def get_index():
-    global _index
-    if _index is None:
-        from databricks.vector_search.client import VectorSearchClient
+def is_not_found(e: Exception) -> bool:
+    """The SDK's 404 for a missing endpoint / index -- and nothing looser.
 
-        _index = VectorSearchClient(disable_notice=True).get_index(
-            endpoint_name=cfg.VS_ENDPOINT, index_name=cfg.VS_INDEX
-        )
-    return _index
+    Not ENDPOINT_NOT_FOUND (a wrong API path, also a NotFound), and no message
+    matching ("Catalog ... does not exist" is a 400): misreading either as
+    "absent" would let pause() report "nothing to delete" over a live index.
+    """
+    try:
+        from databricks.sdk.errors import NotFound
+    except ImportError:
+        return False
+    return isinstance(e, NotFound) and getattr(e, "error_code", None) != "ENDPOINT_NOT_FOUND"
+
+
+def endpoint_info(name: str = None):
+    """GET the Vector Search endpoint, or None if it does not exist."""
+    try:
+        return rest("GET", f"/endpoints/{name or cfg.VS_ENDPOINT}")
+    except Exception as e:  # noqa: BLE001
+        if is_not_found(e):
+            return None
+        raise
+
+
+def index_info(name: str = None):
+    """GET the index (status.detailed_state, indexed_row_count, spec), or None."""
+    try:
+        return rest("GET", f"/indexes/{name or cfg.VS_INDEX}")
+    except Exception as e:  # noqa: BLE001
+        if is_not_found(e):
+            return None
+        raise
 
 
 def _active_spark():
@@ -140,7 +177,7 @@ def embed_texts(texts: List[str], batch: bool = False) -> Tuple[List[List[float]
     if not np.all(norms > 0):
         raise RuntimeError(f"{cfg.VS_EMBEDDING_MODEL} returned a zero vector")
     usage = getattr(resp, "usage", None)
-    # Plain Python floats: the client JSON-encodes query_vector and drops falsy ones
+    # Plain Python floats: the request body is json.dumps'ed (no numpy, no NaN)
     return (arr / norms).tolist(), int(getattr(usage, "prompt_tokens", 0) or 0)
 
 
@@ -163,11 +200,8 @@ def query(term: str, top_k: int) -> List[Tuple[int, float]]:
 
 
 def _search(top_k: int, **query_arg) -> List[Tuple[int, float]]:
-    res = get_index().similarity_search(
-        columns=["catalog_index"], num_results=top_k,
-        disable_notice=True,  # printed per call otherwise; the client flag doesn't cover it
-        **query_arg,
-    )
+    res = rest("POST", f"/indexes/{cfg.VS_INDEX}/query",
+               body={"columns": ["catalog_index"], "num_results": top_k, **query_arg})
     rows = (res.get("result") or {}).get("data_array") or []
     # The score column is appended after the requested ones and named "score"
     # (not in the REST docs; databricks-ai-bridge reads it this way)

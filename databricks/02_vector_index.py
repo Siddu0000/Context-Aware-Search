@@ -19,6 +19,9 @@ https://learn.microsoft.com/en-us/azure/databricks/ai-search/cost-management
 Functions, not sys.argv flags: flags do not reach a script run under exec().
 Embedding goes through app.vector_search.embed_texts -- the call the app uses for
 every query -- so catalog and query vectors cannot come from different models.
+Vector Search is driven through its REST API (app.vector_search.rest, on the
+preinstalled databricks-sdk), not the databricks-vectorsearch package: that one
+pins protobuf<6 and broke the kernel on DBR 19.
 """
 
 import os
@@ -26,7 +29,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
-from databricks.vector_search.client import VectorSearchClient
 from pyspark.sql import Window, functions as F
 
 import app.config as cfg
@@ -44,51 +46,39 @@ EMBED_MODEL = cfg.VS_EMBEDDING_MODEL
 # https://www.databricks.com/product/pricing/foundation-model-serving
 GTE_DBU_PER_M_TOKENS = 1.857
 
-_client = None
-
-
-def _vsc():
-    global _client
-    if _client is None:
-        _client = VectorSearchClient(disable_notice=True)
-    return _client
-
-
 def _endpoint_state():
     try:
-        ep = _vsc().get_endpoint(ENDPOINT)
+        ep = vector_search.endpoint_info(ENDPOINT)
     except Exception as e:  # noqa: BLE001 -- reported, not raised: status() must always print
-        return f"MISSING ({type(e).__name__})"
-    return ((ep or {}).get("endpoint_status") or {}).get("state", "?")
+        return f"ERROR ({type(e).__name__}: {str(e)[:80]})"
+    if ep is None:
+        return "MISSING"
+    return (ep.get("endpoint_status") or {}).get("state", "?")
 
 
 def _index_names():
-    try:
-        listed = _vsc().list_indexes(ENDPOINT) or {}
-    except Exception:  # noqa: BLE001 -- no endpoint, no indexes
-        return []
-    return [i.get("name") for i in listed.get("vector_indexes", []) if i.get("name")]
-
-
-def _not_found(e):
-    return getattr(e, "status_code", None) == 404 or any(
-        s in str(e).lower() for s in ("not found", "does not exist", "resource_does_not_exist"))
+    names, token = [], None
+    while True:
+        try:
+            page = vector_search.rest("GET", "/indexes", query={
+                "endpoint_name": ENDPOINT, **({"page_token": token} if token else {})})
+        except Exception as e:  # noqa: BLE001
+            if vector_search.is_not_found(e):  # no endpoint, no indexes
+                return names
+            raise
+        names += [i.get("name") for i in page.get("vector_indexes") or [] if i.get("name")]
+        token = page.get("next_page_token")
+        if not token:
+            return names
 
 
 def _index_exists():
-    try:
-        return _vsc().index_exists(endpoint_name=ENDPOINT, index_name=INDEX)
-    except Exception as e:  # noqa: BLE001
-        if _not_found(e):  # no endpoint means no index; anything else is real
-            return False
-        raise
+    return _index_info() is not None
 
 
 def _index_info():
-    """describe() of INDEX, or None when it does not exist."""
-    if not _index_exists():
-        return None
-    return _vsc().get_index(endpoint_name=ENDPOINT, index_name=INDEX).describe()
+    """The index's REST description (status.detailed_state ...), or None if absent."""
+    return vector_search.index_info(INDEX)
 
 
 def _is_managed(info):
@@ -259,10 +249,20 @@ def _ensure_endpoint():
     # Wait for ONLINE before creating an index: the likely cause of the Sep 10
     # OFFLINE_FAILED build ($23.39 for nothing) was an index created on a
     # still-PROVISIONING endpoint. (Hypothesis -- never confirmed.)
-    if _endpoint_state().startswith("MISSING"):
-        _vsc().create_endpoint_and_wait(name=ENDPOINT, endpoint_type="STANDARD", verbose=True)
-    else:
-        _vsc().wait_for_endpoint(ENDPOINT, verbose=True)
+    if _endpoint_state() == "MISSING":
+        vector_search.rest("POST", "/endpoints", body={"name": ENDPOINT, "endpoint_type": "STANDARD"})
+        print(f"Creating endpoint {ENDPOINT} (STANDARD) ...")
+    t0 = time.time()
+    while True:
+        state = _endpoint_state()
+        if state == "ONLINE":
+            break
+        if any(bad in state for bad in ("OFFLINE", "RED_STATE", "ERROR", "DELETED")):
+            raise RuntimeError(f"endpoint {ENDPOINT}: {state}")
+        if time.time() - t0 > 3600:
+            raise TimeoutError(f"endpoint {ENDPOINT} not ONLINE after 60 min: {state}")
+        print(f"  endpoint {ENDPOINT}: {state} ({(time.time() - t0) / 60:.1f} min)")
+        time.sleep(30)
     print(f"endpoint {ENDPOINT}: ONLINE")
 
 
@@ -298,19 +298,22 @@ def _create_index(dim, attempts=40):
     """
     for i in range(attempts):
         try:
-            return _vsc().create_delta_sync_index(
-                endpoint_name=ENDPOINT,
-                index_name=INDEX,
-                source_table_name=VEC,
-                # The catalog is static between runs: CONTINUOUS would keep a
-                # streaming pipeline billing while the index sits idle
-                pipeline_type="TRIGGERED",
-                primary_key="catalog_index",
-                embedding_dimension=dim,
-                embedding_vector_column="embedding",
-                # Default syncs EVERY source column; the app hydrates rows itself
-                columns_to_sync=["catalog_index", "embedding"],
-            )
+            return vector_search.rest("POST", "/indexes", body={
+                "name": INDEX,
+                "endpoint_name": ENDPOINT,
+                "primary_key": "catalog_index",
+                "index_type": "DELTA_SYNC",
+                "delta_sync_index_spec": {
+                    "source_table": VEC,
+                    # The catalog is static between runs: CONTINUOUS would keep a
+                    # streaming pipeline billing while the index sits idle
+                    "pipeline_type": "TRIGGERED",
+                    "embedding_vector_columns": [
+                        {"name": "embedding", "embedding_dimension": dim}],
+                    # Default syncs EVERY source column; the app hydrates rows itself
+                    "columns_to_sync": ["catalog_index", "embedding"],
+                },
+            })
         except Exception as e:  # noqa: BLE001
             if "pending deletion" not in str(e).lower() or i == attempts - 1:
                 raise
@@ -318,17 +321,16 @@ def _create_index(dim, attempts=40):
             time.sleep(15)
 
 
-# describe()["status"]["detailed_state"] is not in the public schema. The client's
-# own wait_until_ready(wait_for_updates=True) treats these as finished, and any
-# state containing OFFLINE as failed (databricks-ai-search 0.78 source)
+# status.detailed_state is in the REST reply but not the public schema. The old
+# client's wait_until_ready(wait_for_updates=True) treated these as finished, and
+# any state containing OFFLINE as failed (databricks-ai-search 0.78 source)
 _DONE_STATES = {"ONLINE", "ONLINE_NO_PENDING_UPDATE", "ONLINE_DIRECT_ACCESS"}
 
 
-def _wait_online(expected, poll_s):
-    idx = _vsc().get_index(endpoint_name=ENDPOINT, index_name=INDEX)
+def _wait_online(expected, poll_s, timeout_h=6):
     t0 = time.time()
     while True:
-        st = idx.describe().get("status") or {}
+        st = (_index_info() or {}).get("status") or {}
         state = str(st.get("detailed_state", "?"))
         rows = int(st.get("indexed_row_count") or 0)
         mins = (time.time() - t0) / 60
@@ -338,12 +340,18 @@ def _wait_online(expected, poll_s):
             raise RuntimeError(
                 f"{INDEX} {state}: {st.get('message')}. A failed build bills like a good "
                 "one: pause() now, then retry.")
-        # Unknown ONLINE_* variant: done once every row is indexed
-        if state in _DONE_STATES or ("ONLINE" in state and expected and rows >= expected):
+        # Unknown ONLINE_* variant, or no detailed_state at all (it is not in the
+        # documented schema): the documented `ready` + every row indexed also counts
+        if state in _DONE_STATES or (
+                ("ONLINE" in state or st.get("ready") is True) and expected and rows >= expected):
             if expected and rows != expected:
                 print(f"WARNING: {rows:,} rows indexed, {expected:,} expected.")
             print(f"{INDEX} ONLINE after {mins:.1f} min. Endpoint bills ~4 DBU/h until pause().")
             return
+        if mins > timeout_h * 60:
+            raise TimeoutError(
+                f"{INDEX} not ONLINE after {timeout_h}h ({state}, {rows:,} rows). It is still "
+                "billing: inspect it in Catalog Explorer, or pause().")
         time.sleep(poll_s)
 
 
@@ -352,7 +360,7 @@ def pause():
     if _index_info() is None:
         print(f"{INDEX} does not exist: nothing to delete.")
     else:
-        _vsc().delete_index(endpoint_name=ENDPOINT, index_name=INDEX)
+        vector_search.rest("DELETE", f"/indexes/{INDEX}")
         for _ in range(60):  # asynchronous; resume() also retries while the name is held
             if not _index_exists():
                 break

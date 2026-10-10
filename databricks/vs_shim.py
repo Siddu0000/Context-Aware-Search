@@ -64,4 +64,8 @@ def patch_eval_harness(spark, verbose=True, llm=None):
         print(f"eval set: {run_eval.EVAL_QUERIES_JSON.name}")
         print(f"llm     : {llm or f'{cfg.LLM_PROVIDER} / {llm_model()}'}")
         print(f"mlflow  : {'ON -> ' + str(cfg.MLFLOW_EXPERIMENT) if tracked else 'off'}")
-    return vector_search.get_index()
+    # Fail HERE, not 18 queries into an eval, when the index is missing
+    info = vector_search.index_info()
+    if info is None:
+        raise RuntimeError(f"{cfg.VS_INDEX} does not exist: run 02's resume() first.")
+    return info
