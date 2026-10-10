@@ -35,7 +35,7 @@ products_enriched.csv --01--> dev.cas.products (search_text, text_hash, catalog_
 
 | Script | Does | LLM calls | Billing |
 |---|---|---|---|
-| `00_preflight.py` | `preflight()`: access mode, runtime, SDK, auto-termination, UC, Volume file, billing access, endpoints, embedding auth from a worker thread | 0 (one ~2-token embedding) | — |
+| `00_preflight.py` | `preflight()`: access mode, runtime, packages/protobuf, SDK, auto-termination, UC, Volume file, billing access, endpoints, embedding auth from a worker thread | 0 (one ~2-token embedding) | — |
 | `01_catalog_to_delta.py` | enriched CSV → Delta, CDF on, **dense** `catalog_index`, `text_hash`; refuses while the index exists | 0 | compute minutes |
 | `02_vector_index.py` | `status()` `embed()` `resume()` `pause()` `costs()` | 0 (embedding tokens only in `embed()`) | **index on the endpoint ≈ 4 DBU/h** from `resume()` to `pause()` |
 | `03_smoke_test.py` | app-path retrieval + own-text self-retrieval + one JSON-mode LLM call, all asserted | 1 | — |
@@ -60,19 +60,28 @@ A cluster must have:
 - **Access mode Standard or Dedicated.** "No isolation shared" cannot reach Unity
   Catalog (tables, Volumes, system tables). Dedicated must be assigned to a USER,
   not a group: group-assigned compute cannot reach model serving or AI Search.
-- **DBR 15.4 / 16.4 / 17.3 LTS** (14.3 works; 13.3 is end-of-support; avoid DBR 19:
-  `databricks-vectorsearch` pins protobuf<6 and would downgrade its 6.x).
+- **DBR 14.3 LTS or newer** (15.4 / 16.4 / 17.3 LTS preferred; `Retail_DE_cluster` runs
+  DBR 19, which works with the Cell 1 below). 13.3 is end-of-support.
 - **Auto-termination on** (e.g. 30-60 min). A running cluster bills DBUs + Azure VMs
   even when idle, and `02 pause()` does not stop it. If it is a shared team cluster,
   leave its lifecycle to its owner; `costs()` then includes other users' DBUs on it.
 - Step 0 below checks all of this and costs ~2 tokens.
 
-Cell 1 (`--upgrade`: runtimes 15.4+ bundle a databricks-sdk that pip would keep, and
-SDKs before 0.117 can fail on Standard/Spark Connect compute):
+Cell 1 installs ONLY what the runtime lacks, and never with `--upgrade`:
 ```python
-%pip install --upgrade "databricks-sdk>=0.117.0" databricks-vectorsearch openai python-dotenv scikit-learn mlflow
+%pip install "databricks-sdk>=0.117.0" openai python-dotenv
 dbutils.library.restartPython()
 ```
+- `databricks-sdk>=0.117.0`: runtimes bundle older SDKs, and before 0.117 it can fail on
+  Standard/Spark Connect compute. Its own deps (protobuf>=4.25.8) leave the runtime's alone.
+- **Do NOT install `databricks-vectorsearch`.** It is a deprecated shim that pins
+  protobuf<6; on DBR 19 (protobuf 6.33.5) that downgrade killed the Python kernel
+  ("gencode 6.33.5 runtime 5.29.6", 2026-10-10). The code drives Vector Search through
+  its REST API with the preinstalled SDK instead.
+- Do not re-install `mlflow` / `scikit-learn` either: every runtime ships them, and
+  `--upgrade` over them moved core packages (wcwidth) out from under the kernel.
+- If a bad install already broke the notebook: **detach and re-attach it** (that resets
+  notebook-scoped libraries), then run Cell 1 again.
 Cell 2 — env, including MLflow. Both LLMs named below are open-weight
 (Apache-2.0) models served by Databricks pay-per-token; nothing leaves the workspace:
 ```python

@@ -75,10 +75,40 @@ def preflight():
             return "FAIL", f"DBR {dbr}: UC Volumes need 13.3 LTS+ (use 15.4 / 16.4 / 17.3 LTS)"
         if (major, minor) < (14, 3):
             return "WARN", f"DBR {dbr} is end-of-support: use 15.4 / 16.4 / 17.3 LTS"
-        if major >= 19:
-            return "WARN", (f"DBR {dbr}: databricks-vectorsearch pins protobuf<6 and would "
-                            "downgrade this runtime's 6.x; prefer an LTS (15.4-18)")
-        return "PASS", f"DBR {dbr}"
+        return "PASS", f"DBR {dbr}" + (" (Beta, non-LTS)" if major >= 19 else "")
+
+    def packages():
+        # The 2026-10-10 failure: databricks-vectorsearch pinned protobuf<6, pip
+        # downgraded DBR 19's 6.33.5 and the kernel died. The runbook no longer
+        # installs it; a protobuf older than the one Spark Connect was generated
+        # with means a stale notebook env -- detach and re-attach the notebook.
+        import importlib.metadata as md
+
+        import dotenv, openai, sklearn  # noqa: F401 -- imported by app/ at start-up
+
+        def ver(p):
+            try:
+                return md.version(p)
+            except md.PackageNotFoundError:
+                return "-"
+
+        pb = ver("protobuf")
+        spark_pb = ""
+        try:
+            from pyspark.sql.connect.proto import base_pb2  # noqa: F401 -- validates gencode
+        except ImportError:
+            pass  # no Spark Connect protos on this runtime
+        except Exception as e:  # noqa: BLE001
+            spark_pb = f"{type(e).__name__}: {str(e)[:120]}"
+        if spark_pb:
+            return "FAIL", f"protobuf {pb} breaks Spark Connect ({spark_pb}): detach + re-attach"
+        try:
+            vs = md.version("databricks-vectorsearch")
+            return "WARN", (f"databricks-vectorsearch {vs} installed but unused; it pins "
+                            "protobuf<6 -- do not %pip install it")
+        except md.PackageNotFoundError:
+            pass
+        return "PASS", f"protobuf {pb}, openai {ver('openai')}, databricks-sdk {ver('databricks-sdk')}"
 
     def sdk():
         v = tuple(int(x) for x in sdkv.__version__.split(".")[:2])
@@ -86,7 +116,7 @@ def preflight():
         # (Standard) compute -- databricks-sdk-py issue #1463, fixed in 0.117.0
         return ("PASS" if v >= (0, 117) else "WARN",
                 f"databricks-sdk {sdkv.__version__}" + ("" if v >= (0, 117) else
-                " -- re-run Cell 1 (it installs --upgrade databricks-sdk>=0.117)"))
+                " -- re-run Cell 1 (it installs databricks-sdk>=0.117)"))
 
     def access_mode():
         if serverless:
@@ -153,20 +183,17 @@ def preflight():
         return "PASS", f"{len(vecs[0])}-dim unit vector, {tokens} tokens"
 
     def vs_endpoint():
-        from databricks.vector_search.client import VectorSearchClient
+        from app import vector_search
 
-        try:
-            ep = VectorSearchClient(disable_notice=True).get_endpoint(cfg.VS_ENDPOINT)
-        except Exception as e:  # noqa: BLE001
-            if "not found" in str(e).lower() or getattr(e, "status_code", None) == 404:
-                return "PASS", f"{cfg.VS_ENDPOINT} absent: 02 resume() creates it"
-            raise
-        state = ((ep or {}).get("endpoint_status") or {}).get("state")
-        return "PASS", f"{cfg.VS_ENDPOINT}: {state}"
+        ep = vector_search.endpoint_info(cfg.VS_ENDPOINT)  # REST via the SDK; raises unless 404
+        if ep is None:
+            return "PASS", f"{cfg.VS_ENDPOINT} absent: 02 resume() creates it"
+        return "PASS", f"{cfg.VS_ENDPOINT}: {(ep.get('endpoint_status') or {}).get('state')}"
 
     print(f"preflight: {cfg.CAS_CATALOG}.{cfg.CAS_SCHEMA} | embeddings {cfg.VS_EMBEDDING_MODEL}"
           f" | llm {cfg.OPENAI_MODEL}\n")
-    for name, fn in [("python", python), ("runtime", runtime), ("databricks-sdk", sdk),
+    for name, fn in [("python", python), ("runtime", runtime), ("packages", packages),
+                     ("databricks-sdk", sdk),
                      ("access mode", access_mode), ("auto-termination", auto_terminate),
                      ("unity catalog", unity_catalog), ("catalog file on the Volume", catalog_file),
                      ("billing tables", billing), ("serving endpoints", endpoints),
