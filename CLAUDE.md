@@ -22,15 +22,28 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
 2. `app/embeddings.py` — sentence-transformers (`thenlper/gte-small`) or OpenAI backend.
 3. `app/search.py` — scatter-gather retrieval across intents, dedup, NaN-safe. TWO
    backends behind one interface (`SEARCH_BACKEND`): `local` = gte-small + numpy
-   cosine; `databricks` = Mosaic AI Vector Search (`app/vector_search.py`). Every
+   cosine; `databricks` = Mosaic AI Vector Search (`app/vector_search.py`, which
+   embeds each query with `databricks-gte-large-en` and sends `query_vector`). Every
    consumer goes through this module, so the switch moves the whole app AND evals.
-4. `app/reranker.py` — LLM reranks a deep pool (RERANK_POOL_K, default 30) with reasons, then blends rating.
+4. `app/reranker.py` — LLM reranks the top RERANK_INPUT_K (default 15) candidates with reasons,
+   then blends rating. The prompt asks for min(top_k, candidates sent) entries: 15 in /search
+   (top_k = max(RERANK_POOL_K, page size) -- it used to ask for "the TOP 30" of 15), 12 in
+   run_eval (FINAL_TOP_K). Each reply entry is validated on its own; if some are dropped the
+   valid ones are used and a `rerank`/`partial` error is recorded. A partial is NOT a
+   fallback: the pool IS cached (else page 2 and chat refine re-rank and reshuffle), the chat
+   refine keeps paging past it, evals write `rerank:partial` to `fell_back` without counting
+   it degraded (`valid` stays true; summary `n_partial`), and the UI shows it only as a
+   dev-only caption.
 5. `app/scoring.py` — Bayesian rating shrinkage + blend into final score.
 6. `app/main.py` — paginates the reranked pool (`?page=`, `top_k`=page size); `GET /product?catalog_index=` powers the per-product detail page (product + its own recs).
 7. `app/sponsored.py` — featured/paid-ad layer. Reads `data/sponsored.json` (keyed by
-   `parent_asin`). **Gate = membership in the RERANKED pool** (`_boost_sponsored`: an ad
-   needs a `rerank_score`), so an off-topic ad never shows — e.g. no women's dress on a
-   men's-shirt query. Bundles gate within a slot (`_promote_sponsored_options`);
+   `parent_asin`). **Gate (flat results) = in the RERANKED pool AND `rerank_score` >
+   `SPONSORED_MIN_RERANK_SCORE`** (default 40 = the rerank prompt's ceiling for constraint
+   violators; added 2026-09-24). Before that the only check was `rerank_score is not None`,
+   so a women's dress the reranker scored 30 on a men's-shirt query still jumped to
+   position 1. **Bundles still gate on slot membership only** (`_promote_sponsored_options`,
+   no score check) — an OPEN owner decision: with RERANK_INPUT_K=15 most bundle options
+   have no rerank_score, so applying the floor there would remove most bundle ads;
    keyword search gates on BM25 top-k membership. **Placement: gated ads are moved to
    the FRONT of the organic `results` list, bid-ordered, and labelled `is_sponsored` +
    `sponsor`; they are ALSO mirrored into a separate `sponsored` field.** `_bid` is
@@ -44,7 +57,18 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
 - `app/config.py` — ALL env knobs live here; read this first.
 
 ## Decisions already made — do NOT silently revert these
-- **Production LLM = openai/gpt-oss-120b via Groq** (LLM_PROVIDER=openai, OPENAI_BASE_URL=Groq,
+- **Databricks LLM = `databricks-qwen3-next-80b-a3b-instruct`** (Sai, 2026-09-24; replaces
+  `databricks-gpt-oss-120b`). Evidence, 05 on the KEYWORD set, rerank ON, all valid: 10.4s vs
+  30.3s per query, 658 vs 2,177 completion tokens, NDCG 0.953 vs 0.943 -- a quality TIE (that
+  set is saturated: the no-LLM control scores 0.954), so this is a LATENCY decision.
+  Non-reasoning, gets NO seed (Databricks rejects it), so runs are not reproducible. JSON mode
+  and temperature are UNVERIFIED: the 05 run predates the `json_mode_dropped` /
+  `temperature_dropped` tags, and llm_client retries silently without a refused param --
+  read 08's two `params` rows before stating either. Set in databricks/README.md Cell 2. Still owed: confirm on the
+  CONTEXT set against gpt-oss-120b plus `control()` (05), and run `08_llm_smoke.py` (covers the
+  call sites the evals never reach: assistant, cross-sell, bundles, constraints, injection).
+  REVERT = `OPENAI_MODEL=databricks-gpt-oss-120b` (one line, restart Python).
+- **Local-dev LLM = openai/gpt-oss-120b via Groq** (LLM_PROVIDER=openai, OPENAI_BASE_URL=Groq,
   OPENAI_MODEL=openai/gpt-oss-120b). Chosen over Gemini: it matched/beat Gemini on the eval
   (NDCG 0.950 vs ~0.93) and is free with no quota exhaustion. TRADEOFF: it's a reasoning model
   and slow (~20-25s/query) — watch demo latency; gpt-oss-20b or a non-reasoning model is faster.
@@ -71,12 +95,27 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
 - **DETERMINISTIC = true** → fixed seed (NOT forced temperature 0). The seed provides
   reproducibility; each call uses its tuned temperature for quality. `effective_temperature`
   in config.py is the single source of truth. `eval/compare_temperature.py` explores the tradeoff.
+  The seed only reaches Groq/OpenAI/Gemini: Databricks FM APIs reject it, so Databricks runs
+  are NOT reproducible and `page_cache` is the only consistency there. Evals log what was
+  actually sent as MLflow param `seed_sent`. (The temperatures date from the Gemini era, not
+  tuned for gpt-oss or Qwen; no sweep result exists.)
 - **Result caching is ON** via `app/page_cache.py` — caches the ranked pool per query+settings so
   repeat searches and page 2+ are instant. ONLY clean runs are cached; a run where an LLM stage
   fell back (translator/reranker error) is never stored, so a retry hits the LLM again. The old
   `app/cache.py` LRU was removed. The on-disk embedding cache is separate and stays.
 - **Data is Amazon Reviews 2023** (McAuley Lab), not the original synthetic eBay catalog. Real
   titles/prices/images/ratings. License is RESEARCH-ONLY — fine for PoC, flag before client demo.
+- **The ENRICHED catalog is the default** (Sai, 2026-10-09): `data/products_enriched.csv`
+  (`scripts/enrich_catalog.py`: fields recovered from the raw JSONL, cleaned text, rule-based
+  gender/use_case/dietary/occasion tags with `*_src` provenance, kNN `price_estimate` shown only
+  as "≈ $X (est.)" and never in cart totals) whenever the file exists; `PRODUCTS_CSV=data/products.csv`
+  forces the raw one. Evidence, context set, gte-small, query expansion ON, rerank OFF, 3 runs
+  each, no fallbacks: P@10 0.408 -> **0.521** (every enriched run above every base run), NDCG
+  0.430 -> 0.527, MRR 0.616 -> 0.656, P@1 tie (0.521 vs 0.500). With NO translator it is a tie
+  (P@10 0.325 vs 0.319): the tags help when expanded intents use their words ("lounge",
+  "gluten-free", "snack"). Not yet measured: rerank ON, the keyword set, gte-large-en. LLM
+  descriptions (`gen_description`) are empty: CPU generation was 64-196h, deferred. The local
+  re-encode of the longer text took ~24h on CPU (cached in `.cache/` now).
 
 ## Data schema gotchas (Amazon Reviews 2023 JSONL — verified against real files)
 The McAuley JSONL differs from older docs. `scripts/load_amazon_data.py` already handles these:
@@ -99,7 +138,9 @@ prod_description, average_rating, rating_number, store, parent_asin`
 `app/llm_client.py` uses `import app.config as cfg` and references `cfg.X`, NOT
 `from app.config import X`. This is deliberate: eval scripts mutate `cfg.LLM_PROVIDER` /
 `cfg.TEMPERATURE_OVERRIDE` at runtime and need it to take effect. Preserve this pattern.
-`cfg.effective_temperature()` resolves the actual temperature (override > deterministic-0 > requested).
+`cfg.effective_temperature()` resolves the actual temperature (sweep override > the caller's requested value).
+`get_llm_client()` rebuilds the backend when provider, model OR base URL changes, so setting
+`cfg.OPENAI_MODEL` in a notebook takes effect without resetting `_singleton` by hand.
 
 ## Eval suite (eval/)
 - `run_eval.py` — main harness; reads `data/eval_queries.json` (12 multi-context queries).
@@ -297,10 +338,19 @@ Ran end to end on Azure workspace `adb-7855330416659580`, catalog `dev`, schema
 `cas`. Everything below is measured, not projected.
 
 **Both models are now Databricks-hosted. No external API key, no Groq.**
-- embeddings: `databricks-gte-large-en` (1024-dim), managed delta-sync index
-  `dev.cas.products_index` — the platform embeds the `search_text` column, so
+- embeddings: `databricks-gte-large-en` (1024-dim). Until 2026-10-09 a MANAGED delta-sync
+  index (the platform embedded `search_text`). Since then (Sai, 2026-10-09, after the
+  Databricks manager asked to stop re-embedding on every rebuild): `02 embed()` embeds the
+  catalog ONCE through `app.vector_search.embed_texts` into `dev.cas.products_embeddings`
+  (keyed by model + `text_hash`, so a catalog change re-embeds only changed text),
+  `products_vectors` is the index source, and `02 resume()` builds a SELF-MANAGED index
+  from it -- no embedding calls. The app embeds each query itself (`VS_QUERY_MODE=vector`,
+  one call per search for all intents). One-way per index: a self-managed index cannot be
+  converted back; REVERT = the pre-2026-10-09 `02` from git + `VS_QUERY_MODE=text`.
   `app/embeddings.py` and the local encode are unused on this path.
-- LLM: `databricks-gpt-oss-120b` via Foundation Model APIs. Reached through the
+- LLM: `databricks-qwen3-next-80b-a3b-instruct` via Foundation Model APIs since 2026-09-24
+  (see "Decisions already made"); every number in this section dated before then used
+  `databricks-gpt-oss-120b` as the translator/reranker. Reached through the
   existing OpenAI-compatible backend (`OPENAI_BASE_URL` = `<host>/serving-endpoints`,
   `OPENAI_API_KEY` = a Databricks token). Those env names describe the PROTOCOL,
   not the vendor — nothing leaves the workspace.
@@ -317,7 +367,8 @@ Ran end to end on Azure workspace `adb-7855330416659580`, catalog `dev`, schema
 | ms_total| 3,230 | 3,797 | +567 (+18%) |
 
 MRR 1.000 = the top hit was relevant for all 18 queries. **DECISION: use managed
-embeddings.** The argument for a self-managed index (preserving gte-small's
+embeddings** (the MODEL decision stands; since 2026-10-09 its vectors are stored and
+the index is self-managed -- see "embeddings:" above). The argument for a self-managed index (preserving gte-small's
 numbers) is dead — gte-large-en is simply better. Latency is +18% on the full
 pipeline, NOT the 10x an earlier note implied; that comparison wrongly used an
 isolated retrieval microbenchmark (~373ms) against a full-pipeline total.
@@ -341,11 +392,25 @@ each extra embedding contender costs a whole index (see timing below).
    `response_format`, remembers the model in `_NO_JSON_MODE`, restates "JSON only"
    in the prompt, and `_parse_json_reply()` tolerates fences and prose around the
    object. A `finish_reason=length` reply now raises "truncated", not "invalid JSON".
+3a. **claude-sonnet-5 REJECTS `temperature` altogether** (`does not support the
+   temperature parameter`, 2026-09-23 -- all 18 queries fell back; Haiku 4.5 accepts
+   it). Same learn-once pattern: `_NO_TEMPERATURE`, retry without it. The first
+   Sonnet call costs 3 round trips (temperature refused, then JSON mode refused).
+   Consequence: Sonnet 5 runs at the provider's default temperature with no seed,
+   so its runs are NOT reproducible -- judge it on the mean of repeats, not one run.
 3b. **The prompt MUST contain the literal word "json"** when
    `response_format={"type":"json_object"}` is sent, else 400. All 9 current
    prompts satisfy this by luck ("Output ONLY valid JSON"). A new prompt saying
    "return a dict" would work on Groq and 400 here.
-4. **Index build takes ~2 HOURS for 300K rows** (~2,350 rows/min), not "minutes".
+4. **Managed index build took ~2 HOURS for 300K rows** (~2,350 rows/min), not "minutes".
+   CORRECTED 2026-10-09 (docs check, adversarially verified): (a) an AI Search endpoint
+   bills only while it hosts an index, and stops 24h after its LAST index is deleted
+   (since 2026-03-13; https://learn.microsoft.com/en-us/azure/databricks/ai-search/cost-management)
+   -- "bills hourly from creation" below is out of date; (b) there is NO pause/stop/scale-
+   to-zero for AI Search endpoints or indexes (scale-to-zero is custom Model Serving only);
+   (c) the "~79% sync/embedding" rows are what Databricks labels INGEST -- whether the
+   embedding tokens are inside the $20 or separate MODEL_SERVING rows is unknown, so how
+   much a stored-vector rebuild saves is UNMEASURED: run `02 costs()` after the next run.
    MEASURED COST (system.billing.usage, list prices, 2026-09-23): **one clean build
    ≈ $20** — Sep 11's successful build + eval was $20.27. The Sep 10 build that went
    OFFLINE_FAILED cost $23.39 on its own (cause never pinned down), which is why the
@@ -353,8 +418,10 @@ each extra embedding contender costs a whole index (see timing below).
    $0.45/DBU (unlabelled VECTOR_SEARCH rows); ~21% is the `cas-search` endpoint at
    $0.07/DBU: 130.75 DBU = $9.15 over Sep 10-11, but the endpoint existed only
    PART of each day (~29-48h), so the true idle rate is **~$5-8/day**, not the
-   $4-5 first recorded here. Rule: keep the index up if (days until next use ×
-   ~$7) < ~$20 -- a break-even of ~3 days -- else delete and rebuild. Once the app
+   $4-5 first recorded here. Rule (2026-10-09, same as databricks/README.md): keep the
+   index up if days-until-next-use × ~$6.72 < rebuild cost + ~$6.72 (the 24h the
+   endpoint still bills after the delete) -- ~4 days for a ~$20 MANAGED rebuild; a
+   stored-vector rebuild is unmeasured and probably cheaper. Once the app
    is deployed it must stay up: ~$150-240/month at list price. `02` now uses
    TRIGGERED sync (the catalog is static) so an idle index costs only the endpoint.
    When querying billing as a shared account, `current_user()` returns that
@@ -380,6 +447,12 @@ backends return identical row shapes and the eval runs the app's real code.
 - `04_run_eval.py` — retrieval eval; `--rerank` for the full pipeline
 - `05_compare_llms.py` — `list_models()` then `run([...])`; rerank ON, so it
   tests intent generation AND reranking. Endpoint NAMES, not vendor model ids.
+  `control()` runs the no-LLM control on the same set -- run it with every comparison.
+- `08_llm_smoke.py` — `run()`: the acceptance check for a model switch. LLM-only (~25 calls,
+  NO index needed), one PASS/FAIL row per call site: translator (every mode + recipe/outfit/
+  setup + gibberish + constraints), reranker (with and without constraints), assistant
+  (search / refine / reply / new topic / continuation), cross-sell phrases, 3x-repeated
+  injection probes, and that the model did not silently lose JSON mode or temperature.
 - `06_compare_translators.py` — query_expansion vs hyde vs hybrid, rerank OFF,
   isolating intent generation. The local verdict (query_expansion 0.904 vs HyDE
   0.716) was measured on gte-small and is worth re-checking on gte-large-en.
@@ -388,16 +461,35 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
 ### Still open
 - `catalog_index`: FIXED in `01` (dense `row_number()` over file order + an
   assertion). The live table `dev.cas.products` was VERIFIED dense and aligned with
-  the local CSV on 2026-09-23 (the multiLine read was a single partition), so `01`
-  does NOT need re-running — only `02`. `vector_search.load_catalog()` refuses a non-dense key loudly,
+  the local CSV on 2026-09-23 (the multiLine read was a single partition). SUPERSEDED
+  2026-10-09: `01` MUST be re-run once to load `products_enriched.csv` and add `text_hash`
+  (after `02 pause()` -- it refuses while the index exists), and after any catalog change;
+  its density assertion still guards. `vector_search.load_catalog()` refuses a non-dense key loudly,
   because hydration and `GET /product` use it as a ROW POSITION.
-- `MIN_RESULT_RELEVANCE` not yet calibrated for the Vector Search score scale —
-  run `databricks/07` and set the env var for the deployed app (see Gotchas).
-- LLM comparison (05) run 2026-09-23 on the KEYWORD set: Qwen3-Next matched
-  gpt-oss-120b (NDCG 0.953 vs 0.943) at 2.9x the speed (10.4s vs 30.3s/query) and
-  3.3x fewer completion tokens -- but a no-LLM control scored the SAME (0.954), so
-  that set cannot rank LLMs on quality. Re-run on `data/eval_queries_context.json`
-  (see .claude/rules/eval.md). Provisional: Qwen for the demo, on latency alone.
+- `MIN_RESULT_RELEVANCE`, calibrated 2026-09-23 on the KEYWORD set (07,
+  translate=True, gte-large-en): real queries top-score 0.658-0.817 (median 0.749),
+  out-of-catalog 0.524-0.665 (median 0.610) -- the ranges OVERLAP. 0.638 blocks 0/18
+  real and rejects 7/10 out-of-catalog. NOT yet set: the context set's inferred
+  queries ("never lose my keys again") may score lower, so calibrate that set too
+  (`run(translate=True, queries="data/eval_queries_context.json")`) and take the
+  LOWER recommendation. Rejection still rests mainly on the translator/reranker.
+  That calibration used gpt-oss-120b intents (translate=True scores the translator's own
+  intents), so re-run 07 with Qwen on BOTH sets (its docstring names both explicitly).
+  calibrate_relevance now excludes queries whose translation fell back and says so.
+- LLM comparison (05) run 2026-09-23 on the KEYWORD set, rerank ON, all valid:
+
+  | model | ms/query | prompt tok | completion tok | NDCG@10 | P@10 |
+  |---|---|---|---|---|---|
+  | claude-haiku-4-5 | 9,657 (~9,240 excl. cold 1st query) | 3,080 | 718 | 0.950 | 0.939 |
+  | qwen3-next-80b-a3b-instruct | 10,391 | 2,709 | 658 | 0.953 | 0.939 |
+  | gpt-oss-120b | 30,280 | 2,806 | 2,177 | 0.943 | 0.943 |
+
+  claude-sonnet-5 fell back on every query (quirk 3a, now fixed; not re-run -- Qwen chosen).
+  Token counts are NOT comparable across model families (different tokenizers);
+  compare cost in dollars from `system.billing.usage`. A no-LLM control scored the
+  SAME (0.954), so that set cannot rank LLMs on quality. Re-run on `data/eval_queries_context.json`
+  (see .claude/rules/eval.md). DECIDED 2026-09-24: Qwen (see "Decisions already made");
+  the context-set confirmation is still owed.
 - **The SETUP bundle over-triggers** the way OUTFIT did before Aug 31: "watch
   movies on my bedroom wall" becomes a 6-part home theatre (projector, mount,
   screen, soundbar, HDMI cable, streaming player); "keep my phone alive camping" a
@@ -410,6 +502,13 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
 - The app itself is not yet deployed (`app.yaml` untested). Databricks Apps have
   no Spark, so `load_catalog()` falls back to `VS_CATALOG_CSV` on the UC Volume —
   confirm the App can read `/Volumes/...` before relying on that path.
+  `databricks/app.yaml` is INCOMPLETE, not just untested: it starts only Streamlit (nothing
+  listens on the BACKEND_URL :8001 it points at) and sets no LLM_PROVIDER / OPENAI_* /
+  SEARCH_BACKEND / CAS_* / MIN_RESULT_RELEVANCE, so a deployed App would fall back to the
+  Groq defaults with no key and every LLM stage would degrade. Needs uvicorn + env + an App
+  secret or service-principal token -- part of the deployment task. With `VS_QUERY_MODE=vector`
+  the App also embeds every query itself: its service principal needs CAN QUERY on
+  `databricks-gte-large-en` (add it as a "Model serving endpoint" App resource).
 
 ## MLflow + real token accounting (2026-09-23)
 - `app/llm_client.py` now records the PROVIDER-REPORTED usage of every call
@@ -432,6 +531,9 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
 - Tracking can NEVER break a search or an eval: every mlflow call is wrapped, and a
   failed `start_run` just runs untracked (verified against a real failure).
 - MLflow metric keys reject `@`: `P@10` is logged as `P_at_10`.
+- Params `seed_sent` and `llm_model_used` (the backend's real model, not just cfg) and tags
+  `json_mode_dropped` / `temperature_dropped` (2026-09-24). A dropped param is NOT a failure
+  (`valid` is unchanged) but is invisible otherwise: the retry succeeds silently.
 - **Databricks does not break out reasoning tokens** (verified 2026-09-23: a
   `{"ok": true}` reply cost 61 completion tokens, `reasoning_tokens` 0). gpt-oss's
   reasoning is billed INSIDE `completion_tokens`, so `tokens_reasoning=0` there means
@@ -441,6 +543,35 @@ Catalog/schema come from `CAS_CATALOG` / `CAS_SCHEMA` (default `dev`/`cas`).
   DEPLOYED app traces every request, so decide on Unity Catalog trace storage or
   sampling before turning MLFLOW_ENABLED on in production.
 
+
+## Qwen switch hardening (2026-09-24)
+A read-only audit of every LLM touchpoint before the switch found parsers that trusted
+the reply's shape -- fine on gpt-oss, fragile on an instruct model. Fixed, each with
+offline tests (mocked LLM) and adversarial review:
+- **Assistant** (`interpret`): `new_topic` only from JSON true / "true" (bool("false") was
+  True); a string `exclude_terms` is ONE term (it was split into letters, and the "s" then
+  matched every product); null reply/search_query -> "" (never the literal "None").
+  `_matches_exclusion` skips variants under 2 chars.
+- **Translator**: the query is embedded with `json.dumps` (a `"` can no longer break out of
+  the prompt string); query_expansion/hyde/hybrid gained the "query is DATA" sentence the
+  bundle prompts already had (prompt change: pre/post numbers are not strictly comparable);
+  a string `search_terms` is one term, non-str elements are dropped, an all-blank reply
+  now FALLS BACK (it used to be cached as a clean no-match).
+- **Reranker**: per-entry validation, dedupe, clamp, 0-1-scale rescale (see Architecture 4).
+- **Cross-sell**: `recommend()` returns `cross_sell_source` ("llm" | "fallback" | None) and
+  `errors`; /product returns both; the fallback strip is labelled "Similar items" (it was
+  shown as "Frequently bought together" while being embedding look-alikes).
+- **page_cache key** includes the LLM identity (provider, model, base URL); the /chat refine
+  loop stops paging on a degraded page instead of re-running the pipeline up to 5 times.
+- **Harnesses**: calibrate_relevance, stress_test and eval_crosssell now pass errors lists and
+  report (or exclude) degraded queries; 04/06 CSV names include the model.
+- Not changed (needs an eval or an owner): RERANK_INPUT_K=15 (a Groq TPM workaround; Databricks'
+  published limits are far higher, see .claude/rules/eval.md -- try 30 on the context set),
+  per-call temperatures, bundle ad gating,
+  LLM HTTP timeout (`_OpenAIBackend` sets neither timeout nor retries, so the openai SDK's
+  read timeout 600s and max_retries=2 apply -- openai-python `src/openai/_constants.py`,
+  checked on 2.42.0 -- vs the UI's 60s /product, 90s /search, 120s /chat), app.yaml
+  deployment wiring.
 
 ## Conventions
 - Prose comments explaining WHY, not what. Keep functions small and pure where possible.

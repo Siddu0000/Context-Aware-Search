@@ -25,7 +25,7 @@ def add(product: dict, qty: int = 1) -> int:
             "product": {
                 k: product.get(k)
                 for k in (
-                    "catalog_index", "Product_title", "img_url", "price",
+                    "catalog_index", "Product_title", "img_url", "price", "price_estimate",
                     "categ_lvl2_name", "bsns_vrtcl_name", "store",
                     "average_rating", "rating_number", "source_intent",
                 )
@@ -65,6 +65,20 @@ def count() -> int:
 
 def distinct_count() -> int:
     return len(_cart())
+
+
+def estimated_total():
+    """(sum, n_items) over items with NO listed price but an estimate -- never in the real total."""
+    total, n = 0.0, 0
+    for i in _cart().values():
+        p, e = i["product"].get("price"), i["product"].get("price_estimate")
+        if p is None and e is not None:
+            try:
+                total += float(e) * i["qty"]
+                n += i["qty"]
+            except (TypeError, ValueError):
+                pass
+    return total, n
 
 
 def total_price():

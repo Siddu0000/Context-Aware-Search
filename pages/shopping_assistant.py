@@ -169,6 +169,11 @@ def _render_results_panel():
         if dbg:
             st.caption(" — ".join(dbg))
     for err in meta.get("errors") or []:
+        if err.get("code") == "partial":
+            # AI ranking was applied; only some entries were unusable -- dev detail only
+            if show_debug:
+                st.caption(f"⚠️ {err.get('stage')} partly applied: {err.get('detail', '')}")
+            continue
         st.caption(f"⚠️ {err.get('stage')} unavailable (error {err.get('code')})")
 
     cols_per_row = 3

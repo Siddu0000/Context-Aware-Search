@@ -1,5 +1,6 @@
 """Conversational layer over the /search pipeline — one LLM call per chat turn."""
 
+import json
 import logging
 from typing import List, Optional
 
@@ -93,6 +94,34 @@ def _format_history(history: Optional[List[dict]]) -> str:
     return "\n".join(lines) or "(no previous messages)"
 
 
+def _as_text(value) -> str:
+    """A JSON null must stay empty: str(None) would search for, or reply, 'None'."""
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _as_bool(value) -> bool:
+    """Only JSON true or "true" count: bool("false") is True and would wipe the chat."""
+    if isinstance(value, bool):
+        return value
+    return isinstance(value, str) and value.strip().lower() == "true"
+
+
+def _as_terms(value) -> List[str]:
+    """exclude_terms as a list of 2+ char terms; a bare string is ONE term, not letters."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    terms = []
+    for t in value:
+        if isinstance(t, bool) or not isinstance(t, (str, int, float)):
+            continue   # null / dict / list elements are not terms
+        t = str(t).strip().lower()
+        if len(t) >= 2:   # a 1-char term like "s" would exclude every product
+            terms.append(t)
+    return terms[:8]
+
+
 def interpret(
     message: str,
     history: Optional[List[dict]] = None,
@@ -108,7 +137,8 @@ def interpret(
     prompt = ASSISTANT_PROMPT.format(
         history=_format_history(history),
         last_search_query=(
-            f'"{last_search_query}"' if last_search_query
+            # JSON literal: the client echoes this back, so a quote must not escape it
+            json.dumps(last_search_query, ensure_ascii=False) if last_search_query
             else "(none — nothing is on screen yet)"
         ),
         message=message,
@@ -118,14 +148,11 @@ def interpret(
         action = str(parsed.get("action", "")).strip().lower()
         if action not in {"refine", "search", "reply"}:
             raise LLMError(f"Bad action: {parsed!r}")
-        reply = str(parsed.get("reply", "")).strip()
-        query = str(parsed.get("search_query", "")).strip()
-        exclude_terms = [
-            str(t).strip().lower()
-            for t in (parsed.get("exclude_terms") or [])
-            if str(t).strip()
-        ][:8]
-        new_topic = bool(parsed.get("new_topic", False))
+        # Instruct models loosely type fields (null, "false", "socks"); coerce strictly
+        reply = _as_text(parsed.get("reply"))
+        query = _as_text(parsed.get("search_query"))
+        exclude_terms = _as_terms(parsed.get("exclude_terms"))
+        new_topic = _as_bool(parsed.get("new_topic", False))
         if action == "refine" and (not last_search_query or not exclude_terms):
             # Nothing on screen to refine against, or nothing concrete to exclude
             action = "search"
@@ -142,7 +169,11 @@ def interpret(
             "new_topic": new_topic,
             "search_query": query,
             "exclude_terms": exclude_terms,
-            "reply": reply or "Here's what I found:",
+            # "Here's what I found:" over an empty panel reads as a broken search
+            "reply": reply or (
+                "Happy to help. What are you shopping for?" if action == "reply"
+                else "Here's what I found:"
+            ),
         }
     except Exception as e:  # noqa: BLE001 — best-effort, must not break the chat
         if errors is not None:

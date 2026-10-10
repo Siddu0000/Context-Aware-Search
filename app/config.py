@@ -16,7 +16,14 @@ EVAL_RESULTS_DIR = PROJECT_ROOT / "eval_results"
 for d in (CACHE_DIR, LOGS_DIR, EVAL_RESULTS_DIR):
     d.mkdir(exist_ok=True)
 
-PRODUCTS_CSV = DATA_DIR / "products.csv"
+# The catalog the app serves. The cleaned + enriched copy (scripts/enrich_catalog.py)
+# is the default whenever it exists: on the context eval set it lifted P@10 0.408 ->
+# 0.521 with query expansion (3 runs each, 2026-10-09). Set PRODUCTS_CSV=data/products.csv
+# for the raw catalog. Relative paths resolve from the project root.
+_enriched = PROJECT_ROOT / "data" / "products_enriched.csv"
+_products = Path(os.getenv(
+    "PRODUCTS_CSV", "data/products_enriched.csv" if _enriched.exists() else "data/products.csv"))
+PRODUCTS_CSV = _products if _products.is_absolute() else PROJECT_ROOT / _products
 
 
 def eval_queries_path(value: str | None = None) -> Path:
@@ -101,24 +108,44 @@ RECOMMEND_USE_LLM = os.getenv("RECOMMEND_USE_LLM", "true").lower() in {"1", "tru
 
 SPONSORED_ENABLED = os.getenv("SPONSORED_ENABLED", "true").lower() in {"1", "true", "yes"}
 SPONSORED_CONFIG = DATA_DIR / "sponsored.json"
+# A FLAT-results ad is promoted only if its raw 0-100 rerank_score is ABOVE this.
+# The rerank prompt caps constraint violators at 40, so a women's dress scored 40
+# on a men's-shirt query stays organic instead of jumping to position 1. Bundles
+# (_promote_sponsored_options) still gate on slot membership only: owner decision.
+SPONSORED_MIN_RERANK_SCORE = float(os.getenv("SPONSORED_MIN_RERANK_SCORE", "40"))
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 # Retrieval backend. "local" = in-process gte-small + numpy (dev laptop);
-# "databricks" = Mosaic AI Vector Search over the managed gte-large-en index.
+# "databricks" = Mosaic AI Vector Search over gte-large-en vectors (databricks/02).
 # Read DYNAMICALLY via cfg.SEARCH_BACKEND so notebooks/evals can switch it.
 SEARCH_BACKEND = os.getenv("SEARCH_BACKEND", "local").lower()
 CAS_CATALOG = os.getenv("CAS_CATALOG", "dev")
 CAS_SCHEMA = os.getenv("CAS_SCHEMA", "cas")
 VS_ENDPOINT = os.getenv("CAS_ENDPOINT", "cas-search")
-VS_INDEX = f"{CAS_CATALOG}.{CAS_SCHEMA}.products_index"
+VS_INDEX = os.getenv("VS_INDEX", f"{CAS_CATALOG}.{CAS_SCHEMA}.products_index")
 VS_TABLE = f"{CAS_CATALOG}.{CAS_SCHEMA}.products"
-# Must match embedding_model_endpoint_name used when the index was built (02)
+# Embeddings are computed ONCE by databricks/02 embed() and kept in Delta, so a
+# rebuilt index never calls the embedding model again (an index cannot be paused;
+# deleting it between runs is what stops the endpoint billing). Two tables:
+#   VS_EMBEDDINGS_TABLE -- the store, keyed by (embedding_model, text_hash): only
+#     new or changed product text is ever embedded again; never deleted.
+#   VS_VECTORS_TABLE -- the index source: one row per catalog_index, re-derived from
+#     the store whenever the catalog changes.
+VS_EMBEDDINGS_TABLE = f"{CAS_CATALOG}.{CAS_SCHEMA}.products_embeddings"
+VS_VECTORS_TABLE = f"{CAS_CATALOG}.{CAS_SCHEMA}.products_vectors"
+# The pay-per-token serving endpoint that embeds BOTH the catalog (02) and every
+# query (app/vector_search.py) -- the two must match or retrieval is meaningless.
 VS_EMBEDDING_MODEL = os.getenv("VS_EMBEDDING_MODEL", "databricks-gte-large-en")
-# Catalog source when Spark is unavailable (Databricks Apps). Row position must
-# equal catalog_index -- guaranteed by the dense row_number() in databricks/01.
+# "vector": embed the query here and send query_vector -- required by the
+# self-managed index 02 builds. "text": send query_text, only for an index built
+# with MANAGED embeddings (the pre-2026-10-09 index).
+VS_QUERY_MODE = os.getenv("VS_QUERY_MODE", "vector").lower()
+# Catalog source when Spark is unavailable (Databricks Apps), and the file
+# databricks/01 loads. Row position must equal catalog_index -- guaranteed by
+# the dense row_number() in databricks/01.
 VS_CATALOG_CSV = os.getenv(
-    "VS_CATALOG_CSV", f"/Volumes/{CAS_CATALOG}/{CAS_SCHEMA}/raw/products.csv"
+    "VS_CATALOG_CSV", f"/Volumes/{CAS_CATALOG}/{CAS_SCHEMA}/raw/products_enriched.csv"
 )
 
 # Experiment tracking. Opt-in: needs MLFLOW_ENABLED=true AND mlflow installed;

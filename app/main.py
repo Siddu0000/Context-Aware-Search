@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
+import app.config as cfg
 from app import page_cache, tracking
 from app.config import (
     FINAL_TOP_K,
@@ -21,6 +22,7 @@ from app.config import (
     RERANK_POOL_K,
     RETRIEVAL_TOP_K,
     SPONSORED_ENABLED,
+    SPONSORED_MIN_RERANK_SCORE,
     TRANSLATOR_MODE,
 )
 from app.feedback import record_feedback
@@ -222,6 +224,7 @@ def _promote_sponsored_options(slots, smap):
         for i, opt in enumerate(options):
             asin = opt.get("parent_asin")
             asin = str(asin) if asin is not None else None
+            # Slot membership is the bundle gate; the rerank floor isn't applied (owner call)
             if asin and asin in smap:
                 opt["is_sponsored"] = True
                 opt["sponsor"] = smap[asin]["sponsor"]
@@ -255,16 +258,23 @@ def _balance_candidate_pool(candidates):
     return out
 
 
+def _clears_sponsored_gate(item) -> bool:
+    """Reranked AND scored above the constraint-violator ceiling; else it stays organic."""
+    score = item.get("rerank_score")
+    return score is not None and score > SPONSORED_MIN_RERANK_SCORE
+
+
 def _boost_sponsored(full, smap):
     """Bid-order sponsored items that made the RERANKED pool to the top."""
-    # rerank_score gates it: sponsored items outside the pool aren't relevant enough
+    # Pool membership alone let a low-scored off-topic ad (e.g. a women's dress on a
+    # men's-shirt query, capped <=40 by the prompt) jump to position 1
     if not smap:
         return full
     boosted, rest = [], []
     for item in full:
         asin = item.get("parent_asin")
         asin = str(asin) if asin is not None else None
-        if asin and asin in smap and item.get("rerank_score") is not None:
+        if asin and asin in smap and _clears_sponsored_gate(item):
             item = dict(item)
             item["is_sponsored"] = True
             item["sponsor"] = smap[asin]["sponsor"]
@@ -277,6 +287,21 @@ def _boost_sponsored(full, smap):
     for item in boosted:
         item.pop("_bid", None)
     return boosted + rest
+
+
+def _blocking_errors(errors: list) -> list:
+    """Errors that mean a stage FELL BACK. A rerank 'partial' still used the LLM's
+    ranking, so its pool is cached: else page 2 / a chat refine re-rank and reshuffle."""
+    return [e for e in errors if e.get("code") != "partial"]
+
+
+def _llm_identity() -> tuple:
+    """(provider, model, base URL), read at CALL time so a model switch changes the key."""
+    provider = cfg.LLM_PROVIDER
+    model = {"gemini": cfg.GEMINI_MODEL, "anthropic": cfg.ANTHROPIC_MODEL}.get(
+        provider, cfg.OPENAI_MODEL
+    )
+    return (provider, model, cfg.OPENAI_BASE_URL)
 
 
 @app.get("/search")
@@ -311,10 +336,14 @@ def search(
     pool_k = max(RERANK_POOL_K, page_size)
     timings = StageTimings()
 
-    # `recommend` must be in the key or /unified_search's recommend=False poisons it
+    # `recommend` must be in the key or /unified_search's recommend=False poisons it;
+    # the LLM identity must be too, or a model switch serves the old model's ranking
     cache_key = page_cache.make_key(
         query,
-        (page_size, pool_k, rerank, recommend, sponsored, translator_mode or TRANSLATOR_MODE),
+        (
+            page_size, pool_k, rerank, recommend, sponsored,
+            translator_mode or TRANSLATOR_MODE, _llm_identity(),
+        ),
     )
 
     try:
@@ -331,11 +360,19 @@ def search(
             start = (page - 1) * page_size
             results = full[start : start + page_size]
             sponsored_items = [r for r in results if r.get("is_sponsored")]
-            recommendations = (
-                cached["recommendations"]
-                if page == 1
-                else {"cross_sell": [], "upsell": []}
-            )
+            recommendations = {"cross_sell": [], "upsell": []}
+            if page == 1:
+                recommendations = cached.get("recommendations")
+                if recommendations is None:
+                    # Cross-sell fell back when this pool was cached: retry ONLY that stage
+                    recommendations = {"cross_sell": [], "upsell": []}
+                    if recommend and results:
+                        with timings.stage("recommend"):
+                            recommendations = build_recommendations(query, results, page=page)
+                        if not recommendations.get("errors"):
+                            page_cache.put(
+                                cache_key, {**cached, "recommendations": recommendations}
+                            )
             errors = []
         else:
             errors = []
@@ -395,7 +432,7 @@ def search(
                     "has_next": False,
                     "latency_ms": timings.to_dict(),
                 }
-                if not errors:
+                if not _blocking_errors(errors):
                     page_cache.put(
                         cache_key,
                         {
@@ -460,7 +497,7 @@ def search(
                 with timings.stage("recommend"):
                     recommendations = build_recommendations(query, results, page=page)
 
-            if not errors:
+            if not _blocking_errors(errors):
                 page_cache.put(
                     cache_key,
                     {
@@ -473,7 +510,11 @@ def search(
                     "bundle_type": bundle_type,
                         "rerank_succeeded": rerank_actually_ran,
                         "no_match": False,
-                        "recommendations": recommendations,
+                        # A cross-sell fallback isn't pinned, but the clean POOL is: else
+                        # page 2 re-ranks (unseeded on Databricks) and pages overlap
+                        "recommendations": (
+                            None if recommendations.get("errors") else recommendations
+                        ),
                     },
                 )
 
@@ -630,7 +671,10 @@ def unified_search(
 @app.get("/product")
 def product(
     catalog_index: int = Query(..., ge=0, description="Catalog row id from a search result."),
-    query: Optional[str] = Query(None, description="Original search query, for recommendation context."),
+    # Same cap as /search: this text is inserted into the cross-sell LLM prompt
+    query: Optional[str] = Query(
+        None, max_length=300, description="Original search query, for recommendation context."
+    ),
     recommend: bool = Query(
         RECOMMEND_ENABLED, description="Include this product's cross-sell/upsell."
     ),
@@ -640,13 +684,19 @@ def product(
     if p is None:
         raise HTTPException(status_code=404, detail="Product not found.")
 
-    recommendations = {"cross_sell": [], "upsell": []}
+    recommendations = {"cross_sell": [], "upsell": [], "cross_sell_source": None, "errors": []}
     if recommend:
         recommendations = build_recommendations(
             query or p.get("Product_title", ""), [p], page=1
         )
 
-    return {"product": p, "recommendations": recommendations}
+    # errors mirrored top-level like /search and /chat: a cross-sell fallback is visible
+    return {
+        "product": p,
+        "recommendations": recommendations,
+        "cross_sell_source": recommendations.get("cross_sell_source"),
+        "errors": list(recommendations.get("errors") or []),
+    }
 
 
 class ChatTurn(BaseModel):
@@ -674,7 +724,7 @@ def _matches_exclusion(product: dict, terms: list[str]) -> bool:
     ).lower()
     for t in terms:
         t = t.lower().strip()
-        if not t:
+        if len(t) < 2:
             continue
         variants = {t}
         if t.endswith("s"):
@@ -682,6 +732,9 @@ def _matches_exclusion(product: dict, terms: list[str]) -> bool:
         else:
             variants.add(t + "s")
         for v in variants:
+            # "s" -> "" would make \b\b match EVERY product and wipe the results
+            if len(v) < 2:
+                continue
             if _re.search(rf"\b{_re.escape(v)}\b", hay):
                 return True
     return False
@@ -729,6 +782,7 @@ def chat(payload: ChatIn):
         # Re-page the CACHED pool: re-retrieving here dropped unrelated items
         kept: list = []
         first_page = None
+        page_errors: list = []
         for pg in range(1, 6):  # cap: 5 pages of the pool is plenty to backfill
             page_out = _run_search(payload.last_search_query, page=pg)
             if first_page is None:
@@ -737,6 +791,11 @@ def chat(payload: ChatIn):
                 r for r in page_out.get("results", [])
                 if not _matches_exclusion(r, all_excl)
             )
+            page_errors.extend(page_out.get("errors") or [])
+            if _blocking_errors(page_out.get("errors") or []):
+                # Degraded runs aren't cached, so every further page would re-run
+                # translate + rerank: stop and keep what we have
+                break
             if len(kept) >= payload.top_k or not page_out.get("has_next"):
                 break
         results = kept[: payload.top_k]
@@ -759,7 +818,7 @@ def chat(payload: ChatIn):
             "is_recipe": (first_page or {}).get("is_recipe", False),
             "bundle_type": (first_page or {}).get("bundle_type"),
             "no_match": not results,
-            "errors": errors + list((first_page or {}).get("errors", [])),
+            "errors": errors + page_errors,
         }
 
     # action == "search": fresh pipeline run, page replaced, exclusions reset

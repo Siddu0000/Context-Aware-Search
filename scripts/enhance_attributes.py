@@ -49,6 +49,22 @@ def _format_batch(titles: list[str]) -> str:
     return "\n".join(f"{i}. {t}" for i, t in enumerate(titles))
 
 
+def _item_index(item, batch_len: int) -> Optional[int]:
+    """The item's position in the batch, or None when the model sent an unusable item."""
+    if not isinstance(item, dict):
+        return None
+    try:
+        idx = int(item.get("idx", -1))
+    except (TypeError, ValueError, OverflowError):  # OverflowError: json.loads turns Infinity/1e400 into inf
+        return None
+    return idx if 0 <= idx < batch_len else None
+
+
+def _text(value) -> str:
+    # str(None) would store the literal "None" in the catalog, and done rows are never re-derived
+    return value.strip() if isinstance(value, str) else ""
+
+
 def _load_checkpoint() -> dict[int, dict]:
     """Return {row_index: enhanced_attrs} from the checkpoint file."""
     if not CHECKPOINT_PATH.exists():
@@ -102,19 +118,26 @@ def enhance(batch_size: int = 8, limit: Optional[int] = None) -> Path:
 
         records = []
         for item in items:
-            local_idx = int(item.get("idx", -1))
-            if 0 <= local_idx < len(batch_idx):
-                row_idx = batch_idx[local_idx]
-                records.append(
-                    {
-                        "row_idx": row_idx,
-                        "Product_title": titles[local_idx],
-                        "color": str(item.get("color", "")).strip(),
-                        "material": str(item.get("material", "")).strip(),
-                        "occasion": str(item.get("occasion", "")).strip(),
-                        "prod_description": str(item.get("description", "")).strip(),
-                    }
+            # One malformed item must not abort the run; its row stays undone and is retried next run
+            local_idx = _item_index(item, len(batch_idx))
+            if local_idx is None:
+                logger.warning(
+                    "Batch %d-%d: skipping malformed item %s.",
+                    batch_idx[0],
+                    batch_idx[-1],
+                    repr(item)[:120],
                 )
+                continue
+            records.append(
+                {
+                    "row_idx": batch_idx[local_idx],
+                    "Product_title": titles[local_idx],
+                    "color": _text(item.get("color")),
+                    "material": _text(item.get("material")),
+                    "occasion": _text(item.get("occasion")),
+                    "prod_description": _text(item.get("description")),
+                }
+            )
         _append_checkpoint(records)
         for r in records:
             done[r["row_idx"]] = r

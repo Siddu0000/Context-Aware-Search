@@ -29,11 +29,16 @@ c1, c2, c3 = st.columns([2, 2, 2])
 c1.metric("Items", ui_cart.count())
 c2.metric("Distinct products", ui_cart.distinct_count())
 c3.metric("Estimated total", f"${total:,.2f}")
-if n_unpriced:
+est_total, n_est = ui_cart.estimated_total()
+if n_est:
     st.caption(
-        f"⚠️ {n_unpriced} item(s) have no listed price in the catalog, so they "
-        "are not included in the total. (Many Amazon rows have a null price — "
-        "we show the gap rather than quietly under-reporting the basket.)"
+        f"≈ ${est_total:,.2f} more for {n_est} item(s) with an estimated price "
+        "(from similar products) -- not included in the total."
+    )
+if n_unpriced - n_est:
+    st.caption(
+        f"⚠️ {n_unpriced - n_est} item(s) have no listed or estimated price, so they "
+        "are not included in the total."
     )
 st.divider()
 
@@ -69,6 +74,9 @@ for entry in items:
             if price is not None and not is_nan(price):
                 line = float(price) * qty
                 st.markdown(f"${float(price):,.2f} × {qty} = **${line:,.2f}**")
+            elif p.get("price_estimate") is not None and not is_nan(p.get("price_estimate")):
+                est = float(p["price_estimate"])
+                st.markdown(f"≈ ${est:,.2f} × {qty} (est.)")
             else:
                 st.markdown("_no listed price_")
 

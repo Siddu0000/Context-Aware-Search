@@ -10,21 +10,22 @@ import pandas as pd
 
 from app.config import CACHE_DIR, PRODUCTS_CSV
 from app.embeddings import embed_text, get_default_embedder
-from app.search import DEFAULT_SEARCH_FIELDS, _build_search_text, _cache_key
+from app.search import _build_search_text, _cache_key, effective_fields
 
 # Note: don't set torch threads — cpu_count() oversubscribes; the default is faster
 CHUNK = 5000  # rows per resumable chunk (~20 min of work each at 300K scale)
 
 
 def main():
-    fields = DEFAULT_SEARCH_FIELDS
+    print(f"Loading catalog from {PRODUCTS_CSV} ...", flush=True)
+    df = pd.read_csv(PRODUCTS_CSV, low_memory=False)
+    # Same fields AND key as app/search.load_index, or the server never reads this
+    fields = effective_fields(df.columns)
     cache_path = CACHE_DIR / f"embeddings_{_cache_key(fields)}.npy"
     if cache_path.exists():
         print(f"Cache already complete: {cache_path.name}", flush=True)
         return
 
-    print(f"Loading catalog from {PRODUCTS_CSV} ...", flush=True)
-    df = pd.read_csv(PRODUCTS_CSV)
     texts = _build_search_text(df, fields).tolist()
     n = len(texts)
     n_chunks = -(-n // CHUNK)  # ceil

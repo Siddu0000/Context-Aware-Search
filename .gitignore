@@ -50,3 +50,5 @@ ehthumbs.db
 desktop.ini
 
 *.zip
+# scripts/enrich_catalog.py intermediates (rebuildable, hundreds of MB)
+data/enrichment/

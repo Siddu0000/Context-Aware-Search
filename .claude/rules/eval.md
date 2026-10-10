@@ -44,13 +44,24 @@ Each /search = 2 LLM calls. The full eval set with rerank = ~24 calls/run.
 Gemini free tier is ~15 RPM and will throttle. Guidance:
 - `compare_temperature` and `compare_translators` default to rerank OFF
   (translator-only, ~12 calls/run) to stay light.
-- Run with cache OFF for honest latency (cache is disabled anyway right now).
+- Latency is honest: run_eval calls the pipeline stages directly and never touches the
+  app's `page_cache` (which IS on in the app).
+- Databricks pay-per-token limits are far above eval volume: ITPM 1M / OTPM 100K for
+  Qwen3-Next on Enterprise-tier workspaces (tier-dependent; our tier is not recorded) per
+  https://learn.microsoft.com/en-us/azure/databricks/machine-learning/foundation-model-apis/limits
+  -- the constraint there is cost, not quota.
 - If you need many runs, get a paid key or space them out.
 
 ## Known eval issues
 - **Single runs are noisy.** The translator is non-deterministic (Groq's seed is
   best-effort; Databricks gets no seed at all) — the same query produced different
   intents on two calls. Treat gaps under ~0.05 P@10 on 16 queries as a tie.
+- **Local and Databricks run DIFFERENT LLMs** (since 2026-09-24): local = Groq
+  `openai/gpt-oss-120b`, Databricks = `databricks-qwen3-next-80b-a3b-instruct`. A local number
+  and a Databricks number differ in embedding model AND LLM -- never attribute the gap to one.
+  Read run_eval's printed `llm = <model>` summary line (every run) or `llm_model_used`
+  (MLflow, when enabled), not the notebook's Cell 2. CSV names carry the model only for
+  04/05/06 and compare_translators; local run_eval's default is `rerank_on_<ts>.csv`.
 - `run_eval --no-translate` is the NO-LLM CONTROL. Run it alongside any model
   comparison — without it you cannot tell whether the LLM added anything.
 - `compare_search_text` returned identical numbers across all field variants on

@@ -13,10 +13,11 @@ from typing import List, Set, Tuple
 import pandas as pd
 
 import app.config as cfg
+import app.search as search_module
 import app.translator as translator_module
 from app import tracking
 from app.config import EVAL_QUERIES_JSON, EVAL_RESULTS_DIR, FINAL_TOP_K, RETRIEVAL_TOP_K
-from app.llm_client import track_usage
+from app.llm_client import active_model, param_downgrades, seed_sent, track_usage
 from app.metrics import StageTimings, approx_tokens
 from app.reranker import rerank as llm_rerank
 from app.search import (
@@ -88,6 +89,47 @@ USAGE_COLUMNS = ("llm_calls", "tokens_prompt", "tokens_completion",
                  "tokens_reasoning", "tokens_total")
 
 
+def _stage_label(err: dict) -> str:
+    """'rerank:partial' (as stress_test labels it): some entries were dropped, but the
+    LLM's ranking WAS used, so it must not read like a full embedding-order fallback."""
+    stage = str(err.get("stage"))
+    return f"{stage}:partial" if err.get("code") == "partial" else stage
+
+
+def is_degraded(fell_back) -> bool:
+    """A fell_back value with any real fallback; 'rerank:partial' alone still measures the LLM."""
+    labels = str(fell_back or "").split(";")
+    return any(lab and not lab.endswith(":partial") for lab in labels)
+
+
+def _llm_facts(rerank_on: bool, translate_on: bool) -> dict:
+    """What the backend ACTUALLY did: cfg can name a model or a seed the calls never had."""
+    if not (translate_on or rerank_on):
+        return {"llm_model_used": "off", "seed_sent": False}
+    # None = the backend never built (e.g. no API key), so every LLM stage fell back
+    return {"llm_model_used": active_model() or "unavailable", "seed_sent": seed_sent()}
+
+
+def _downgrade_tags(model: str) -> dict:
+    # Tags, not params: learned DURING the run. Per this run's model, because the
+    # sets are process-wide and would otherwise blame a model compared earlier
+    d = param_downgrades()
+    return {k: str(model in models).lower() for k, models in d.items()}
+
+
+def _print_downgrades(model: str) -> None:
+    d = param_downgrades()
+    if not any(d.values()):
+        print("  downgrades   = none (JSON mode and temperature sent as requested)")
+        return
+    print(f"  downgrades   = json_mode_dropped={d['json_mode_dropped']} "
+          f"temperature_dropped={d['temperature_dropped']}")
+    hit = [k for k, models in d.items() if model in models]
+    if hit:
+        print(f"  !! {model} ran with {', '.join(hit)} -- not a failure (valid is "
+              "unaffected), but not comparable with a run that had them.")
+
+
 def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) -> dict:
     """What produced these numbers: models, backend, modes. Read LIVE -- the
     comparison harnesses mutate cfg / translator_module between runs."""
@@ -104,12 +146,21 @@ def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) ->
         "embedding_model": (
             cfg.VS_EMBEDDING_MODEL if backend == "databricks" else cfg.EMBEDDING_MODEL
         ),
+        # vector = self-managed index + app-side query embedding (2026-10-09 on);
+        # text = the old managed-embedding index. Runs of the two are not comparable.
+        "vs_query_mode": cfg.VS_QUERY_MODE if backend == "databricks" else "n/a",
+        "catalog": cfg.VS_TABLE if backend == "databricks" else cfg.PRODUCTS_CSV.name,
+        # Content hash: the names above stay the same when the catalog text changes
+        "catalog_fp": search_module.catalog_fingerprint(),
         "translator_mode": translator_module.TRANSLATOR_MODE if translate_on else "off",
         "rerank_on": rerank_on,
         "rerank_input_k": cfg.RERANK_INPUT_K,
         "retrieval_top_k": RETRIEVAL_TOP_K,
+        # The knob; seed_sent says whether it took effect (Databricks never gets a seed)
         "deterministic": cfg.DETERMINISTIC,
-        "fields": ",".join(fields),
+        **_llm_facts(rerank_on, translate_on),
+        # What was EMBEDDED (the enriched tags join the default set), not just requested
+        "fields": ",".join(search_module.embedded_fields() or fields),
         # Scores on different sets are NOT comparable (keyword set ~0.95 raw, context ~0.3)
         "eval_set": Path(EVAL_QUERIES_JSON).name,
     }
@@ -125,11 +176,13 @@ def evaluate(
     with tracking.eval_run(tag) as run:
         out_path, summary = _evaluate(rerank_on, tag, fields, translate_on)
         degraded = int(summary.get("n_degraded", 0))
+        params = _run_params(rerank_on, fields, translate_on)
         run.log(
-            params=_run_params(rerank_on, fields, translate_on),
+            params=params,
             metrics=summary,
             artifact=out_path if out_path.exists() else None,
-            tags={"valid": str(degraded == 0).lower(), "tag": tag},
+            tags={"valid": str(degraded == 0).lower(), "tag": tag,
+                  **_downgrade_tags(params["llm_model_used"])},
         )
     return out_path
 
@@ -206,9 +259,7 @@ def _evaluate(
                 "tokens_completion": usage["completion_tokens"],
                 "tokens_reasoning": usage["reasoning_tokens"],
                 "tokens_total": usage["total_tokens"],
-                "fell_back": ";".join(
-                    str(e.get("stage")) for e in stage_errors
-                ) or "",
+                "fell_back": ";".join(_stage_label(e) for e in stage_errors),
             }
         )
 
@@ -226,12 +277,18 @@ def _evaluate(
             writer.writerows(rows)
 
     print("\n=== Summary ===")
-    degraded = [r for r in rows if r["fell_back"]]
+    degraded = [r for r in rows if is_degraded(r["fell_back"])]
+    partial = [r for r in rows if r["fell_back"] and not is_degraded(r["fell_back"])]
     if degraded:
         print(f"  !! {len(degraded)}/{len(rows)} QUERIES RAN DEGRADED "
               f"({ {r['fell_back'] for r in degraded} }) -- these metrics do NOT "
               "measure the full pipeline. Fix the cause before quoting them.")
-    summary = {"n_queries": len(rows), "n_degraded": len(degraded)}
+    if partial:
+        # Still the LLM's ranking (valid), but the model is sending malformed entries
+        print(f"  !  {len(partial)}/{len(rows)} queries had a PARTIAL rerank "
+              "(some entries dropped; LLM ranking still used -- not a fallback)")
+    summary = {"n_queries": len(rows), "n_degraded": len(degraded),
+               "n_partial": len(partial)}
     if rows:
         for col in ("P@1", "P@5", "P@10", "R@10", "MRR", "NDCG@10", "ms_total"):
             summary[f"mean_{col}"] = mean(r[col] for r in rows)
@@ -245,15 +302,19 @@ def _evaluate(
         # it out, so 0 there means "not reported", never "the model did not reason"
         reasoning = (f"of which reasoning {summary['sum_tokens_reasoning']:,}"
                      if summary["sum_tokens_reasoning"]
-                     else "reasoning not broken out by this provider")
+                     else "reasoning 0: not broken out, or a non-reasoning model")
         print(f"  tokens       = {summary['sum_tokens_total']:,} total "
               f"({summary['mean_tokens_total']:,.0f}/query; prompt "
               f"{summary['sum_tokens_prompt']:,}, completion "
               f"{summary['sum_tokens_completion']:,}, {reasoning})")
         if summary["sum_llm_calls"] and not summary["sum_tokens_total"]:
             print("  !! provider returned no usage data -- token counts are 0, not free")
+    llm = _llm_facts(rerank_on, translate_on)
+    print(f"  llm          = {llm['llm_model_used']} "
+          f"(seed sent: {'yes' if llm['seed_sent'] else 'no'})")
+    _print_downgrades(llm["llm_model_used"])
     print(f"  rerank_on    = {rerank_on}")
-    print(f"  fields       = {fields}")
+    print(f"  fields       = {search_module.embedded_fields() or fields}")
     print(f"  saved to     = {out_path}")
     return out_path, summary
 

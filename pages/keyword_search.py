@@ -59,7 +59,8 @@ with st.sidebar:
         help="Show the raw BM25 / Best-Match ranking scores on each card.",
     )
     st.session_state["show_dev_details"] = show_debug
-    st.caption("No LLM calls on this page — results are instant.")
+    st.caption("Keyword results use no AI, so they are instant. "
+               "Product recommendations on a product's page do use AI.")
     st.divider()
     # st.page_link raises KeyError 'url_pathname' outside full page context
     st.markdown(f"### 🛒 Cart ({ui_cart.count()})")
