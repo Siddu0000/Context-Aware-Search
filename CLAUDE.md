@@ -437,6 +437,14 @@ list through translate AND rerank, writes a **`fell_back`** column per query, an
 prints a loud banner. **Never read an eval number without checking `fell_back`.**
 
 ### Running the eval on Databricks (databricks/) — full runbook in databricks/README.md
+COMPUTE (2026-10-10): the runbook now runs on serverless OR a classic cluster (Sai uses
+`Retail_DE_cluster`). A cluster needs Standard or Dedicated-to-a-USER access mode (no-isolation
+has no Unity Catalog; group-assigned Dedicated cannot reach serving/AI Search) and DBR 14.3+
+(15.4/16.4/17.3 LTS; DBR 19's protobuf 6 clashes with databricks-vectorsearch). Cell 2 gets the
+token from the SDK (`WorkspaceClient().config.authenticate()`), because `getContext().apiToken()`
+is undocumented on Standard. `00_preflight.py preflight()` checks it all first. On a cluster,
+`costs()` adds its DBUs (ALL_PURPOSE rows by cluster_id) but NOT its Azure VM cost, and an idle
+running cluster keeps billing until auto-termination -- `pause()` does not stop it.
 `vs_shim.patch_eval_harness(spark)` sets `cfg.SEARCH_BACKEND="databricks"`, loads the
 catalog and points eval CSVs at the UC Volume. There is NO monkey-patching any more:
 the earlier shim patched `run_eval` with a parallel retrieval function that returned
