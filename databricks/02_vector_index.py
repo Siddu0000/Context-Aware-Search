@@ -21,6 +21,7 @@ Embedding goes through app.vector_search.embed_texts -- the call the app uses fo
 every query -- so catalog and query vectors cannot come from different models.
 """
 
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -365,7 +366,16 @@ def pause():
     print(f"Kept: {EMB}, {VEC} -> resume() rebuilds with no embedding calls.")
 
 
-def costs(since, until=None, mine_only=True, llms=None):
+def _cluster_id():
+    """This notebook's classic cluster, or None on serverless."""
+    try:
+        cid = spark.conf.get("spark.databricks.clusterUsageTags.clusterId", None)
+    except Exception:  # noqa: BLE001 -- serverless may refuse the key outright
+        cid = None
+    return cid or os.environ.get("DB_CLUSTER_ID") or None
+
+
+def costs(since, until=None, mine_only=True, llms=None, cluster_id="auto"):
     """Billed DBUs and list-price $ per day/product/SKU since `since` (YYYY-MM-DD).
 
     system.billing.usage lags: "typically available within 12 hours" -- this is
@@ -375,6 +385,10 @@ def costs(since, until=None, mine_only=True, llms=None):
     every other caller that day, and index ingest has no endpoint name at all.
     run_as is no fix: this team runs as a shared account. The exact per-run numbers
     are embed()'s printed token count and each eval's MLflow token totals.
+    On a classic cluster its DBUs are included (cluster_id="auto" = this notebook's
+    cluster; the whole cluster, so a shared one includes its other users), but its
+    Azure VM, disk and network cost is NOT: system.billing holds only what Databricks
+    bills; Azure Cost Management shows the VMs (tagged ClusterId / ClusterName).
     """
     from databricks.sdk import WorkspaceClient
 
@@ -383,7 +397,8 @@ def costs(since, until=None, mine_only=True, llms=None):
     if mine_only:
         mine = """AND (u.usage_metadata.endpoint_name IN (:ep, :emb, LLMS)
                    OR (u.billing_origin_product IN ('VECTOR_SEARCH', 'AI_SEARCH')
-                       AND u.usage_metadata.endpoint_name IS NULL))"""
+                       AND u.usage_metadata.endpoint_name IS NULL)
+                   CLUSTER)"""
     q = f"""
       SELECT u.usage_date, u.billing_origin_product AS product, u.sku_name,
              u.usage_metadata.endpoint_name AS endpoint,
@@ -405,10 +420,15 @@ def costs(since, until=None, mine_only=True, llms=None):
         for i, m in enumerate(llms or (cfg.OPENAI_MODEL, "databricks-gpt-oss-120b")):
             args[f"llm{i}"] = m
     q = q.replace("LLMS", ", ".join(f":{k}" for k in args if k.startswith("llm")) or "NULL")
+    cid = _cluster_id() if cluster_id == "auto" else cluster_id
+    if mine_only and cid:
+        args["cluster"] = cid
+    q = q.replace("CLUSTER", "OR u.usage_metadata.cluster_id = :cluster" if "cluster" in args else "")
     out = spark.sql(q, args=args).toPandas()
     print(f"workspace {ws}, {since} .. {until or 'now'}: {out['dbu'].sum():,.2f} DBU, "
           f"${out['usd_list'].sum():,.2f} at list price"
-          + (" -- MODEL_SERVING rows include other users of those shared endpoints" if mine_only else ""))
+          + (" -- MODEL_SERVING rows include other users of those shared endpoints" if mine_only else "")
+          + (f"; cluster {cid} DBUs included, its Azure VM cost is not" if mine_only and cid else ""))
     return out
 
 

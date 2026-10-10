@@ -35,6 +35,7 @@ products_enriched.csv --01--> dev.cas.products (search_text, text_hash, catalog_
 
 | Script | Does | LLM calls | Billing |
 |---|---|---|---|
+| `00_preflight.py` | `preflight()`: access mode, runtime, SDK, auto-termination, UC, Volume file, billing access, endpoints, embedding auth from a worker thread | 0 (one ~2-token embedding) | — |
 | `01_catalog_to_delta.py` | enriched CSV → Delta, CDF on, **dense** `catalog_index`, `text_hash`; refuses while the index exists | 0 | compute minutes |
 | `02_vector_index.py` | `status()` `embed()` `resume()` `pause()` `costs()` | 0 (embedding tokens only in `embed()`) | **index on the endpoint ≈ 4 DBU/h** from `resume()` to `pause()` |
 | `03_smoke_test.py` | app-path retrieval + own-text self-retrieval + one JSON-mode LLM call, all asserted | 1 | — |
@@ -54,20 +55,37 @@ products_enriched.csv --01--> dev.cas.products (search_text, text_hash, catalog_
 
 ## The run
 
-**Notebook setup** (serverless). Cell 1:
+**Compute.** Serverless, or a classic all-purpose cluster (we use `Retail_DE_cluster`).
+A cluster must have:
+- **Access mode Standard or Dedicated.** "No isolation shared" cannot reach Unity
+  Catalog (tables, Volumes, system tables). Dedicated must be assigned to a USER,
+  not a group: group-assigned compute cannot reach model serving or AI Search.
+- **DBR 15.4 / 16.4 / 17.3 LTS** (14.3 works; 13.3 is end-of-support; avoid DBR 19:
+  `databricks-vectorsearch` pins protobuf<6 and would downgrade its 6.x).
+- **Auto-termination on** (e.g. 30-60 min). A running cluster bills DBUs + Azure VMs
+  even when idle, and `02 pause()` does not stop it. If it is a shared team cluster,
+  leave its lifecycle to its owner; `costs()` then includes other users' DBUs on it.
+- Step 0 below checks all of this and costs ~2 tokens.
+
+Cell 1 (`--upgrade`: runtimes 15.4+ bundle a databricks-sdk that pip would keep, and
+SDKs before 0.117 can fail on Standard/Spark Connect compute):
 ```python
-%pip install databricks-vectorsearch databricks-sdk openai python-dotenv scikit-learn mlflow
+%pip install --upgrade "databricks-sdk>=0.117.0" databricks-vectorsearch openai python-dotenv scikit-learn mlflow
 dbutils.library.restartPython()
 ```
 Cell 2 — env, including MLflow. Both LLMs named below are open-weight
 (Apache-2.0) models served by Databricks pay-per-token; nothing leaves the workspace:
 ```python
 import os, sys
+from databricks.sdk import WorkspaceClient
 REPO = "/Workspace/Users/<you>/CAS - Sai/Context-Aware-Search"
 sys.path.insert(0, REPO); os.chdir(REPO)
-ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
-TOKEN = ctx.apiToken().get()
-HOST = "https://" + spark.conf.get("spark.databricks.workspaceUrl")
+# The SDK's notebook auth works on serverless AND on Standard / Dedicated clusters;
+# the older getContext().apiToken() call is not documented for Standard access mode
+_w = WorkspaceClient()
+HOST = _w.config.host.rstrip("/")
+TOKEN = _w.config.authenticate()["Authorization"].split(" ", 1)[1]
+ME = _w.current_user.me().user_name
 os.environ.update({
     "CAS_CATALOG": "dev", "CAS_SCHEMA": "cas",
     "DATABRICKS_TOKEN": TOKEN, "DATABRICKS_HOST": HOST,
@@ -78,7 +96,7 @@ os.environ.update({
     "VS_EMBEDDING_MODEL": "databricks-gte-large-en",
     "VS_QUERY_MODE": "vector",
     "MLFLOW_ENABLED": "true",
-    "MLFLOW_EXPERIMENT": f"/Users/{ctx.userName().get()}/cas-evals",
+    "MLFLOW_EXPERIMENT": f"/Users/{ME}/cas-evals",
 })
 ```
 `app.config` reads this env ONCE, at the first `import app...`. Changed Cell 2
@@ -88,6 +106,9 @@ check the model the run ACTUALLY used: run_eval's summary line `llm = <model>`
 
 **Order** (one notebook cell per numbered step):
 ```python
+# 0. Pre-flight: compute, runtime, Unity Catalog, Volume file, endpoints, auth from threads
+exec(open("databricks/00_preflight.py").read()); preflight()
+
 # 1. LLM acceptance check -- needs no index, so run it BEFORE paying for one
 exec(open("databricks/08_llm_smoke.py").read()); run()
 
@@ -137,7 +158,7 @@ exec(open("databricks/02_vector_index.py").read()); pause(); status()
 # 12. NEXT DAY (billing lags ~12h): what the run cost
 exec(open("databricks/02_vector_index.py").read()); costs("2026-10-09")
 ```
-Next run: steps 1, 2, 6-11 only. `embed()` is needed again only after `01`
+Next run: steps 0, 1, 2, 6-11 only. `embed()` is needed again only after `01`
 reloads a CHANGED catalog (it then embeds only the changed text) or after
 `VS_EMBEDDING_MODEL` changes (then `pause()`, `embed()`, `resume()`: the vectors
 table records its model, and `resume()` refuses vectors from another model).
