@@ -8,6 +8,7 @@ import streamlit as st
 import ui_cart
 from ui_common import (
     bundle_ui,
+    escape_md,
     inject_css,
     render_detail_page,
     render_grid_card,
@@ -128,6 +129,13 @@ if sget("settings") != _settings:
     sset("settings", _settings)
 
 
+def _render_intents(intents):
+    """Plain text, never markdown: an intent is model-written (or, on a fallback, the
+    shopper's literal words), and markdown would make a link in it clickable."""
+    for intent in intents:
+        st.text(f"• {intent}")
+
+
 def _render_search_results():
     data = sget("last_response")
     if not data and sget("query"):
@@ -155,10 +163,16 @@ def _render_search_results():
     for err in data.get("errors", []):
         stage = err.get("stage")
         code = err.get("code", "?")
-        if stage == "rerank" and code == "partial":
-            # The AI ranking WAS applied; only some of the model's entries were unusable
+        if code == "partial" or (stage == "translate" and code == "guarded"):
+            # Not an outage: a partial stage WAS applied (some rerank entries unusable, or
+            # the query guard trimmed the query / screened the model's phrases), and
+            # 'guarded' deliberately kept an instruction-shaped query away from the LLM.
+            # The outage warnings below would show every sanitised query as broken
             if show_debug:
-                st.caption(f"⚠️ AI ranking partly applied: {err.get('detail', '')}")
+                label = {"rerank": "AI ranking", "translate": "Query understanding"}.get(
+                    stage, stage)
+                what = "skipped by the query guard" if code == "guarded" else "partly applied"
+                st.caption(f"⚠️ {label} {what}: {err.get('detail', '')}")
         elif stage == "rerank":
             st.warning(
                 f"⚠️ AI ranking is temporarily unavailable (error {code}) — "
@@ -177,8 +191,7 @@ def _render_search_results():
     if data.get("no_match"):
         if data.get("interpreted_as"):
             st.subheader("🧠 What we searched for")
-            for intent in data.get("interpreted_as", []):
-                st.markdown(f"- {intent}")
+            _render_intents(data.get("interpreted_as", []))
             st.divider()
         st.info(
             data.get("message")
@@ -187,12 +200,13 @@ def _render_search_results():
         return
 
     st.subheader("🧠 What we searched for")
-    for intent in data.get("interpreted_as", []):
-        st.markdown(f"- {intent}")
+    _render_intents(data.get("interpreted_as", []))
     constraints = data.get("constraints") or []
     if constraints:
+        # Model-written values: escaped, so a link or "$" in one renders as plain text
         chips = " · ".join(
-            f"**{c.get('value')}** ({c.get('type')})" for c in constraints
+            f"**{escape_md(c.get('value'))}** ({escape_md(c.get('type'))})"
+            for c in constraints
         )
         st.caption(f"Filters applied from your wording: {chips}")
 

@@ -1,0 +1,20 @@
+# The Databricks App's dependencies. 09 stage() copies this to the ROOT of the
+# deployed folder as requirements.txt, which the App pip-installs on every deploy
+# (.../databricks-apps/dependencies).
+#
+# Pinned to the versions the app runs on locally (.venv, 2026-10-12) and, for
+# databricks-sdk, the version the notebook runbook ran on. The repo-root
+# requirements.txt is NOT used: it pulls sentence-transformers/torch, google-genai
+# and anthropic, none of which the databricks backend imports. The App image's own
+# streamlit 1.38 / databricks-sdk 0.33 are older than anything this code ran on.
+fastapi==0.136.3
+uvicorn[standard]==0.48.0
+streamlit==1.58.0
+pandas==3.0.3
+pyarrow==24.0.0
+numpy==2.4.6
+scikit-learn==1.9.0
+python-dotenv==1.2.2
+requests==2.34.2
+openai==2.42.0
+databricks-sdk==0.151.0

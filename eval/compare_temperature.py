@@ -10,6 +10,7 @@ import pandas as pd
 
 import app.config as cfg
 import eval.run_eval as run_eval
+from app.query_guard import sanitize_query
 from app.search import get_dataframe, load_index, search_products
 from app.translator import translate_query
 from eval.run_eval import evaluate
@@ -35,10 +36,12 @@ def _pipeline_titles(query: str, rerank_on: bool, top_k: int = 10, errors: list 
     """Run one query through the pipeline and return its ordered result titles."""
     intents = translate_query(query, errors=errors)
     candidates = search_products(intents, top_k=max(top_k * 3, 30))
-    if rerank_on and candidates:
+    # As app/main.py does: the reranker sees only the query guard's clean text
+    llm_query = sanitize_query(query).clean
+    if rerank_on and candidates and llm_query:
         from app.reranker import rerank as llm_rerank
 
-        ranked = llm_rerank(query, candidates, top_k=top_k, errors=errors)
+        ranked = llm_rerank(llm_query, candidates, top_k=top_k, errors=errors)
         return tuple(p.get("Product_title", "") for p in ranked[:top_k])
     return tuple(c.get("Product_title", "") for c in candidates[:top_k])
 

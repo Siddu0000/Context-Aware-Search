@@ -4,12 +4,15 @@ import json
 import logging
 from typing import List, Optional
 
+from app import query_guard
 from app.llm_client import LLMError, error_code, generate_json
 
 logger = logging.getLogger(__name__)
 
 # Capped so per-turn token cost stays flat however long the chat runs
 MAX_HISTORY_TURNS = 6
+# query_guard.display_problem reasons that replace a reply (see interpret)
+_UNSHOWABLE = frozenset({"link", "markup", "too_long"})
 
 ASSISTANT_PROMPT = """\
 You are a friendly shopping assistant on an online retailer's website. You
@@ -86,7 +89,9 @@ def _format_history(history: Optional[List[dict]]) -> str:
     lines = []
     for turn in recent:
         role = str(turn.get("role", "")).lower()
-        content = str(turn.get("content", "")).strip()
+        # The client echoes BOTH roles back, so neither is trusted: a newline in a turn
+        # must not forge an "Assistant:" line, nor a marker close the message fence
+        content = query_guard.strip_structure(str(turn.get("content", ""))).strip()
         if not content:
             continue
         who = "Shopper" if role == "user" else "Assistant"
@@ -138,19 +143,41 @@ def interpret(
         history=_format_history(history),
         last_search_query=(
             # JSON literal: the client echoes this back, so a quote must not escape it
-            json.dumps(last_search_query, ensure_ascii=False) if last_search_query
+            json.dumps(query_guard.strip_structure(last_search_query), ensure_ascii=False)
+            if last_search_query
             else "(none — nothing is on screen yet)"
         ),
-        message=message,
+        # Structure only ("MESSAGE>>>" would close the fence early and let the rest
+        # pose as our rules); NOT the translator's override cut, which would mangle
+        # legitimate chat like "ignore my earlier instructions, I want blue"
+        message=query_guard.strip_structure(message),
     )
     try:
         parsed = generate_json(prompt, temperature=0.3)
         action = str(parsed.get("action", "")).strip().lower()
         if action not in {"refine", "search", "reply"}:
-            raise LLMError(f"Bad action: {parsed!r}")
+            # The type only: the reply can echo the shopper's message (safety.md)
+            raise LLMError(f"Bad action ({type(parsed.get('action')).__name__})")
         # Instruct models loosely type fields (null, "false", "socks"); coerce strictly
         reply = _as_text(parsed.get("reply"))
         query = _as_text(parsed.get("search_query"))
+        # The reply is rendered as markdown in the store's voice, and search_query is
+        # shown, searched and handed to cross-sell: a link or a chat token in either is
+        # the payoff of an obeyed injection. A flagged reply gives way to the canned one
+        # below; a flagged search_query to the shopper's own message. Never the override
+        # cut: chat legitimately says "ignore my earlier suggestion"
+        problems = {"reply": query_guard.display_problem(reply),
+                    "search_query": query_guard.display_problem(query)}
+        screened = [f"{field}_{p}" for field, p in problems.items() if p in _UNSHOWABLE]
+        if problems["reply"] in _UNSHOWABLE:
+            reply = ""
+        if problems["search_query"] in _UNSHOWABLE:
+            query = ""
+        if screened:
+            detail = query_guard.describe((), screened)
+            if errors is not None:
+                errors.append({"stage": "assistant", "code": "partial", "detail": detail})
+            logger.warning("Assistant guard: %s", detail)
         exclude_terms = _as_terms(parsed.get("exclude_terms"))
         new_topic = _as_bool(parsed.get("new_topic", False))
         if action == "refine" and (not last_search_query or not exclude_terms):
@@ -176,11 +203,11 @@ def interpret(
             ),
         }
     except Exception as e:  # noqa: BLE001 — best-effort, must not break the chat
+        detail = query_guard.error_detail(e)
         if errors is not None:
-            errors.append(
-                {"stage": "assistant", "code": error_code(e), "detail": str(e)[:200]}
-            )
-        logger.warning("Assistant interpret failed (%s); searching literally.", repr(e))
+            errors.append({"stage": "assistant", "code": error_code(e), "detail": detail})
+        logger.warning("Assistant interpret failed (%s: %s); searching literally.",
+                       type(e).__name__, detail)
         return {
             "action": "search",
             # Relationship to prior turns is unverified: never inherit it silently

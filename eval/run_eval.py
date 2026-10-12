@@ -19,6 +19,7 @@ from app import tracking
 from app.config import EVAL_QUERIES_JSON, EVAL_RESULTS_DIR, FINAL_TOP_K, RETRIEVAL_TOP_K
 from app.llm_client import active_model, param_downgrades, seed_sent, track_usage
 from app.metrics import StageTimings, approx_tokens
+from app.query_guard import sanitize_query
 from app.reranker import rerank as llm_rerank
 from app.search import (
     DEFAULT_SEARCH_FIELDS,
@@ -97,7 +98,8 @@ def _stage_label(err: dict) -> str:
 
 
 def is_degraded(fell_back) -> bool:
-    """A fell_back value with any real fallback; 'rerank:partial' alone still measures the LLM."""
+    """A fell_back value with any real fallback; ':partial' labels alone (rerank entries
+    dropped, or the translator's query guard) still measure the LLM."""
     labels = str(fell_back or "").split(";")
     return any(lab and not lab.endswith(":partial") for lab in labels)
 
@@ -163,6 +165,10 @@ def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) ->
         "fields": ",".join(search_module.embedded_fields() or fields),
         # Scores on different sets are NOT comparable (keyword set ~0.95 raw, context ~0.3)
         "eval_set": Path(EVAL_QUERIES_JSON).name,
+        # The guard's output side can clip, screen or cap what the model wrote, so the
+        # two arms of a guard on/off A/B must be told apart (the knob is in-process)
+        "query_guard": cfg.QUERY_GUARD_ENABLED,
+        "max_intents": cfg.MAX_INTENTS,
     }
 
 
@@ -225,10 +231,13 @@ def _evaluate(
             with timings.stage("retrieve"):
                 candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
 
-            if rerank_on and candidates:
+            # As app/main.py does: the reranker sees only what the query guard lets an
+            # LLM see, and none of a query it refused ("" -> embedding order)
+            llm_query = sanitize_query(query).clean
+            if rerank_on and candidates and llm_query:
                 with timings.stage("rerank"):
                     final = llm_rerank(
-                        query, candidates, top_k=FINAL_TOP_K, errors=stage_errors
+                        llm_query, candidates, top_k=FINAL_TOP_K, errors=stage_errors
                     )
                     tokens_in += sum(
                         approx_tokens(c.get("Product_title", ""))
@@ -284,9 +293,18 @@ def _evaluate(
               f"({ {r['fell_back'] for r in degraded} }) -- these metrics do NOT "
               "measure the full pipeline. Fix the cause before quoting them.")
     if partial:
-        # Still the LLM's ranking (valid), but the model is sending malformed entries
-        print(f"  !  {len(partial)}/{len(rows)} queries had a PARTIAL rerank "
-              "(some entries dropped; LLM ranking still used -- not a fallback)")
+        # Still the LLM's output (valid): rerank entries were malformed, or the query
+        # guard trimmed the query / screened the model's phrases (translate:partial)
+        stages = sorted({lab for r in partial for lab in r["fell_back"].split(";")
+                         if lab.endswith(":partial")})
+        print(f"  !  {len(partial)}/{len(rows)} queries had a PARTIAL stage "
+              f"({', '.join(stages)}: rerank entries dropped, or the translator's query "
+              "guard applied; the LLM's output was still used -- not a fallback)")
+        if "translate:partial" in stages:
+            # Eval queries are ordinary shopper text: the guard should never fire on them
+            print("  !  translate:partial on an eval query is a guard false positive or a "
+                  "screened reply (the 'Translator guard' log line names which): "
+                  "investigate before quoting these numbers")
     summary = {"n_queries": len(rows), "n_degraded": len(degraded),
                "n_partial": len(partial)}
     if rows:
@@ -313,6 +331,7 @@ def _evaluate(
     print(f"  llm          = {llm['llm_model_used']} "
           f"(seed sent: {'yes' if llm['seed_sent'] else 'no'})")
     _print_downgrades(llm["llm_model_used"])
+    print(f"  query_guard  = {cfg.QUERY_GUARD_ENABLED} (max_intents={cfg.MAX_INTENTS})")
     print(f"  rerank_on    = {rerank_on}")
     print(f"  fields       = {search_module.embedded_fields() or fields}")
     print(f"  saved to     = {out_path}")

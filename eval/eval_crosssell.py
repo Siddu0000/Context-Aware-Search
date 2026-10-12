@@ -6,6 +6,7 @@ import logging
 from statistics import mean
 
 from app.config import DATA_DIR, FINAL_TOP_K, RETRIEVAL_TOP_K
+from app.query_guard import sanitize_query
 from app.recommendations import recommend
 from app.search import load_index, search_products
 from app.translator import translate_query
@@ -21,7 +22,8 @@ def _cross_sell_titles(query: str, top_k: int) -> tuple[list[str], str | None, l
     intents = translate_query(query, errors=errors)
     candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
     results = candidates[:top_k]
-    rec = recommend(query, results)
+    # The query /search hands cross-sell: what the guard lets an LLM see
+    rec = recommend(sanitize_query(query).clean, results)
     errors += rec.get("errors") or []
     titles = [c.get("Product_title", "") for c in rec.get("cross_sell", [])]
     return titles, rec.get("cross_sell_source"), errors
@@ -49,6 +51,8 @@ def main():
         substitute = case.get("avoid_substitute_any", [])
 
         titles, source, errors = _cross_sell_titles(query, args.top_k)
+        # A 'partial' (query guard screened a phrase) still used the LLM's answer
+        errors = [e for e in errors if e.get("code") != "partial"]
         if errors or (titles and source != "llm"):
             # A fallback strip is embedding look-alikes: scoring it would reward substitutes
             degraded.append(query)

@@ -372,6 +372,21 @@ def pause():
     else:
         print(f"{ENDPOINT} hosts no index: it stops billing 24h after this delete.")
     print(f"Kept: {EMB}, {VEC} -> resume() rebuilds with no embedding calls.")
+    _warn_if_app_running()
+
+
+def _warn_if_app_running():
+    """The App (09) is useless without the index but bills while it runs."""
+    try:
+        from databricks.sdk import WorkspaceClient
+
+        app = WorkspaceClient().apps.get(cfg.APP_NAME)
+    except Exception:  # noqa: BLE001 -- no App (the usual case) or no Apps API: nothing to say
+        return
+    state = getattr(getattr(app.compute_status, "state", None), "value", None)
+    if state not in (None, "STOPPED", "STOPPING"):
+        print(f"WARNING: App {cfg.APP_NAME} is {state} and still billing with no index -- "
+              "run 09 app_stop().")
 
 
 def _cluster_id():

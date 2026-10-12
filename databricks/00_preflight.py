@@ -84,7 +84,13 @@ def preflight():
         # with means a stale notebook env -- detach and re-attach the notebook.
         import importlib.metadata as md
 
-        import dotenv, openai, sklearn  # noqa: F401 -- imported by app/ at start-up
+        try:
+            import dotenv, openai, sklearn  # noqa: F401 -- imported by app/ at start-up
+        except ImportError as e:
+            # Seen 2026-10-12: Cell 1 had run, but the cluster had auto-terminated since
+            return "FAIL", (f"{e} -- run Cell 1, then Cell 2, in THIS notebook. %pip installs "
+                            "are notebook-scoped and vanish when the cluster restarts or the "
+                            "notebook detaches")
 
         def ver(p):
             try:
@@ -102,6 +108,10 @@ def preflight():
             spark_pb = f"{type(e).__name__}: {str(e)[:120]}"
         if spark_pb:
             return "FAIL", f"protobuf {pb} breaks Spark Connect ({spark_pb}): detach + re-attach"
+        oa = ver("openai")
+        if oa != "-" and not oa.startswith("2."):
+            return "WARN", (f"openai {oa}: app/llm_client.py is tested on 2.x (2.42.0) -- "
+                            "re-run Cell 1, it pins openai==2.42.0")
         try:
             vs = md.version("databricks-vectorsearch")
             return "WARN", (f"databricks-vectorsearch {vs} installed but unused; it pins "

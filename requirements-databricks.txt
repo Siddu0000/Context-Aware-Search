@@ -10,9 +10,10 @@
 #
 # In a NOTEBOOK do not pip-install this file: runtimes already ship mlflow and
 # scikit-learn, and re-installing / upgrading them moves core kernel packages. Use
-# the runbook's Cell 1 (databricks/README.md). This file is for Apps / jobs envs.
+# the runbook's Cell 1 (databricks/README.md). This file is for jobs envs; the App
+# installs databricks/app_bundle/requirements.txt (exact pins, no mlflow) instead.
 databricks-sdk>=0.117.0
 mlflow>=3.16
-openai>=1.30.0
+openai>=1.106.0,<3  # 1.106: callable api_key (OPENAI_AUTH=databricks); 3.x untested; tested on 2.42.0
 python-dotenv>=1.0.0
 scikit-learn>=1.3.0

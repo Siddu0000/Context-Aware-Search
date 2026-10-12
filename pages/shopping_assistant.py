@@ -8,6 +8,7 @@ import streamlit as st
 import ui_cart
 from ui_common import (
     bundle_ui,
+    escape_md,
     inject_css,
     render_detail_page,
     render_grid_card,
@@ -150,10 +151,12 @@ def _render_results_panel():
     if bui:
         st.caption(bui["blurb"])
     bits = []
+    # The query and exclusions are model-written (or the shopper's own words on a
+    # fallback): escaped, so markdown in them renders as plain text
     if sget("assistant_query"):
-        bits.append(f"showing: *{sget('assistant_query')}*")
+        bits.append(f"showing: *{escape_md(sget('assistant_query'))}*")
     if excl:
-        bits.append("excluding: " + ", ".join(f"*{e}*" for e in excl))
+        bits.append("excluding: " + ", ".join(f"*{escape_md(e)}*" for e in excl))
     if bits:
         st.caption(" · ".join(bits))
 
@@ -161,20 +164,25 @@ def _render_results_panel():
     if show_debug:
         dbg = []
         if meta.get("interpreted_as"):
-            dbg.append("intents: " + " · ".join(meta["interpreted_as"]))
+            dbg.append("intents: " + " · ".join(escape_md(i) for i in meta["interpreted_as"]))
         if meta.get("constraints"):
             dbg.append("constraints: " + ", ".join(
-                f"{c.get('value')} ({c.get('type')})" for c in meta["constraints"]
+                f"{escape_md(c.get('value'))} ({escape_md(c.get('type'))})"
+                for c in meta["constraints"]
             ))
         if dbg:
             st.caption(" — ".join(dbg))
     for err in meta.get("errors") or []:
-        if err.get("code") == "partial":
-            # AI ranking was applied; only some entries were unusable -- dev detail only
+        code = err.get("code")
+        if code == "partial" or (err.get("stage") == "translate" and code == "guarded"):
+            # Not an outage, so dev detail only (as on AI Search): a partial stage WAS
+            # applied (some entries unusable, or the query guard trimmed/screened), and
+            # 'guarded' deliberately kept an instruction-shaped query from the LLM
             if show_debug:
-                st.caption(f"⚠️ {err.get('stage')} partly applied: {err.get('detail', '')}")
+                what = "skipped by the query guard" if code == "guarded" else "partly applied"
+                st.caption(f"⚠️ {err.get('stage')} {what}: {err.get('detail', '')}")
             continue
-        st.caption(f"⚠️ {err.get('stage')} unavailable (error {err.get('code')})")
+        st.caption(f"⚠️ {err.get('stage')} unavailable (error {code})")
 
     cols_per_row = 3
     for row_start in range(0, len(results), cols_per_row):

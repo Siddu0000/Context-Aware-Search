@@ -3,7 +3,7 @@
 import streamlit as st
 
 import ui_cart
-from ui_common import inject_css, is_nan, set_surface
+from ui_common import escape_md, inject_css, is_nan, set_surface
 
 set_surface("cart")
 inject_css()
@@ -66,8 +66,9 @@ for entry in items:
             if p.get("store"):
                 meta.append(f"by {p['store']}")
             if p.get("source_intent"):
-                # which bundle component this item was chosen for
-                meta.append(f"for *{p['source_intent']}*")
+                # which bundle component this item was chosen for; an intent is model-
+                # written (or the shopper's literal words), so it is escaped
+                meta.append(f"for *{escape_md(p['source_intent'])}*")
             if meta:
                 st.caption(" · ".join(meta))
             price = p.get("price")

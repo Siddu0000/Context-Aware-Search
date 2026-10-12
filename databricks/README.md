@@ -44,6 +44,8 @@ products_enriched.csv --01--> dev.cas.products (search_text, text_hash, catalog_
 | `06_compare_translators.py` | query_expansion vs hyde vs hybrid, rerank off | 18 / 16 per mode (keyword / context) | — |
 | `07_calibrate_threshold.py` | calibrates `MIN_RESULT_RELEVANCE` for the VS score scale | ~28 keyword / ~26 context | — |
 | `08_llm_smoke.py` | LLM-only acceptance check: every LLM call site once with the configured model (translator + bundles, rerank, chat assistant, cross-sell, injection x3), asserting no fallback, no JSON-mode/temperature downgrade | 25 | — (**no index needed**) |
+| `09_deploy_app.py` | the Databricks App: `export_catalog()` `stage()` `app_create()` `app_grant()` `app_deploy()` `app_share()` `app_status()` `app_stop()` `app_start()` `app_costs()` | 1 tiny check per App start (+ each shopper search) | **App ≈ 0.5 DBU/h (Medium) while RUNNING**, plus the index |
+| `app_bundle/` | what `stage()` puts at the App's root: `app.yaml` (env), `run_app.py` (starts FastAPI + Streamlit), `requirements.txt` (exact pins, no torch) | — | — |
 | `vs_shim.py` | shared setup: switch backend, results → UC Volume, MLflow on, prints the live `llm :` | — | — |
 
 ## Before the run (laptop)
@@ -69,17 +71,23 @@ A cluster must have:
 
 Cell 1 installs ONLY what the runtime lacks, and never with `--upgrade`:
 ```python
-%pip install "databricks-sdk>=0.117.0" openai python-dotenv
+%pip install "databricks-sdk>=0.117.0" "openai==2.42.0" python-dotenv
 dbutils.library.restartPython()
 ```
 - `databricks-sdk>=0.117.0`: runtimes bundle older SDKs, and before 0.117 it can fail on
   Standard/Spark Connect compute. Its own deps (protobuf>=4.25.8) leave the runtime's alone.
+- `openai==2.42.0`: the version app/llm_client.py is tested with. Unpinned, pip took
+  openai 3.28.0 on 2026-10-10 -- a new MAJOR version (on httpx2) the code never ran on.
 - **Do NOT install `databricks-vectorsearch`.** It is a deprecated shim that pins
   protobuf<6; on DBR 19 (protobuf 6.33.5) that downgrade killed the Python kernel
   ("gencode 6.33.5 runtime 5.29.6", 2026-10-10). The code drives Vector Search through
   its REST API with the preinstalled SDK instead.
 - Do not re-install `mlflow` / `scikit-learn` either: every runtime ships them, and
   `--upgrade` over them moved core packages (wcwidth) out from under the kernel.
+- **Re-run Cells 1 and 2 at the start of EVERY session**, and after any cluster restart
+  or detach: `%pip` installs are notebook-scoped and vanish then. `Retail_DE_cluster`
+  auto-terminates after 15 idle minutes, so a coffee break is enough. Variables from
+  `exec(...)` (e.g. `status()`, `resume()`) are lost too: re-run that step's `exec` line.
 - If a bad install already broke the notebook: **detach and re-attach it** (that resets
   notebook-scoped libraries), then run Cell 1 again.
 Cell 2 — env, including MLflow. Both LLMs named below are open-weight
@@ -182,6 +190,64 @@ tagged `valid=false`** — an LLM stage fell back. Runs with
 `vs_query_mode=vector` (stored vectors, enriched catalog) are NOT comparable
 with the September numbers (managed index, base catalog).
 
+## Deploy the App (09)
+
+The App runs the same code as the notebooks — FastAPI (`app/main.py`) on a private
+port and the Streamlit UI on the App's port — as its OWN service principal, against
+the same index and LLM. Nothing in it uses a personal token.
+
+Before the first deploy: the branch with `09` and `databricks/app_bundle/` is pulled into
+the workspace Git folder, the index is ONLINE (`02 resume()`), and Cells 1-2 have run.
+Creating an App and granting on `dev.cas` may need someone with MANAGE on those objects:
+`app_grant()` prints PASS/FAIL per grant and says what to ask for.
+
+```python
+exec(open("databricks/09_deploy_app.py").read())
+
+# A. Once (and after every 01 re-run): the App's catalog = dev.cas.products WITH its
+#    catalog_index, so the App shows exactly the rows the evals scored
+export_catalog()
+
+# B. Copy only the App's files to /Workspace/Users/<you>/cas-app (no spaces, no torch)
+stage()
+
+# C. Once: the App + resources (CAN QUERY on both endpoints, READ on the Volume).
+#    Created STOPPED: nothing bills yet
+app_create()
+
+# D. Grants for its service principal: USE CATALOG/SCHEMA, READ VOLUME, SELECT on the
+#    index, read on the staged folder. RE-RUN after EVERY 02 resume() (new index object)
+app_grant()
+
+# E. Start + deploy (billing starts). Prints the URL. The backend loads ~1 min more:
+#    <url>/logz should show "Start-up check index/embedding/llm: OK" and "service ready"
+app_deploy()
+
+# F. Who may open it (account users only -- Apps cannot be public)
+app_share("someone@latentview.com")
+
+# G. After the demo: stop the App, then delete the index
+app_stop()
+exec(open("databricks/02_vector_index.py").read()); pause()
+```
+Next demo: `02 resume()` → `app_grant()` → `app_start()` (no re-deploy needed). After a
+code change: `stage()` → `app_deploy()`. `app_costs("YYYY-MM-DD")` the day after.
+
+`app_deploy()` / `app_start()` check BEFORE starting (billed) compute: the export matches
+`dev.cas.products` row for row (else `export_catalog()`), the index is ONLINE with the same
+row count, and `stage()` ran. A deploy that fails stops the compute it started; one that
+starts but crashes prints `STILL BILLING`. They refuse an App another user created
+(`CAS_APP_NAME` picks another name), and `app_share()` refuses "account users".
+
+What can go wrong, and where it shows:
+- `/logz` `Start-up check index FAILED` → index paused/deleted or SELECT missing: `resume()`,
+  `app_grant()`, then `app_stop()` + `app_start()`.
+- `Start-up check embedding/llm FAILED ... PERMISSION` → the App lacks CAN QUERY: in the
+  App's page, Edit → Resources → Serving endpoint → Can query (needs CAN MANAGE on it).
+- The UI says "could not reach the search service" for the first minute after a start:
+  the backend is still loading the catalog and keyword index (~30-60 s).
+- The App is internal-only: the catalog is Amazon Reviews 2023 (research licence).
+
 ## Cost guardrails (treat as rules)
 
 - **No pause exists.** An AI Search endpoint/index cannot be stopped or scaled to
@@ -194,15 +260,17 @@ with the September numbers (managed index, base catalog).
 - **Measured (list prices), managed builds:** ≈ **$20** per build incl. a session
   (Sep 11: $20.27); a failed build costs the same (Sep 10 OFFLINE_FAILED: $23.39),
   so `pause()` a FAILED index immediately (`resume()` tells you).
-- **Not yet measured:** `embed()` (estimate: ~190M chars ≈ 48M tokens × 1.857 DBU/1M
-  ≈ 88 DBU, once — `embed()` prints the running token count) and a stored-vector
-  `resume()`. Run `costs()` the day after and record both here.
+- **Measured 2026-10-12 (Retail_DE_cluster):** `embed()` 44.73M tokens ≈ 83 DBU at the
+  script's list-rate estimate, ~38 min, once; a stored-vector `resume()` took 47.8 min
+  (no embedding calls). Their billed $ come from `costs("2026-10-12")` the day after.
 - `costs()` is not live: billing is "typically available within 12 hours". During
   a run, watch the `embed()` / `resume()` progress lines instead.
 - `02` waits for the endpoint to be ONLINE before creating the index (likely cause
   of the Sep 10 OFFLINE_FAILED build) and uses TRIGGERED sync (CONTINUOUS keeps a
   streaming pipeline billing while the index sits idle).
-- Stop the App when not demoing — a stopped App costs nothing.
+- **Stop the App when not demoing** (`app_stop()`) — a stopped App costs nothing, a
+  running one bills even with no visitors (there is no idle auto-stop). `pause()` warns
+  if the App is still running, since without the index it is useless anyway.
 - Report incurred token/DBU costs upfront — the MLflow runs carry real token
   totals per eval.
 

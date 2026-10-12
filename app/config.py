@@ -14,7 +14,13 @@ LOGS_DIR = PROJECT_ROOT / "logs"
 EVAL_RESULTS_DIR = PROJECT_ROOT / "eval_results"
 
 for d in (CACHE_DIR, LOGS_DIR, EVAL_RESULTS_DIR):
-    d.mkdir(exist_ok=True)
+    try:
+        d.mkdir(exist_ok=True)
+    except OSError:
+        # A Databricks App's source folder may be read-only. Only /feedback writes
+        # (to LOGS_DIR) on the serving path, and it tolerates a missing dir; the
+        # rest are local-dev caches and eval output, so the import must not fail
+        pass
 
 # The catalog the app serves. The cleaned + enriched copy (scripts/enrich_catalog.py)
 # is the default whenever it exists: on the context eval set it lifted P@10 0.408 ->
@@ -58,6 +64,13 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash-lite")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "openai/gpt-oss-120b")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.groq.com/openai/v1")
+# How the OpenAI-compatible backend authenticates. "key" (default): the static
+# OPENAI_API_KEY -- Groq locally, the token notebook Cell 2 mints on Databricks.
+# "databricks": a fresh workspace token from databricks-sdk before EVERY call. A
+# Databricks App runs as a service principal whose OAuth tokens last one hour, so
+# a key fixed at start-up would 401 an hour into a demo and every LLM stage would
+# silently fall back. Needs openai>=1.106 (callable api_key).
+OPENAI_AUTH = os.getenv("OPENAI_AUTH", "key").lower()
 GROQ_REASONING_FORMAT = os.getenv("GROQ_REASONING_FORMAT", "hidden")
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -69,6 +82,23 @@ TRANSLATOR_MODE = os.getenv("TRANSLATOR_MODE", "query_expansion").lower()
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "thenlper/gte-small")
 
 NUM_INTENTS = int(os.getenv("NUM_INTENTS", "3"))
+
+# Deterministic prompt-injection guard (app/query_guard.py). The prompts' "the query
+# is DATA" sentence did not stop Qwen3-Next obeying an injected payload (databricks/08,
+# 2026-10-12, 3 of 3), so the query is cut at its first instruction marker before any
+# LLM sees it and every LLM-written phrase is screened before it is searched or shown.
+# A query with no instruction signal reaches the LLM byte-identical (normalisation is
+# for detection only), so eval prompts are the same either way; a clipped or screened
+# model phrase is labelled translate:partial, so the guard never changes a run silently.
+# false = the pre-2026-10-12 behaviour: the in-process A/B switch and the REVERT.
+QUERY_GUARD_ENABLED = os.getenv("QUERY_GUARD_ENABLED", "true").lower() in {"1", "true", "yes"}
+# Most intents one query may fan out to: each is one retrieval call, so an injected
+# "list 500 products" can't become 500 vector searches. Sized by what models WRITE,
+# not by data/recipe_eval.json's 6-8 canonical ingredients: RECIPE_PROMPT asks for
+# "every core ingredient", and a chicken biryani reply listed 22. The cap only applies
+# while the guard is enabled; a clipped reply shows as translate:partial (over_cap).
+MAX_INTENTS = int(os.getenv("MAX_INTENTS", "24"))
+
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "30"))
 FINAL_TOP_K = int(os.getenv("FINAL_TOP_K", "12"))
 
@@ -143,10 +173,16 @@ VS_EMBEDDING_MODEL = os.getenv("VS_EMBEDDING_MODEL", "databricks-gte-large-en")
 VS_QUERY_MODE = os.getenv("VS_QUERY_MODE", "vector").lower()
 # Catalog source when Spark is unavailable (Databricks Apps), and the file
 # databricks/01 loads. Row position must equal catalog_index -- guaranteed by
-# the dense row_number() in databricks/01.
+# the dense row_number() in databricks/01. The App points this at the export
+# databricks/09 export_catalog() writes FROM the Delta table, which carries the
+# real catalog_index column, so the App hydrates exactly the rows the evals did.
 VS_CATALOG_CSV = os.getenv(
     "VS_CATALOG_CSV", f"/Volumes/{CAS_CATALOG}/{CAS_SCHEMA}/raw/products_enriched.csv"
 )
+
+# The Databricks App that serves the UI (databricks/09_deploy_app.py). Lowercase
+# letters, digits and hyphens only; its URL is derived from it and cannot change.
+APP_NAME = os.getenv("CAS_APP_NAME", "cas-app")
 
 # Experiment tracking. Opt-in: needs MLFLOW_ENABLED=true AND mlflow installed;
 # otherwise every tracking call is a no-op, so local dev never needs mlflow.

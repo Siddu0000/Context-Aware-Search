@@ -247,18 +247,49 @@ class _GeminiBackend:
         return response.text
 
 
+def _databricks_token_provider():
+    """api_key callable for OPENAI_AUTH=databricks; openai calls it before every request.
+
+    databricks-sdk caches the token and refreshes it before it expires, so a call
+    costs microseconds. In a Databricks App the token is the app's service principal.
+    """
+    import openai
+
+    # Older openai formats a callable into "Bearer <function ...>": every call would 401
+    if tuple(int(p) for p in re.findall(r"\d+", openai.__version__)[:2]) < (1, 106):
+        raise LLMError(f"OPENAI_AUTH=databricks needs openai>=1.106 (found {openai.__version__}).")
+    from app.vector_search import _workspace_client  # one SDK client, one token cache
+
+    sdk = _workspace_client().config
+    host = (sdk.host or "").rstrip("/").lower()
+    if not host or not (cfg.OPENAI_BASE_URL or "").lower().startswith(host + "/"):
+        # cfg's DEFAULT base URL is Groq: never hand a workspace token to another host
+        raise LLMError("OPENAI_AUTH=databricks needs OPENAI_BASE_URL on the workspace host "
+                       f"({host or 'unknown'}), e.g. {host or 'https://<host>'}/serving-endpoints.")
+
+    def token() -> str:
+        return sdk.authenticate()["Authorization"].split(" ", 1)[1]
+
+    return token
+
+
 class _OpenAIBackend:
     def __init__(self):
-        if not cfg.OPENAI_API_KEY:
-            raise LLMError("OPENAI_API_KEY not set.")
+        if cfg.OPENAI_AUTH not in {"key", "databricks"}:
+            raise LLMError(f"Unknown OPENAI_AUTH={cfg.OPENAI_AUTH!r}; expected key or databricks.")
+        if cfg.OPENAI_AUTH == "key" and not cfg.OPENAI_API_KEY:
+            raise LLMError("OPENAI_API_KEY not set (a Databricks App uses OPENAI_AUTH=databricks).")
         try:
             from openai import OpenAI
         except ImportError as e:
             raise LLMError(
                 "openai package not installed. `pip install openai`."
             ) from e
+        self.auth = cfg.OPENAI_AUTH
+        api_key = (_databricks_token_provider() if self.auth == "databricks"
+                   else cfg.OPENAI_API_KEY)
         self.client = OpenAI(
-            api_key=cfg.OPENAI_API_KEY,
+            api_key=api_key,
             **({"base_url": cfg.OPENAI_BASE_URL} if cfg.OPENAI_BASE_URL else {}),
         )
         self.model = cfg.OPENAI_MODEL
@@ -350,19 +381,19 @@ _singleton_provider: Optional[str] = None
 
 
 def _wanted() -> tuple:
-    """(provider, model, base_url) that cfg selects right now."""
+    """(provider, model, base_url, auth) that cfg selects right now."""
     provider = cfg.LLM_PROVIDER
     if provider == "openai":
-        return provider, cfg.OPENAI_MODEL, cfg.OPENAI_BASE_URL
+        return provider, cfg.OPENAI_MODEL, cfg.OPENAI_BASE_URL, cfg.OPENAI_AUTH
     model = {"gemini": cfg.GEMINI_MODEL, "anthropic": cfg.ANTHROPIC_MODEL}.get(provider)
-    return provider, model, None
+    return provider, model, None, None
 
 
 def _is_current(backend) -> bool:
     # Keyed on model and endpoint too: a notebook that changes cfg.OPENAI_MODEL
     # must not keep calling the old model while evals log the new name
     built_for = (_singleton_provider, getattr(backend, "model", None),
-                 getattr(backend, "base_url", None))
+                 getattr(backend, "base_url", None), getattr(backend, "auth", None))
     return backend is not None and built_for == _wanted()
 
 
