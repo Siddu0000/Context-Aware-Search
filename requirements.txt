@@ -9,6 +9,6 @@ google-genai>=0.3.0
 streamlit>=1.32.0
 requests>=2.31.0
 
-openai>=1.30.0
+openai>=1.106.0,<3  # 1.106: callable api_key (OPENAI_AUTH=databricks); 3.x untested; tested on 2.42.0
 anthropic>=0.30.0
 transformers>=4.33.0

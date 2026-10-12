@@ -67,8 +67,11 @@ def _score_all(queries, translate: bool, degraded: dict) -> dict:
     for q in queries:
         errs: list = []
         s = _top_score(q, translate, errs)
-        if errs:
-            degraded[q] = ";".join(str(e.get("stage")) for e in errs)
+        # A 'partial' (query guard screened or clipped a phrase) still scored the LLM's
+        # intents, as run_eval.is_degraded treats it; only a real fallback is excluded
+        blocking = [e for e in errs if e.get("code") != "partial"]
+        if blocking:
+            degraded[q] = ";".join(str(e.get("stage")) for e in blocking)
         else:
             scores[q] = s
     return scores

@@ -28,8 +28,14 @@ def record_feedback(
         "rank": rank,
         "reason": reason,
     }
-    with open(FEEDBACK_LOG, "a", encoding="utf-8") as f:
-        f.write(json.dumps(event) + "\n")
-    logger.info(
-        "Feedback recorded: q=%r prod=%r rating=%+d", query, product_title, rating
-    )
+    try:
+        with open(FEEDBACK_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+    except OSError as e:
+        # A Databricks App's disk can be read-only (and is wiped on restart anyway):
+        # losing a thumbs-up must not turn into a 500 for the shopper
+        logger.warning("Feedback not persisted (%s).", type(e).__name__)
+        return
+    # Rating and rank only: query text stays out of logs (safety.md), and a
+    # Databricks App's logs are readable by everyone who can manage the app
+    logger.info("Feedback recorded: rating=%+d rank=%d", rating, rank)

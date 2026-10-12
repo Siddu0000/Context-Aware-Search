@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 import app.config as cfg
-from app import page_cache, tracking
+from app import page_cache, query_guard, tracking
 from app.config import (
     FINAL_TOP_K,
     GEMINI_MODEL,
@@ -45,6 +45,44 @@ logger = logging.getLogger(__name__)
 
 
 _keyword_engine: Optional[KeywordSearchEngine] = None
+# What /healthz reports about the Databricks dependencies (databricks backend only)
+_startup_checks: Optional[dict] = None
+
+
+def _check_databricks_dependencies() -> dict:
+    """One cheap call to each thing a search needs, as the identity the app runs as.
+
+    In a Databricks App that is the app's service principal, and a missing grant
+    otherwise shows up only as 500s (index, embedding) or as silent raw-query
+    fallbacks (LLM). Never raises; costs ~2 embedding tokens and one tiny LLM call.
+    """
+    from app import vector_search
+    from app.llm_client import generate_json, get_llm_client
+
+    def llm_probe():
+        # uvicorn binds its port only after start-up: a stalled endpoint must not hold it
+        # for the openai defaults (600 s read timeout x 3 tries), so 20 s and no retries
+        backend = get_llm_client()
+        client = getattr(backend, "client", None)
+        if hasattr(client, "with_options"):
+            backend.client = client.with_options(timeout=20, max_retries=0)
+        try:
+            generate_json('Reply with the json object {"ok": true}', temperature=0.0)
+        finally:
+            if client is not None:
+                backend.client = client
+
+    checks = {"index": vector_search.index_health(len(get_dataframe()))}
+    for name, probe in (
+        ("embedding", lambda: vector_search.embed_texts(["health check"])),
+        ("llm", llm_probe),
+    ):
+        try:
+            probe()
+            checks[name] = {"ok": True}
+        except Exception as e:  # noqa: BLE001 -- reported in the log and /healthz
+            checks[name] = {"ok": False, "detail": f"{type(e).__name__}: {str(e)[:200]}"}
+    return checks
 
 
 @asynccontextmanager
@@ -56,11 +94,21 @@ async def lifespan(app: FastAPI):
     )
     tracking.enable_autolog()   # no-op unless MLFLOW_ENABLED and mlflow installed
     load_index()
+    global _keyword_engine, _startup_checks
+    if cfg.SEARCH_BACKEND == "databricks":
+        # Checked once at start-up, loudly: a deleted (paused) index, a mismatched
+        # catalog or a missing grant otherwise surfaces only mid-demo
+        _startup_checks = _check_databricks_dependencies()
+        for name, check in _startup_checks.items():
+            if check["ok"]:
+                logger.info("Start-up check %s: OK", name)
+            else:
+                logger.error("Start-up check %s FAILED: %s", name, check["detail"])
     # Indexed on the same catalog so both search paths cover the same items
-    global _keyword_engine
+    t0 = time.perf_counter()
     _keyword_engine = KeywordSearchEngine()
     _keyword_engine.index(get_dataframe())
-    logger.info("Keyword engine indexed; service ready.")
+    logger.info("Keyword engine indexed in %.0fs; service ready.", time.perf_counter() - t0)
     yield
 
 
@@ -92,7 +140,10 @@ async def _track_request(request, call_next):
 
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok"}
+    out = {"status": "ok"}
+    if _startup_checks is not None:
+        out["checks"] = _startup_checks
+    return out
 
 
 @app.get("/stats")
@@ -291,7 +342,10 @@ def _boost_sponsored(full, smap):
 
 def _blocking_errors(errors: list) -> list:
     """Errors that mean a stage FELL BACK. A rerank 'partial' still used the LLM's
-    ranking, so its pool is cached: else page 2 / a chat refine re-rank and reshuffle."""
+    ranking, so its pool is cached: else page 2 / a chat refine re-rank and reshuffle.
+    A translate or cross-sell 'partial' (query guard) likewise used the screened LLM
+    answer, and the guard is deterministic; translate 'guarded' made no LLM call, so
+    it is blocking (cheap to redo: no LLM call is made)."""
     return [e for e in errors if e.get("code") != "partial"]
 
 
@@ -335,14 +389,18 @@ def search(
     page_size = top_k
     pool_k = max(RERANK_POOL_K, page_size)
     timings = StageTimings()
+    # The rerank and cross-sell LLMs get only what the translator's guard lets an LLM
+    # see (the same pure function); "" = the query opened with an instruction
+    llm_query = query_guard.sanitize_query(query).clean
 
     # `recommend` must be in the key or /unified_search's recommend=False poisons it;
-    # the LLM identity must be too, or a model switch serves the old model's ranking
+    # the LLM identity must be too, or a model switch serves the old model's ranking;
+    # and the guard state, or toggling it in-process serves the other mode's pool
     cache_key = page_cache.make_key(
         query,
         (
             page_size, pool_k, rerank, recommend, sponsored,
-            translator_mode or TRANSLATOR_MODE, _llm_identity(),
+            translator_mode or TRANSLATOR_MODE, _llm_identity(), cfg.QUERY_GUARD_ENABLED,
         ),
     )
 
@@ -366,10 +424,15 @@ def search(
                 if recommendations is None:
                     # Cross-sell fell back when this pool was cached: retry ONLY that stage
                     recommendations = {"cross_sell": [], "upsell": []}
-                    if recommend and results:
+                    # A guarded query (llm_query '') reaches no LLM, cross-sell included
+                    if recommend and results and llm_query:
                         with timings.stage("recommend"):
-                            recommendations = build_recommendations(query, results, page=page)
-                        if not recommendations.get("errors"):
+                            recommendations = build_recommendations(
+                                llm_query, results, page=page
+                            )
+                        # A cross-sell 'partial' (guard-screened phrases) still used the
+                        # LLM's answer: pinned like a clean one, as for rerank/translate
+                        if not _blocking_errors(recommendations.get("errors") or []):
                             page_cache.put(
                                 cache_key, {**cached, "recommendations": recommendations}
                             )
@@ -452,16 +515,18 @@ def search(
                 return empty_payload
 
             rerank_actually_ran = False
-            if rerank and candidates:
+            if rerank and candidates and llm_query:
                 with timings.stage("rerank"):
                     ranked_pool = llm_rerank(
-                        query, candidates, top_k=pool_k, errors=errors,
+                        llm_query, candidates, top_k=pool_k, errors=errors,
                         constraints=constraints,
                     )
                 rerank_actually_ran = any(
                     r.get("rerank_score") is not None for r in ranked_pool
                 )
             else:
+                # Rerank off, or the guard refused the query (translate 'guarded'): no
+                # LLM may judge it, so embedding order -- and 'guarded' is never cached
                 ranked_pool = []
                 for p in candidates[:pool_k]:
                     p = dict(p)
@@ -493,9 +558,10 @@ def search(
             sponsored_items = [r for r in results if r.get("is_sponsored")]
 
             recommendations = {"cross_sell": [], "upsell": []}
-            if recommend and page == 1 and results:
+            # A guarded query (llm_query '') reaches no LLM, cross-sell included
+            if recommend and page == 1 and results and llm_query:
                 with timings.stage("recommend"):
-                    recommendations = build_recommendations(query, results, page=page)
+                    recommendations = build_recommendations(llm_query, results, page=page)
 
             if not _blocking_errors(errors):
                 page_cache.put(
@@ -513,7 +579,8 @@ def search(
                         # A cross-sell fallback isn't pinned, but the clean POOL is: else
                         # page 2 re-ranks (unseeded on Databricks) and pages overlap
                         "recommendations": (
-                            None if recommendations.get("errors") else recommendations
+                            None if _blocking_errors(recommendations.get("errors") or [])
+                            else recommendations
                         ),
                     },
                 )
@@ -547,7 +614,7 @@ def search(
         }
 
     except Exception as e:
-        logger.exception("Search failed for query=%r", query)
+        logger.exception("Search failed")  # never the query text: safety.md, shared App logs
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -664,7 +731,7 @@ def unified_search(
         # search() already logged and shaped it; re-wrapping nested "500: <msg>"
         raise
     except Exception as e:
-        logger.exception("Unified search failed for query=%r", query)
+        logger.exception("Unified search failed")  # never the query text (safety.md)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -686,8 +753,10 @@ def product(
 
     recommendations = {"cross_sell": [], "upsell": [], "cross_sell_source": None, "errors": []}
     if recommend:
+        # Sanitised as /search sends it; a query the guard refuses anchors on the product
+        llm_query = query_guard.sanitize_query(query).clean if query else ""
         recommendations = build_recommendations(
-            query or p.get("Product_title", ""), [p], page=1
+            llm_query or p.get("Product_title", ""), [p], page=1
         )
 
     # errors mirrored top-level like /search and /chat: a cross-sell fallback is visible

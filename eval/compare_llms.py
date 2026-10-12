@@ -28,7 +28,7 @@ def availability(name: str) -> tuple[bool, str]:
         return True, ""
     if importlib.util.find_spec("openai") is None:
         return False, "openai SDK not installed (`pip install openai`)"
-    if not config_module.OPENAI_API_KEY:
+    if not config_module.OPENAI_API_KEY and config_module.OPENAI_AUTH != "databricks":
         return False, "no OPENAI_API_KEY in .env"
     if name != "openai" and not config_module.OPENAI_BASE_URL:
         return False, "set OPENAI_BASE_URL to an OpenAI-compatible endpoint (e.g. Groq)"

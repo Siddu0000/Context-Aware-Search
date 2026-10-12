@@ -5,6 +5,7 @@ import logging
 import re
 from typing import List
 
+from app import query_guard as guard
 from app.config import GROCERY_PER_INTENT_K, LLM_PROVIDER, NUM_INTENTS, TRANSLATOR_MODE
 from app.llm_client import LLMError, error_code, generate_json
 
@@ -279,52 +280,80 @@ def _is_true(value) -> bool:
     return value is True or (isinstance(value, str) and value.strip().lower() == "true")
 
 
-def _expand(prompt_head: str, user_query: str) -> dict:
-    """One LLM call -> {"intents": [...], "bundle_type": str|None, "constraints": [...]}."""
+def _shape(value) -> str:
+    # The TYPE only: the reply itself may be our prompt or the shopper's text, and the
+    # error text reaches errors[].detail and the log (safety.md)
+    return type(value).__name__
+
+
+def _expand(prompt_head: str, user_query: str, dropped: list | None = None) -> dict:
+    """One LLM call -> {"intents": [...], "bundle_type": str|None, "constraints": [...]}.
+
+    `user_query` is already sanitised; reasons for screened-out phrases go to `dropped`.
+    """
+    dropped = [] if dropped is None else dropped
     parsed = generate_json(_with_query(prompt_head, user_query), temperature=0.2)
     if _is_true(parsed.get("no_intent")):
         return {"intents": [], "bundle_type": None, "constraints": []}
     terms = _coerce_terms(parsed.get("search_terms"))
     if not terms:
-        raise LLMError(f"Bad search_terms shape: {parsed!r}")
+        raise LLMError(f"Bad search_terms shape ({_shape(parsed.get('search_terms'))})")
+    terms = guard.screen_phrases(_dedupe(terms), prompt_head, user_query, dropped)
+    if not terms:
+        # Nothing the model wrote is safe to search or show, so the caller falls back
+        raise LLMError(guard.describe((), dropped))
     bt = parsed.get("bundle_type")
     bt = str(bt).strip().lower() if bt else None
     if bt not in {"recipe", "outfit", "setup"}:
         bt = None
     return {
-        "intents": _dedupe(terms),
+        "intents": terms,
         "bundle_type": bt,
-        "constraints": _parse_constraints(parsed),
+        "constraints": guard.screen_constraints(
+            _parse_constraints(parsed), prompt_head, user_query, dropped),
     }
 
 
-def _query_expansion(user_query: str) -> List[str]:
-    return _expand(QUERY_EXPANSION_PROMPT, user_query)["intents"]
+def _query_expansion(user_query: str, dropped: list | None = None) -> List[str]:
+    return _expand(QUERY_EXPANSION_PROMPT, user_query, dropped)["intents"]
 
 
-def _recipe_expansion(user_query: str) -> List[str]:
-    return _expand(RECIPE_PROMPT, user_query)["intents"]
+def _recipe_expansion(user_query: str, dropped: list | None = None) -> List[str]:
+    return _expand(RECIPE_PROMPT, user_query, dropped)["intents"]
 
 
-def _hyde(user_query: str) -> List[str]:
+def _hyde(user_query: str, dropped: list | None = None) -> List[str]:
+    dropped = [] if dropped is None else dropped
     parsed = generate_json(_with_query(HYDE_PROMPT, user_query), temperature=0.2)
     listing = parsed.get("hypothetical_listing", "")
     if not isinstance(listing, str) or not listing.strip():
-        raise LLMError(f"Bad hyde shape: {parsed!r}")
-    return [listing.strip()]
+        raise LLMError(f"Bad hyde shape ({_shape(listing)})")
+    kept = guard.screen_phrases([listing.strip()], HYDE_PROMPT, user_query, dropped,
+                                limit=guard.MAX_LISTING_CHARS)
+    if not kept:
+        raise LLMError(guard.describe((), dropped))
+    return kept
 
 
-def _hybrid(user_query: str) -> List[str]:
+def _hybrid(user_query: str, dropped: list | None = None) -> List[str]:
+    dropped = [] if dropped is None else dropped
     parsed = generate_json(_with_query(HYBRID_PROMPT, user_query), temperature=0.2)
     listing = (parsed.get("hypothetical_listing") or "").strip()
     terms = _coerce_terms(parsed.get("search_terms"))
     if not listing and not terms:
-        raise LLMError(f"Bad hybrid shape: {parsed!r}")
+        raise LLMError("Bad hybrid shape (no listing and no search_terms)")
     intents: List[str] = []
     if listing:
-        intents.append(listing)
-    intents.extend(terms)
-    return _dedupe(intents)
+        intents += guard.screen_phrases([listing], HYBRID_PROMPT, user_query, dropped,
+                                        limit=guard.MAX_LISTING_CHARS, cap=False)
+    intents += guard.screen_phrases(terms, HYBRID_PROMPT, user_query, dropped, cap=False)
+    # One recital check and ONE cap over listing + terms together: capped separately,
+    # a listing plus MAX_INTENTS terms came to MAX_INTENTS + 1 retrieval calls
+    intents = guard.drop_recital(_dedupe(intents), HYBRID_PROMPT, user_query, dropped)
+    intents = guard.cap_intents(intents, dropped)
+    if not intents:
+        raise LLMError(guard.describe((), dropped))
+    return intents
 
 
 def _dedupe(items: List[str]) -> List[str]:
@@ -349,8 +378,12 @@ def understand_query(
     """Full query understanding in ONE LLM call.
 
     Returns {"intents": [...], "bundle_type": "recipe"|"outfit"|"setup"|None,
-    "constraints": [...], "is_recipe": bool}; `is_recipe` is a derived alias kept
-    for the eval suite. Falls back to raw query + regex heuristics on LLM failure.
+    "constraints": [...], "is_recipe": bool, "query": str}; `is_recipe` is a derived
+    alias kept for the eval suite, `query` the text an LLM was allowed to see ("" =
+    none). The query is sanitised first (app/query_guard.py); on LLM failure the
+    SANITISED query is searched with regex heuristics.
+    errors codes: 'guarded' (blocking: no LLM call, literal embedding search) and
+    'partial' (non-blocking: the screened LLM answer was used, as for a rerank).
     """
     mode = (mode or TRANSLATOR_MODE).lower()
     if mode not in _STRATEGIES:
@@ -363,38 +396,64 @@ def understand_query(
         "setup": SETUP_PROMPT,
     }
 
+    q = guard.sanitize_query(user_query)
+    if q.signals and not q.clean:
+        # The query OPENS with an instruction, so no LLM sees any of it. An embedding
+        # cannot follow instructions: the literal text is still searched, so a false
+        # positive ("forget the rules hoodie") degrades to plain retrieval, not to nothing
+        detail = guard.describe(q.signals, ())
+        if errors is not None:
+            errors.append({"stage": "translate", "code": "guarded", "detail": detail})
+        logger.warning("Translator skipped the LLM [mode=%s]: %s", mode, detail)
+        return {"intents": [q.literal] if q.literal else [], "bundle_type": None,
+                "is_recipe": False, "constraints": [], "query": ""}
+
+    query, dropped = q.clean, []
     try:
         if mode == "query_expansion":
-            hinted = detect_bundle_type(user_query)
+            hinted = detect_bundle_type(query)
             if hinted:
                 # Dedicated per-bundle prompt asks only for components
-                out = _expand(_BUNDLE_PROMPTS[hinted], user_query)
+                out = _expand(_BUNDLE_PROMPTS[hinted], query, dropped)
                 out["bundle_type"] = hinted
             else:
                 # General prompt can still flag a phrasing the regex doesn't know
-                out = _expand(QUERY_EXPANSION_PROMPT, user_query)
+                out = _expand(QUERY_EXPANSION_PROMPT, query, dropped)
             out["is_recipe"] = out.get("bundle_type") == "recipe"
-            return out
-        # hyde/hybrid are benchmark modes: regex only, so evals stay pure translator tests
-        intents = _STRATEGIES[mode](user_query)
-        bt = detect_bundle_type(user_query)
-        return {
-            "intents": intents,
-            "bundle_type": bt,
-            "is_recipe": bt == "recipe",
-            "constraints": [],
-        }
+        else:
+            # hyde/hybrid are benchmark modes: regex only, so evals stay pure translator tests
+            intents = _STRATEGIES[mode](query, dropped)
+            bt = detect_bundle_type(query)
+            out = {
+                "intents": intents,
+                "bundle_type": bt,
+                "is_recipe": bt == "recipe",
+                "constraints": [],
+            }
     except Exception as e:
+        detail = guard.error_detail(e)
         if errors is not None:
-            errors.append({"stage": "translate", "code": error_code(e), "detail": str(e)[:200]})
-        logger.warning("Translator failed [mode=%s] (%s). Using raw query.", mode, repr(e))
-        bt = detect_bundle_type(user_query)
+            errors.append({"stage": "translate", "code": error_code(e), "detail": detail})
+        logger.warning("Translator failed [mode=%s] (%s: %s). Searching the sanitised query.",
+                       mode, type(e).__name__, detail)
+        bt = detect_bundle_type(query)
+        # The SANITISED text: the raw one would carry a payload into retrieval and the UI
         return {
-            "intents": [user_query],
+            "intents": [query],
             "bundle_type": bt,
             "is_recipe": bt == "recipe",
             "constraints": [],
+            "query": query,
         }
+    if q.signals or dropped:
+        # The model's screened answer IS used, so 'partial' as for a partial rerank:
+        # cached by main.py, not degraded in run_eval, labelled translate:partial
+        detail = guard.describe(q.signals, dropped)
+        if errors is not None:
+            errors.append({"stage": "translate", "code": "partial", "detail": detail})
+        logger.warning("Translator guard [mode=%s]: %s", mode, detail)
+    out["query"] = query  # what an LLM may see downstream (main.py sanitises the same way)
+    return out
 
 
 def translate_query(user_query: str, mode: str | None = None, errors: list | None = None) -> List[str]:

@@ -3,6 +3,7 @@ business signals. Deliberately NOT semantic — this is the CAS baseline."""
 
 import math
 import re
+import sys
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -54,7 +55,7 @@ class KeywordSearchEngine:
         self.w_popularity = w_popularity
         self.w_quality = w_quality
         self._df: Optional[pd.DataFrame] = None
-        self._docs: List[List[str]] = []
+        self._n_docs: int = 0
         self._coverage_tokens: List[set] = []
         self._tf: List[dict] = []
         self._doc_len: np.ndarray = np.array([])
@@ -63,23 +64,33 @@ class KeywordSearchEngine:
 
     def index(self, df: pd.DataFrame) -> None:
         self._df = df.reset_index(drop=True)
-        self._docs, self._tf, doc_len = [], [], []
+        self._tf, doc_len = [], []
         self._coverage_tokens: List[set] = []
         df_count: dict = {}
-        for _, row in self._df.iterrows():
+        # Plain column lists, not iterrows(): one Series per row is most of the
+        # start-up time on 300K rows. A missing column reads as None, as row.get did.
+        n_rows = len(self._df)
+        columns = [
+            (f, self._df[f].tolist() if f in self._df.columns else [None] * n_rows)
+            for f in self.text_fields
+        ]
+        for i in range(n_rows):
             parts = []
             cov_parts = []
-            for f in self.text_fields:
-                val = row.get(f)
+            for f, values in columns:
+                val = values[i]
                 if val is None or (isinstance(val, float) and math.isnan(val)):
                     continue
                 reps = self.title_weight if f == self.title_field else 1
                 parts.extend([str(val)] * reps)
                 if f in self.coverage_fields:
                     cov_parts.append(str(val))
-            tokens = _tokenize(" ".join(parts))
-            self._docs.append(tokens)
-            self._coverage_tokens.append(set(_tokenize(" ".join(cov_parts))))
+            # Interned: 300K docs repeat a ~320K-word vocabulary ~32M times. With the
+            # token lists no longer kept (only their count was ever read), the engine
+            # fell from ~2.8 GB to ~0.8 GB -- the margin a 6 GB Databricks App needs.
+            tokens = [sys.intern(t) for t in _tokenize(" ".join(parts))]
+            self._coverage_tokens.append(
+                {sys.intern(t) for t in _tokenize(" ".join(cov_parts))})
             counts: dict = {}
             for t in tokens:
                 counts[t] = counts.get(t, 0) + 1
@@ -87,9 +98,10 @@ class KeywordSearchEngine:
             doc_len.append(len(tokens))
             for term in counts:
                 df_count[term] = df_count.get(term, 0) + 1
+        self._n_docs = n_rows
         self._doc_len = np.array(doc_len, dtype=float)
         self._avgdl = float(self._doc_len.mean()) if len(self._doc_len) else 0.0
-        n = len(self._docs)
+        n = self._n_docs
         self._idf = {
             term: math.log(1 + (n - dfq + 0.5) / (dfq + 0.5))
             for term, dfq in df_count.items()
@@ -99,7 +111,7 @@ class KeywordSearchEngine:
         self._count = self._numeric_column(self._df, self.count_field)
 
     def _bm25_scores(self, q_terms: List[str]) -> np.ndarray:
-        n = len(self._docs)
+        n = self._n_docs
         scores = np.zeros(n, dtype=float)
         if not q_terms or self._avgdl == 0:
             return scores

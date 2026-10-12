@@ -33,4 +33,7 @@ _PAGES = [
     ),
 ]
 
+# Every shared build says so: the catalog's licence forbids client-facing use
+st.sidebar.caption("Internal demo · catalog: Amazon Reviews 2023 (research licence)")
+
 st.navigation(_PAGES).run()

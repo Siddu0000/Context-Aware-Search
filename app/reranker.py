@@ -5,6 +5,7 @@ import logging
 import math
 from typing import List
 
+from app import query_guard
 from app.config import LLM_PROVIDER, RATING_BOOST_WEIGHT, RERANK_INPUT_K
 from app.llm_client import LLMError, error_code, generate_json
 from app.scoring import bayesian_rating, blend_score, rating_quality_tag
@@ -200,14 +201,22 @@ def rerank(
         parsed = generate_json(prompt, temperature=0.1)
         ranked = parsed.get("ranked", [])
         if not isinstance(ranked, list) or not ranked:
-            raise LLMError(f"Bad shape: {parsed!r}")
+            # The type only: the reply's reasons can echo the query (safety.md)
+            raise LLMError(f"Bad shape: 'ranked' is {type(ranked).__name__}"
+                           + (" (empty)" if isinstance(ranked, list) else ""))
 
         entries, dropped = _parse_ranked(ranked, len(candidates))
         if not entries:
             raise LLMError("Reranker returned no valid indices.")
 
         scored: list[tuple[float, dict]] = []
+        blanked = 0
         for idx, rerank_score, reason in entries:
+            if query_guard.display_problem(reason):
+                # The reason is rendered as markdown on the card, in the system's voice:
+                # a link or an obeyed instruction there is the next injection channel.
+                # The score stays -- only the explanation goes
+                reason, blanked = "", blanked + 1
             product = dict(candidates[idx])
             bayes = bayesian_rating(
                 product.get("average_rating"), product.get("rating_number")
@@ -227,15 +236,20 @@ def rerank(
             if errors is not None:
                 errors.append({"stage": "rerank", "code": "partial", "detail": detail})
             logger.warning("Rerank partial: %s.", detail)
+        if blanked:
+            # Log only: a blanked reason changes no score, so it is not an eval label
+            logger.warning("Rerank: %d reason(s) blanked by the query guard.", blanked)
 
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return [p for _, p in scored[:top_k]]
 
     except Exception as e:
         code = error_code(e)
+        detail = query_guard.error_detail(e)
         if errors is not None:
-            errors.append({"stage": "rerank", "code": code, "detail": str(e)[:200]})
-        logger.warning("Rerank failed (%s). Embedding-order fallback.", repr(e))
+            errors.append({"stage": "rerank", "code": code, "detail": detail})
+        logger.warning("Rerank failed (%s: %s). Embedding-order fallback.",
+                       type(e).__name__, detail)
         fallback = []
         for product in candidates[:top_k]:
             product = dict(product)

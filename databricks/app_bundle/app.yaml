@@ -1,0 +1,54 @@
+# Databricks App definition for CAS (FastAPI backend + Streamlit UI).
+#
+# databricks/09_deploy_app.py stage() copies this to the ROOT of the deployed
+# folder: Apps read app.yaml only from there, and a source folder cannot see files
+# outside itself, so it cannot stay in databricks/ (docs: .../databricks-apps/app-runtime,
+# .../databricks-apps/deploy).
+#
+# COST: the App bills while RUNNING (Medium = 0.5 DBU/h, .../databricks-apps/compute-size)
+# and needs the Vector Search index up (~4 DBU/h). 09 app_stop() + 02 pause() after a demo.
+# 09 stage() refuses to ship this file if a value below disagrees with the notebook.
+#
+# Deliberately NOT set here:
+# - DATABRICKS_TOKEN / DATABRICKS_HOST / OPENAI_API_KEY: the platform injects the
+#   app's service principal (DATABRICKS_CLIENT_ID/SECRET); a DATABRICKS_TOKEN next
+#   to them is a conflicting auth method and breaks every SDK call
+#   (.../dev-tools/auth/oauth-m2m). OPENAI_AUTH=databricks mints LLM tokens from it.
+# - OPENAI_BASE_URL: run_app.py derives it from the injected DATABRICKS_HOST, so the
+#   workspace URL is never hard-coded (app.yaml values are not shell-expanded).
+command: ["python", "run_app.py"]
+env:
+  - name: SEARCH_BACKEND
+    value: "databricks"
+  - name: CAS_CATALOG
+    value: "dev"
+  - name: CAS_SCHEMA
+    value: "cas"
+  - name: VS_EMBEDDING_MODEL
+    value: "databricks-gte-large-en"   # must be the model 02 embedded the catalog with
+  - name: VS_INDEX
+    value: "dev.cas.products_index"    # the index 09 app_grant() grants SELECT on
+  - name: VS_QUERY_MODE
+    value: "vector"
+  # Written by 09 export_catalog() from dev.cas.products, WITH its catalog_index
+  - name: VS_CATALOG_CSV
+    value: "/Volumes/dev/cas/raw/app_catalog.csv"
+  - name: LLM_PROVIDER
+    value: "openai"                    # the PROTOCOL; the endpoint is Databricks-hosted
+  - name: OPENAI_MODEL
+    value: "databricks-qwen3-next-80b-a3b-instruct"
+  - name: OPENAI_AUTH
+    value: "databricks"
+  - name: TRANSLATOR_MODE
+    value: "query_expansion"
+  # The config default, set explicitly because it is UNCALIBRATED for this index:
+  # 07 measured 0.638 on the old managed index (keyword set, gpt-oss intents only)
+  - name: MIN_RESULT_RELEVANCE
+    value: "0.5"
+  # Tracing a shared deployment needs a trace-storage decision first (CLAUDE.md)
+  - name: MLFLOW_ENABLED
+    value: "false"
+  - name: BACKEND_URL
+    value: "http://127.0.0.1:8001"
+  - name: STREAMLIT_BROWSER_GATHER_USAGE_STATS
+    value: "false"

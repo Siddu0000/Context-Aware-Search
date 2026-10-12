@@ -2,6 +2,7 @@
 
 import math
 import os
+import re
 
 import requests
 import streamlit as st
@@ -129,6 +130,25 @@ def friendly_reason(reason: str) -> str:
     if not reason:
         return ""
     return _REASON_TRANSLATIONS.get(reason.strip(), reason)
+
+
+# Every char that can open markdown structure inline: links/images ([ ] ( ) !),
+# autolinks and HTML (< >), emphasis (* _ ~), code (`), entities (&: "&#58;" is a
+# ":"), Streamlit's LaTeX ($) and :color[...] directives (:), tables (|), headings
+# (#), and the GFM bare-link literals Streamlit autolinks ("www.", "https://",
+# e-mail: . / @). Each renders as itself once backslash-escaped (CommonMark)
+_MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()<>#!|~$&:./@])")
+
+
+def escape_md(text) -> str:
+    """Model- or shopper-written text as LITERAL markdown: nothing in it can render as a
+    link, image, entity or emphasis. Whitespace runs (newlines included) become one
+    space, so no heading, list or link definition can start a line.
+
+    The backend screens what models write (app/query_guard.py); this is the UI's own
+    half, and it also covers the shopper's own words on the fallback / guarded paths.
+    """
+    return _MD_SPECIAL.sub(r"\\\1", " ".join(str(text or "").split()))
 
 
 def match_caption(product: dict) -> str:
@@ -306,7 +326,7 @@ def render_card(
 
             reason = friendly_reason(product.get("reason", ""))
             if reason:
-                st.markdown(f"💡 _{reason}_")
+                st.markdown(f"💡 _{escape_md(reason)}_")
 
             cidx = product.get("catalog_index")
             if cidx is not None:
@@ -376,7 +396,7 @@ def grid_product_body(product: dict, key_ns: str = ""):
 
     reason = friendly_reason(product.get("reason", ""))
     if reason:
-        st.caption(f"💡 _{reason[:90]}{'…' if len(reason) > 90 else ''}_")
+        st.caption(f"💡 _{escape_md(reason[:90])}{'…' if len(reason) > 90 else ''}_")
 
     cidx = product.get("catalog_index")
     if cidx is not None:
@@ -399,7 +419,7 @@ def render_grid_card(product: dict, rank: int, key_ns: str = "", bundle_type=Non
             bui = bundle_ui(bundle_type) or BUNDLE_UI["recipe"]
             if ingredient:
                 st.caption(
-                    f"{bui['slot_label']} **{ingredient}** — "
+                    f"{bui['slot_label']} **{escape_md(ingredient)}** — "
                     f"{len(options)} {bui['slot_word']} to choose from"
                 )
             tabs = st.tabs([f"Option {i + 1}" for i in range(len(options))])
@@ -420,7 +440,7 @@ def render_mini(item: dict, key_prefix: str):
         if price_label(item):
             st.caption(price_label(item))
         if item.get("recommend_reason"):
-            st.caption(f"_{item['recommend_reason']}_")
+            st.caption(f"_{escape_md(item['recommend_reason'])}_")
         cidx = item.get("catalog_index")
         if cidx is not None:
             if st.button("🔎 View product", key=f"{key_prefix}_{cidx}",
@@ -466,7 +486,10 @@ def render_detail_page(*, show_recs: bool, show_back_button: bool = True):
         rec_errors = resp.get("errors") or recs.get("errors") or []
         if rec_errors and _dev_details():
             codes = ", ".join(str(e.get("code", "?")) for e in rec_errors)
-            st.caption(f"_cross-sell LLM unavailable (error {codes})_")
+            # 'partial' = the query guard screened some phrases; the LLM's answer WAS used
+            state = ("partly applied" if all(e.get("code") == "partial" for e in rec_errors)
+                     else "unavailable")
+            st.caption(f"_cross-sell LLM {state} (error {codes})_")
         cols = st.columns(len(cross))
         for col, item in zip(cols, cross):
             with col:

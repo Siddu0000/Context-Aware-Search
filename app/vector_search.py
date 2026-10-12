@@ -22,6 +22,9 @@ Imports of databricks/pyspark are lazy so local dev never needs them.
 """
 
 import logging
+import os
+import shutil
+import tempfile
 from typing import List, Tuple
 
 import app.config as cfg
@@ -109,10 +112,21 @@ def load_catalog():
         df = spark.table(cfg.VS_TABLE).orderBy("catalog_index").toPandas()
         source = cfg.VS_TABLE
     else:
-        # Databricks Apps run plain Python with no Spark: read the source CSV
-        df = pd.read_csv(cfg.VS_CATALOG_CSV, low_memory=False)
-        df["catalog_index"] = range(len(df))
+        # Databricks Apps run plain Python with no Spark: read the CSV
         source = cfg.VS_CATALOG_CSV
+        local = _local_copy(source)
+        try:
+            df = pd.read_csv(local, low_memory=False)
+        finally:
+            if local != source:
+                os.remove(local)  # the App's disk is small; the DataFrame is the copy
+        if "catalog_index" in df.columns:
+            # databricks/09 export_catalog() writes the table's OWN key, which
+            # makes the density check below a real check of the export
+            df = df.sort_values("catalog_index", kind="stable")
+        else:
+            # The raw CSV 01 loaded: row order IS the key (01's row_number over file order)
+            df["catalog_index"] = range(len(df))
 
     df = df.reset_index(drop=True)
     keys = pd.to_numeric(df["catalog_index"], errors="coerce")
@@ -125,6 +139,48 @@ def load_catalog():
         )
     logger.info("Catalog loaded from %s: %d rows.", source, len(df))
     return df
+
+
+def _local_copy(path: str) -> str:
+    """A path pandas can open: `path` itself where /Volumes is mounted (notebooks),
+    else a Files API download -- a Databricks App has no /Volumes mount, so a plain
+    open() raises FileNotFoundError there:
+    https://kb.databricks.com/en_US/unity-catalog/queries-to-access-files-on-a-unity-catalog-volume-fail-with-filenotfound-error
+    """
+    if os.path.exists(path):
+        return path
+    dest = os.path.join(tempfile.gettempdir(), "cas_" + os.path.basename(path))
+    src = _workspace_client(batch=True).files.download(path).contents
+    try:
+        # Streamed to disk: the raw bytes and the parsed frame never sit in RAM together
+        with open(dest, "wb") as out:
+            shutil.copyfileobj(src, out, 1 << 20)
+    finally:
+        src.close()
+    logger.info("Downloaded %s through the Files API (%d MB).", path, os.path.getsize(dest) >> 20)
+    return dest
+
+
+def index_health(expected_rows: int) -> dict:
+    """Is the index there, ONLINE and built from a catalog of this size? Never raises.
+
+    Without it a paused index (02 pause() deletes it) shows shoppers a generic
+    "could not reach the search service"; with it the App's log and /healthz say why.
+    """
+    try:
+        info = index_info()
+        if info is None:
+            return {"ok": False, "index": cfg.VS_INDEX,
+                    "detail": "index does not exist (02 pause() deleted it? run resume())"}
+        st = info.get("status") or {}
+        state = str(st.get("detailed_state", "?"))
+        rows = int(st.get("indexed_row_count") or 0)
+    except Exception as e:  # noqa: BLE001 -- permissions, network, an odd reply: report it
+        return {"ok": False, "index": cfg.VS_INDEX, "detail": f"{type(e).__name__}: {str(e)[:200]}"}
+    ok = "ONLINE" in state and rows == expected_rows
+    detail = "" if ok else (f"state {state}, {rows:,} vectors vs {expected_rows:,} catalog rows"
+                            " -- a different catalog would hydrate the WRONG products")
+    return {"ok": ok, "index": cfg.VS_INDEX, "state": state, "rows": rows, "detail": detail}
 
 
 def _workspace_client(batch: bool = False):

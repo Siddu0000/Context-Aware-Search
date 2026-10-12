@@ -7,6 +7,7 @@ from typing import List, Optional
 import pandas as pd
 
 import app.config as cfg
+from app import query_guard
 from app.llm_client import LLMError, error_code, generate_json
 from app.scoring import bayesian_rating
 from app.search import search_products
@@ -47,7 +48,8 @@ def _as_phrases(value) -> List[str]:
     if isinstance(value, str):
         value = [value]
     if not isinstance(value, list):
-        raise LLMError(f"Bad shape: complementary={value!r}"[:200])
+        # The type only: the reply can echo the shopper's query (safety.md)
+        raise LLMError(f"Bad shape: complementary is {type(value).__name__}")
     return [p.strip() for p in value if isinstance(p, str) and p.strip()]
 
 
@@ -64,14 +66,26 @@ def _complementary_phrases(
     )
     try:
         parsed = generate_json(prompt, temperature=0.3)
-        return _as_phrases(parsed.get("complementary"))[:k]
+        phrases = _as_phrases(parsed.get("complementary"))[:k]
     except Exception as e:  # noqa: BLE001 — best-effort, the embedding fallback covers it
+        detail = query_guard.error_detail(e)
         if errors is not None:
-            errors.append(
-                {"stage": "cross_sell", "code": error_code(e), "detail": str(e)[:200]}
-            )
-        logger.warning("Complementary-phrase LLM call failed (%s).", repr(e))
+            errors.append({"stage": "cross_sell", "code": error_code(e), "detail": detail})
+        logger.warning("Complementary-phrase LLM call failed (%s: %s).",
+                       type(e).__name__, detail)
         return []
+    # Each phrase is shown on a card ("Goes with your search — <phrase>", rendered as
+    # markdown) and searched: screened like the translator's intents, so an obeyed
+    # payload can't put a link, a chat token or our prompt there
+    dropped: list = []
+    kept = query_guard.screen_phrases(phrases, COMPLEMENTARY_PROMPT, query, dropped, cap=False)
+    if dropped:
+        # 'partial', as for the translator: the screened phrases ARE the model's answer
+        detail = query_guard.describe((), dropped)
+        if errors is not None:
+            errors.append({"stage": "cross_sell", "code": "partial", "detail": detail})
+        logger.warning("Cross-sell guard: %s", detail)
+    return kept
 
 
 def _ground_phrases(
@@ -86,7 +100,8 @@ def _ground_phrases(
         try:
             hits = search_products([phrase], top_k=5)
         except Exception as e:
-            logger.warning("Grounding search failed for %r (%s).", phrase, repr(e))
+            # Not the phrase: it is model text that can echo the shopper's query
+            logger.warning("Grounding search failed (%s).", type(e).__name__)
             continue
         for hit in hits:
             title = hit.get("Product_title", "")
@@ -218,6 +233,8 @@ def recommend(
         up = _upsell(anchor, exclude)
         return {"cross_sell": cross, "upsell": up, "cross_sell_source": source, "errors": errors}
     except Exception as e:
-        errors.append({"stage": "recommend", "code": error_code(e), "detail": str(e)[:200]})
-        logger.warning("recommend() failed (%s); returning empty.", repr(e))
+        detail = query_guard.error_detail(e)
+        errors.append({"stage": "recommend", "code": error_code(e), "detail": detail})
+        logger.warning("recommend() failed (%s: %s); returning empty.",
+                       type(e).__name__, detail)
         return empty
