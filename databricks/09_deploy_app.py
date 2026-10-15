@@ -256,26 +256,60 @@ def _grant_stage_read(w, sp):
             service_principal_name=sp, permission_level=WorkspaceObjectPermissionLevel.CAN_READ)])
 
 
+_EVERYONE = {"account users", "users"}
+
+
+def _held_by_everyone(privilege, securables):
+    """Who already gives `privilege` to everyone on one of `securables`, else None.
+
+    An App's service principal is an account identity, so a grant to `account users`
+    reaches it -- on 2026-10-13 `dev` granted USE CATALOG that way while this account
+    could not grant it (no MANAGE), which made a harmless FAIL look like a blocker.
+    """
+    for kind, name in securables:
+        try:
+            rows = spark.sql(f"SHOW GRANTS ON {kind} {name}").collect()
+        except Exception:  # noqa: BLE001 -- not allowed to look: undecided, not covered
+            continue
+        for r in rows:
+            d = r.asDict()
+            if (str(d.get("Principal", "")).lower() in _EVERYONE
+                    and str(d.get("ActionType", "")).upper() in {privilege, "ALL PRIVILEGES"}):
+                return f"`{d.get('Principal')}` hold {privilege} on {kind.lower()} {name}"
+    return None
+
+
 def app_grant(force=False):
     """UC grants for the App's service principal. Re-run after EVERY 02 resume()."""
     app = _own_app(force)
     if app is None:
         raise RuntimeError("no App yet: run app_create() first")
     sp = app.service_principal_client_id
-    stmts = [
-        f"GRANT USE CATALOG ON CATALOG {cfg.CAS_CATALOG} TO `{sp}`",
-        f"GRANT USE SCHEMA ON SCHEMA {cfg.CAS_CATALOG}.{cfg.CAS_SCHEMA} TO `{sp}`",
-        f"GRANT READ VOLUME ON VOLUME {APP_VOLUME} TO `{sp}`",
-        f"GRANT SELECT ON TABLE {cfg.VS_INDEX} TO `{sp}`",
+    cat = ("CATALOG", cfg.CAS_CATALOG)
+    schema = ("SCHEMA", f"{cfg.CAS_CATALOG}.{cfg.CAS_SCHEMA}")
+    # (privilege, object, its parents): a privilege on a parent is inherited
+    grants = [
+        ("USE CATALOG", cat, []),
+        ("USE SCHEMA", schema, [cat]),
+        ("READ VOLUME", ("VOLUME", APP_VOLUME), [schema, cat]),
+        ("SELECT", ("TABLE", cfg.VS_INDEX), [schema, cat]),
     ]
     failed = 0
-    for q in stmts:
+    for privilege, (kind, name), parents in grants:
+        q = f"GRANT {privilege} ON {kind} {name} TO `{sp}`"
         try:
             spark.sql(q)
             print(f"PASS  {q}")
         except Exception as e:  # noqa: BLE001 -- report every grant, then decide
-            failed += 1
-            print(f"FAIL  {q}\n      {type(e).__name__}: {str(e)[:200]}")
+            # No MANAGE here is normal on a shared catalog; what matters is whether
+            # the App ends up holding the privilege anyway
+            covered = _held_by_everyone(privilege, [(kind, name)] + parents)
+            if covered:
+                print(f"OK    {q}\n      not granted ({type(e).__name__}), but {covered}: the App's "
+                      "service principal inherits it (app_deploy()'s start-up checks confirm)")
+            else:
+                failed += 1
+                print(f"FAIL  {q}\n      {type(e).__name__}: {str(e)[:200]}")
     try:
         _grant_stage_read(_ws(), sp)
         print(f"PASS  CAN_READ on {APP_STAGE}")

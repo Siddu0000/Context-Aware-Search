@@ -71,6 +71,46 @@ Gemini free tier is ~15 RPM and will throttle. Guidance:
 - Old synthetic catalog had label leakage; the Amazon swap fixed it. The
   `--exclude-description` flag remains as a leakage probe.
 
+## App-path eval (`eval/eval_page_types.py`, 2026-10-14)
+- **run_eval cannot see app/main.py.** It calls translator -> `search_products` ->
+  reranker directly and scores the reranker's own list, so the ordering main.py applies
+  around the reranker -- the rerank window, gender balancing, display sort, bundle slot
+  order, sponsored boosts -- never runs there. That is where the type-aware ranking fix
+  lives (CLAUDE.md, TYPE_AWARE_RANKING); run_eval sees it only through the prompt edits,
+  the narrowed setup-routing regex (`detect_bundle_type`, reached via translate_query ->
+  understand_query) and the reranker's `type=` field.
+- eval_page_types calls `app.main.search` in-process (page 1, 12 cards, rerank on,
+  sponsored on, no cross-sell) and scores what a shopper sees. Flat pages:
+  `mismatch_top4` / `mismatch_top12` (share not of the expected type), first mismatch,
+  context fit (title words that betray the setting: 'bridal' or 'wool' at a beach
+  wedding), vertical share, wrong gender. Bundles: routing (`bundle_ok`), good/bad
+  components in the intents and slot primaries, `garment_slots_first`, mixed gender.
+  Queries: `data/page_type_queries.json` (34; groups stakeholder / case / collision /
+  routing; each entry's `_context` says what it checks). No relevance labels by default.
+- `--mode both` (the default) runs `TYPE_AWARE_RANKING` off then on per query and repeat.
+  The on arm REPLAYS the off arm's translation and any rerank call with the same window
+  (catalog_index order) and constraints, errors included -- the arms differ by ordering
+  policy, not LLM sampling; the `memo` column says what was replayed (latency blank for
+  it). A different window or constraint list (the on arm can add `[product_type]`) is a
+  real call. "off" is NOT the pre-change code: prompts, routing, the gender classifier
+  and `type=` sit outside the knob. A true before = a worktree at the previous commit
+  with only this script, its JSON and `app/product_type.py` copied in (one 'head' arm).
+  Every run starts from an EMPTY page_cache (its key ignores repeats).
+- `--relevance data/eval_queries_context.json` alone runs THAT set's queries and adds
+  served-page P@4 / P@12 from `build_relevance_set` criteria -- the context set scored on
+  the page the App serves, not the reranker's list. With `--queries` too, criteria are
+  matched by query text.
+- Cost: 2 LLM calls per query run; `both` adds only the reranks it cannot replay (34
+  queries ~ 70-100 calls per repeat). On Databricks: `databricks/10_page_eval.py`.
+- **Groq free tier = 200K tokens/day PER MODEL** (TPD, 429 "tokens per day"). On
+  2026-10-14 gpt-oss-120b ran out mid-baseline (30 of 68 rows degraded): a full
+  before/after (HEAD arm + both arms + the context set, rerank on) does not fit in one
+  day on one model. Split across days, never across models.
+- **gpt-oss-20b is unusable for rerank comparisons**: with rerank ON it fell back on
+  5 of 16 context-set reranks (2026-10-14: 4 Groq json_validate_failed 400s, 1 truncated
+  reply). Translator-only (`--no-rerank`) runs work,
+  but are noisy: an untouched grocery query swung P@10 0.9 -> 0.0 between two runs.
+
 ## Recipe-completeness eval (grocery)
 `eval/eval_recipe_completeness.py` + `data/recipe_eval.json`. For each dish,
 search "ingredients to make <dish>", inspect top-K titles, count how many

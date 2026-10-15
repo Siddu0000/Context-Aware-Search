@@ -169,7 +169,38 @@ def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) ->
         # two arms of a guard on/off A/B must be told apart (the knob is in-process)
         "query_guard": cfg.QUERY_GUARD_ENABLED,
         "max_intents": cfg.MAX_INTENTS,
+        # Same models + catalog + modes, different prompts: without these two a
+        # pre/post prompt-edit pair differs only by timestamp in MLflow
+        "prompts_sha": _prompts_sha(),
+        "rerank_type_field": _rows_carry_type(),
     }
+
+
+def _prompts_sha() -> str:
+    """First 12 hex of sha256 over the six translator prompts, the rerank template and
+    the assistant prompt, read LIVE (the harnesses swap prompts in-process)."""
+    import hashlib
+
+    import app.assistant as assistant_module
+    import app.reranker as reranker_module
+
+    texts = [getattr(translator_module, name) for name in (
+        "QUERY_EXPANSION_PROMPT", "RECIPE_PROMPT", "HYDE_PROMPT", "HYBRID_PROMPT",
+        "OUTFIT_PROMPT", "SETUP_PROMPT")]
+    texts += [reranker_module.RERANK_PROMPT_TEMPLATE, assistant_module.ASSISTANT_PROMPT]
+    # A separator no prompt contains: moving text across a boundary changes the digest
+    return hashlib.sha256("\x00".join(texts).encode("utf-8")).hexdigest()[:12]
+
+
+def _rows_carry_type() -> bool:
+    """Whether retrieved rows carry product_type, i.e. reranker lines can show `type=`.
+
+    Reads the loaded frame without loading one: called before load_index, it is False.
+    """
+    from app.product_type import TYPE_COLUMN
+
+    df = getattr(search_module, "_df", None)
+    return df is not None and TYPE_COLUMN in df.columns
 
 
 def evaluate(

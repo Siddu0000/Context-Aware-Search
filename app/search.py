@@ -8,12 +8,14 @@ from differs.
 
 import hashlib
 import logging
-from typing import List, Optional, Tuple
+import time
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 import app.config as cfg
+from app import product_type
 from app.config import CACHE_DIR, PRODUCTS_CSV
 from app.embeddings import embed_text, get_default_embedder, search_vectors
 
@@ -96,6 +98,18 @@ def _build_search_text(df: pd.DataFrame, fields: Tuple[str, ...]) -> pd.Series:
     return df[list(fields)].agg(" ".join, axis=1)
 
 
+def _annotate_types(df: pd.DataFrame) -> None:
+    """Derive product_type from the titles (app/product_type.py). Only counts and
+    the elapsed time are logged, never titles. The type is a ranking signal and is
+    deliberately NOT embedded: search_text and the embedding cache key are unchanged."""
+    started = time.perf_counter()
+    product_type.annotate(df)
+    logger.info(
+        "Product types derived in %.1fs: %s",
+        time.perf_counter() - started, product_type.type_counts(df),
+    )
+
+
 def _backend() -> str:
     return (cfg.SEARCH_BACKEND or "local").lower()
 
@@ -121,10 +135,13 @@ def load_index(fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS) -> None:
             )
         from app import vector_search
 
-        _df = vector_search.load_catalog()
+        df = vector_search.load_catalog()
+        embedded = effective_fields(df.columns)
+        _annotate_types(df)
+        _df = df
         _embeddings = None
         _loaded_fields = DEFAULT_SEARCH_FIELDS
-        _embedded_fields = effective_fields(_df.columns)
+        _embedded_fields = embedded
         _loaded_backend = "databricks"
         logger.info("Index ready: %d products via Vector Search %s.", len(_df), cfg.VS_INDEX)
         return
@@ -145,6 +162,9 @@ def load_index(fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS) -> None:
     # per-chunk mixed dtypes (DtypeWarning)
     df = pd.read_csv(PRODUCTS_CSV, low_memory=False)
     embedded = effective_fields(df.columns, fields)
+    # BEFORE _build_search_text: that lowercases the vertical and titles IN PLACE.
+    # annotate() is case-insensitive, but it should read the catalog as loaded.
+    _annotate_types(df)
     df["search_text"] = _build_search_text(df, embedded)
 
     cache_path = CACHE_DIR / f"embeddings_{_cache_key(embedded)}.npy"
@@ -191,8 +211,15 @@ def search_products(
     search_terms: List[str],
     top_k: int = 30,
     per_intent_quota: Optional[int] = None,
+    keep: Optional[Callable[[dict, str], bool]] = None,
 ) -> List[dict]:
-    """Scatter-gather: top_k per intent, merged, deduped by title, score-sorted."""
+    """Scatter-gather: top_k per intent, merged, deduped by title, score-sorted.
+
+    `keep(row, term)` (bundles) drops a hit before it counts toward
+    per_intent_quota, so a slot's quota fills with rows of the right kind rather
+    than being spent on, say, barefoot-sandal anklets in a 'sandals' slot. It only
+    filters the top_k hits already fetched for that intent; it never fetches deeper.
+    None (the default) leaves the loop exactly as before."""
     if not _ready():
         load_index()
     if not search_terms:
@@ -209,6 +236,8 @@ def search_products(
             item["score"] = float(score)
             item["catalog_index"] = int(idx)
             item["source_intent"] = term
+            if keep is not None and not keep(item, term):
+                continue
             rows.append(item)
             kept += 1
 

@@ -1,8 +1,11 @@
 """FastAPI service exposing the search, chat, product and feedback endpoints."""
 
 import logging
+import math
+import re
 import time
 from contextlib import asynccontextmanager
+from itertools import groupby
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -10,6 +13,10 @@ from pydantic import BaseModel, Field
 
 import app.config as cfg
 from app import page_cache, query_guard, tracking
+from app import product_type as ptype
+# Knobs imported by value are fixed at import. The ones the type-aware ordering reads
+# (TYPE_AWARE_RANKING, SPONSORED_MIN_RERANK_SCORE, RERANK_INPUT_K) go through `cfg.`
+# at call time, so an in-process A/B (eval/eval_page_types.py --mode both) is real
 from app.config import (
     FINAL_TOP_K,
     GEMINI_MODEL,
@@ -22,7 +29,6 @@ from app.config import (
     RERANK_POOL_K,
     RETRIEVAL_TOP_K,
     SPONSORED_ENABLED,
-    SPONSORED_MIN_RERANK_SCORE,
     TRANSLATOR_MODE,
 )
 from app.feedback import record_feedback
@@ -205,18 +211,20 @@ def _diversify_by_ingredient(full):
     return out
 
 
-def _recipe_slots_with_alternatives(full, max_options: int = 3):
-    """One primary per component, each carrying the next same-component items as
-    `alternatives` (brand A/B/C for the carousel), capped at max_options total."""
-    groups = {}          # source_intent -> [items in rank order]
-    order = []           # components in first-seen (rank) order
+def _group_by_slot(full):
+    """({component: [items in rank order]}, components in first-seen (rank) order)."""
+    groups = {}
+    order = []
     for item in full:
         key = item.get("source_intent") or item.get("Product_title")
         if key not in groups:
             groups[key] = []
             order.append(key)
         groups[key].append(item)
+    return groups, order
 
+
+def _slots_from_groups(groups, order, max_options: int):
     slots = []
     for key in order:
         members = groups[key]
@@ -226,20 +234,60 @@ def _recipe_slots_with_alternatives(full, max_options: int = 3):
     return slots
 
 
+def _recipe_slots_with_alternatives(full, max_options: int = 3):
+    """One primary per component, each carrying the next same-component items as
+    `alternatives` (brand A/B/C for the carousel), capped at max_options total."""
+    groups, order = _group_by_slot(full)
+    return _slots_from_groups(groups, order, max_options)
+
+
+def _row_type(row: dict) -> Optional[str]:
+    """The row's product_type (app/product_type.py), or None for a non-Fashion row.
+
+    Rows from an un-annotated catalog or a mock carry no type and read None. NaN (a
+    CSV round-trip) is not a type either."""
+    value = row.get(ptype.TYPE_COLUMN)
+    return value if isinstance(value, str) and value else None
+
+
+def _is_fashion_row(row: dict) -> bool:
+    """Annotated rows say so by carrying a type; an un-annotated one is judged by its
+    vertical, case-insensitively (the local backend lowercases it to 'fashion')."""
+    return _row_type(row) is not None or ptype.is_fashion(row.get("bsns_vrtcl_name"))
+
+
+# Whole words: the old substring test read 'replacement', 'ramen', 'yemen' and
+# 'engagement' as men's and 'cowgirl' as women's
+_WOMEN_WORDS_RE = re.compile(r"\b(women|women's|womens|woman|ladies|lady|girls?)\b")
+_MEN_WORDS_RE = re.compile(r"\b(men|men's|mens|man|boys?|gentlemen)\b")
+
+
 def _product_gender(product: dict) -> str:
-    """Infer gender from category, then title: 'women', 'men' or 'neutral'."""
-    cat = (product.get("categ_lvl2_name") or "").lower()
-    title = (product.get("Product_title") or "").lower()
-    for text in (cat, title):
-        if "women" in text or "ladies" in text or "girl" in text:
+    """'women', 'men' or 'neutral'.
+
+    The enriched `gender` tag decides when present (unisex and kids are neutral). Empty,
+    NaN and non-str values are absent: the local backend fills non-Fashion rows with ''.
+    Without it only Fashion rows are gendered, by whole words in the category, then
+    the title -- an Electronics 'men's shaver' replacement head is not men's apparel."""
+    gender = product.get("gender")
+    if isinstance(gender, str) and gender.strip():
+        gender = gender.strip().casefold()
+        return gender if gender in ("women", "men") else "neutral"
+    if not _is_fashion_row(product):
+        return "neutral"
+    for field in ("categ_lvl2_name", "Product_title"):
+        text = product.get(field)
+        text = text.casefold() if isinstance(text, str) else ""
+        if _WOMEN_WORDS_RE.search(text):
             return "women"
-        if "men" in text or "boy" in text:   # 'women' already returned above
+        if _MEN_WORDS_RE.search(text):
             return "men"
     return "neutral"
 
 
 def _balance_by_gender(full):
-    """Round-robin women/men/neutral so one gender can't crowd out the page."""
+    """Round-robin women/men/neutral so one gender can't crowd out the page.
+    TYPE_AWARE_RANKING=false only; the type-aware display uses _interleave_gender."""
     # Can only reorder what retrieval put in the pool, never manufacture items
     women, men, neutral = [], [], []
     for item in full:
@@ -290,7 +338,8 @@ def _promote_sponsored_options(slots, smap):
 
 
 def _balance_candidate_pool(candidates):
-    """Gender-interleave the retrieval candidates before the reranker."""
+    """Gender-interleave the retrieval candidates before the reranker.
+    TYPE_AWARE_RANKING=false only; the type-aware window is _flat_window."""
     # Catalog skews ~4.5:1 women's; else the reranker's window sees no men's items
     women, men, neutral = [], [], []
     for item in candidates:
@@ -309,14 +358,324 @@ def _balance_candidate_pool(candidates):
     return out
 
 
+# ------------------------------------------------------------------ type-aware ordering
+# TYPE_AWARE_RANKING (app/config.py). The catalog has no product-type field, and Fashion's
+# categ_lvl2_name is only a gender bucket, so "cloths for a beach wedding" put sandals,
+# earrings and bags in the rerank window and on page 1 ahead of 9,218 suitable garments.
+# app/product_type.py types Fashion titles at load; the functions below order by it.
+
+# Who the shopper is buying for names a gender too ("something for her to wear", "gift
+# for my wife"): else the interleave filled half the page with men's tuxedos. Kept here,
+# not in translator._GENDER_QUERY_RE, so the translator's inputs and the evals are unchanged
+_GENDER_PEOPLE_RE = re.compile(
+    r"\b(her|she|hers|wife|girlfriend|mom|mother|daughter|sister|niece|aunt|grandma|"
+    r"bride|bridesmaids?|him|he|his|husband|boyfriend|dad|father|son|brother|nephew|"
+    r"uncle|grandpa|groom|groomsmen)\b",
+    re.IGNORECASE,
+)
+
+
+def _gender_stated(query: str, constraints: list, typed: bool) -> bool:
+    """A gender constraint, a gender word, or (type-aware only) a person's gender."""
+    return (
+        any(c.get("type") == "gender" for c in constraints)
+        or query_specifies_gender(query)  # regex belt-and-braces
+        or (typed and bool(_GENDER_PEOPLE_RE.search(query)))
+    )
+
+
+def _interleave_gender(seq):
+    """Alternate women's and men's items over the positions gendered items hold.
+
+    Neutral items KEEP their positions, so shoes, bags, unisex and non-apparel rows
+    are never pushed down by the balance (the old 3-stream round-robin moved every
+    third slot to them). Each gender keeps its own order; the gender that appears
+    first starts; when one runs out the other fills the rest. Unchanged unless both
+    genders are present."""
+    genders = [_product_gender(item) for item in seq]
+    streams = {
+        g: [item for item, ig in zip(seq, genders) if ig == g] for g in ("women", "men")
+    }
+    if not (streams["women"] and streams["men"]):
+        return list(seq)
+    turn = next(g for g in genders if g != "neutral")
+    taken = {"women": 0, "men": 0}
+    out = []
+    for item, g in zip(seq, genders):
+        if g == "neutral":
+            out.append(item)
+            continue
+        other = "men" if turn == "women" else "women"
+        pick = turn if taken[turn] < len(streams[turn]) else other
+        out.append(streams[pick][taken[pick]])
+        taken[pick] += 1
+        turn = other
+    return out
+
+
+def _round_robin_by_intent(items, intents):
+    """One item per intent per round, intents in the translator's order, each intent's
+    items in their current order. Raw cosine is not comparable across intents (a short
+    phrase scores higher), so score order let one intent fill the rerank window: the
+    recorded "cloths for a beach wedding" window was 15 of 15 wedge sandals."""
+    position = {}
+    for i, term in enumerate(intents or []):
+        position.setdefault(term, i)
+    groups, order = {}, []
+    for item in items:
+        key = item.get("source_intent")
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(item)
+    # Stable: an intent the translator did not list keeps its first-seen place, last
+    order.sort(key=lambda k: position.get(k, len(position)))
+    out = []
+    for depth in range(max((len(g) for g in groups.values()), default=0)):
+        out.extend(groups[k][depth] for k in order if depth < len(groups[k]))
+    return out
+
+
+def _effective_request(query: str, candidates) -> Optional[frozenset]:
+    """The product types the shopper named, kept only in a Fashion-majority pool.
+
+    requested_types() is lexical, and its nouns name Electronics and Grocery products
+    too ("tea bags", "ring light", "apple watch", "laptop bag"). There a request would
+    rank the odd Fashion tote above every tea bag, tell the reranker every real
+    candidate violates the ask and block their ads. So it counts only when at least
+    half of the first RERANK_INPUT_K candidates, in RAW embedding order (search_products
+    returns them score-sorted, before any reordering), are typed Fashion rows."""
+    requested = ptype.requested_types(query)
+    if not requested:
+        return None
+    window = list(candidates[: cfg.RERANK_INPUT_K])
+    fashion = sum(1 for c in window if _row_type(c) is not None)
+    if not window or fashion / len(window) < 0.5:
+        # The flag only: the types come from the query text (safety.md)
+        logger.info("Type-aware ranking: type request dropped (non_fashion_pool).")
+        return None
+    return requested
+
+
+def _flat_window(candidates, requested, intents, interleave: bool):
+    """Pre-rerank order: the requested type, then untyped Fashion rows ('unknown',
+    mostly shoes named only by model), then everything else. Each tier round-robins
+    the intents and, with no gender stated, alternates women's and men's items. The
+    reranker sees only the first RERANK_INPUT_K, so this decides what it can score."""
+    tiers = {}
+    for item in candidates:
+        tiers.setdefault(ptype.type_rank(_row_type(item), requested), []).append(item)
+    out = []
+    for rank in sorted(tiers):
+        tier = _round_robin_by_intent(tiers[rank], intents)
+        out.extend(_interleave_gender(tier) if interleave else tier)
+    return out
+
+
+def _is_score(value) -> bool:
+    return isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value))
+
+
+def _band(item) -> int:
+    """0 = reranked above the violator ceiling, 1 = reranked at or below it, 2 = not
+    reranked (the tail, rerank off, or a rerank fallback)."""
+    score = item.get("rerank_score")
+    if not _is_score(score):
+        return 2
+    return 0 if score > cfg.SPONSORED_MIN_RERANK_SCORE else 1
+
+
+def _flat_display(full, requested, interleave: bool):
+    """Display order after the reranker. Stable sort by (mismatched type, band, type
+    rank): a product of another type never precedes a requested or untyped one, even
+    when it scored higher (the reranker gave wedge sandals 92 on a clothing ask), while
+    an untyped row competes inside its band -- a model-named oxford the reranker scored
+    90 is not buried under unreranked tail rows. The gender interleave then runs within
+    each (mismatch, band) group, so it can never undo the type or band order."""
+    def sort_key(item):
+        rank = ptype.type_rank(_row_type(item), requested)
+        return (rank == 2, _band(item), rank)
+
+    keyed = sorted(((sort_key(item), item) for item in full), key=lambda pair: pair[0])
+    if not interleave:
+        return [item for _, item in keyed]
+    out = []
+    for _, group in groupby(keyed, key=lambda pair: pair[0][:2]):
+        out.extend(_interleave_gender([item for _, item in group]))
+    return out
+
+
+# What the reranker is told a type request means. Deterministic text per family, never
+# the shopper's words. The examples sit in parentheses like the prompt's own lists.
+_TYPE_NAMES = {
+    "apparel": ("clothing", "garments: dresses, tops, bottoms, suits, swimwear, outerwear"),
+    "footwear": ("footwear", "shoes, boots, sandals, sneakers, slippers"),
+    "jewelry": ("jewellery", "earrings, necklaces, bracelets, rings, anklets"),
+    "bag": ("bags", "handbags, totes, clutches, backpacks, wallets"),
+    "headwear": ("headwear", "hats, caps, beanies, hair accessories"),
+    "accessory": ("accessories", "belts, scarves, sunglasses, watches, gloves"),
+}
+_TYPE_VIOLATORS = {
+    "apparel": "clothing", "footwear": "shoes", "jewelry": "jewellery", "bag": "bags",
+    "headwear": "hats", "accessory": "other accessories",
+}
+
+
+def _type_constraint(requested) -> dict:
+    """{'type': 'product_type', 'value': ...} for the reranker's constraints block, e.g.
+    apparel -> 'clothing only (garments: ...); shoes, jewellery, bags, hats and other
+    accessories violate it'."""
+    wanted = [t for t in ptype.FASHION_TYPES if t in requested]
+    others = [_TYPE_VIOLATORS[t] for t in ptype.FASHION_TYPES if t not in requested]
+    names = " or ".join(_TYPE_NAMES[t][0] for t in wanted)
+    examples = "; ".join(_TYPE_NAMES[t][1] for t in wanted)
+    value = f"{names} only ({examples})"
+    if others:
+        violators = others[0] if len(others) == 1 else ", ".join(others[:-1]) + " and " + others[-1]
+        value += f"; {violators} violate it"
+    return {"type": "product_type", "value": value}
+
+
+# A setting is context, not a requirement: the translator turned "summer beach wedding
+# outfit dress" into [other: wedding, other: summer, other: beach], which the reranker
+# renders as STATED constraints to "enforce ALL" -- rewarding keyword-stuffed titles
+# (18 of the 43 apparel titles saying both 'beach' and 'wedding' are bridal gowns).
+_SETTING_WORDS = frozenset({
+    "beach", "summer", "winter", "spring", "fall", "autumn", "wedding", "party", "gala",
+    "humid", "hot", "cold", "warm", "cozy", "cosy", "formal", "casual", "breathable",
+    "lightweight", "outdoor", "outdoors", "vacation", "holiday",
+    "beaches", "weddings", "parties", "galas", "vacations", "holidays",
+})
+# Function words, and the generic nouns a setting phrase ends on ("a humid day")
+_SETTING_FILLER = frozenset({
+    "a", "an", "the", "and", "or", "for", "to", "of", "in", "on", "at", "with", "my",
+    "our", "day", "days", "night", "weather", "season", "time", "event", "occasion",
+})
+
+
+def _is_setting_only(constraint: dict) -> bool:
+    if str(constraint.get("type", "")).strip().lower() != "other":
+        return False
+    words = re.findall(r"[a-z]+", str(constraint.get("value", "")).casefold())
+    return (
+        bool(words)
+        and all(w in _SETTING_WORDS or w in _SETTING_FILLER for w in words)
+        and any(w in _SETTING_WORDS for w in words)
+    )
+
+
+def _without_setting_constraints(constraints: list) -> list:
+    """The translator's constraints minus 'other' ones made only of occasion, season,
+    weather, setting or mood words. For the reranker only: the response and the
+    cached constraints stay the translator's."""
+    return [c for c in constraints if not _is_setting_only(c)]
+
+
+def _bundle_keep(bundle_type: Optional[str]):
+    """search_products keep= filter per bundle kind (None = keep everything).
+
+    outfit: Fashion rows only, and a slot that names a Fashion type ("beach wedding
+    sandals") keeps rows of that type or untyped ones -- its top hits were barefoot-
+    sandal anklets, which filled the 4-row quota and the whole card. setup: other
+    verticals always stay; a Fashion row stays only in a clothing or footwear slot
+    ("fleece slippers") of its type, so a "ring light" slot drops wedding rings.
+    recipe: no filter ("tea bags" and "pineapple rings" are ingredients). An outfit
+    "accessories" slot accepts the whole accessory family (ptype.slot_accepts)."""
+    if bundle_type not in ("outfit", "setup"):
+        return None
+    slot_types: dict = {}
+
+    def slot_of(term):
+        if term not in slot_types:
+            slot_types[term] = (ptype.slot_type(term), ptype.slot_accepts(term))
+        return slot_types[term]
+
+    def keep(row, term):
+        rtype = _row_type(row)
+        stype, accepts = slot_of(term)
+        if bundle_type == "outfit":
+            if rtype is None:
+                return False
+            return not accepts or rtype in accepts or rtype == ptype.UNKNOWN
+        if rtype is None:
+            return True
+        return stype in ("apparel", "footwear") and rtype in (stype, ptype.UNKNOWN)
+
+    return keep
+
+
+# Outfit cards: garments first, then shoes, then the one accessory
+_GARMENT_PRIORITY = {
+    "apparel": 0, ptype.UNKNOWN: 1, "footwear": 2, "bag": 3, "headwear": 4,
+    "accessory": 5, "jewelry": 6,
+}
+
+
+def _slot_rejected(primary: dict) -> bool:
+    """The reranker judged the slot's best option a constraint violator (<= ceiling)."""
+    score = primary.get("rerank_score")
+    return _is_score(score) and score <= cfg.SPONSORED_MIN_RERANK_SCORE
+
+
+def _typed_bundle_slots(full, bundle_type: str, intents, max_options: int = 3):
+    """Bundle cards with type-aware options and slot order.
+
+    Outfit: each slot's options put its own type first, then untyped, then the rest;
+    every slot then prefers options of the first garment slot's gender (or neutral),
+    since an outfit must not pair a women's top with men's trousers (not filtered:
+    a slot with only the other gender still shows). Card order: garment priority,
+    then rejected slots last, then the translator's order. Setup: rejected last, then
+    the translator's order (it lists the most essential first). Recipe: rejected
+    last, otherwise first-seen (rank) order as before."""
+    groups, order = _group_by_slot(full)
+    position = {}
+    for i, term in enumerate(intents or []):
+        position.setdefault(term, i)
+
+    def slot_key(key):
+        rejected = _slot_rejected(groups[key][0])
+        if bundle_type == "outfit":
+            priority = _GARMENT_PRIORITY.get(ptype.slot_type(key), len(_GARMENT_PRIORITY))
+            return (priority, rejected, position.get(key, len(position)))
+        if bundle_type == "setup":
+            return (rejected, position.get(key, len(position)))
+        return (rejected,)   # stable: first-seen order within each
+
+    if bundle_type == "outfit":
+        for key in order:
+            accepts = ptype.slot_accepts(key)
+            if accepts:
+                groups[key] = sorted(
+                    groups[key],
+                    key=lambda item: 0 if _row_type(item) in accepts
+                    else 1 if _row_type(item) == ptype.UNKNOWN else 2,
+                )
+        anchor_key = next(
+            (k for k in sorted(order, key=slot_key) if ptype.slot_type(k) == "apparel"), None
+        )
+        anchor = _product_gender(groups[anchor_key][0]) if anchor_key is not None else "neutral"
+        if anchor in ("women", "men"):
+            for key in order:
+                if key != anchor_key:
+                    groups[key] = sorted(
+                        groups[key],
+                        key=lambda item: _product_gender(item) not in (anchor, "neutral"),
+                    )
+
+    return _slots_from_groups(groups, sorted(order, key=slot_key), max_options)
+
+
 def _clears_sponsored_gate(item) -> bool:
     """Reranked AND scored above the constraint-violator ceiling; else it stays organic."""
     score = item.get("rerank_score")
-    return score is not None and score > SPONSORED_MIN_RERANK_SCORE
+    return score is not None and score > cfg.SPONSORED_MIN_RERANK_SCORE
 
 
-def _boost_sponsored(full, smap):
-    """Bid-order sponsored items that made the RERANKED pool to the top."""
+def _boost_sponsored(full, smap, requested=None):
+    """Bid-order sponsored items that made the RERANKED pool to the top.
+
+    With a type request (type-aware ranking, flat results) the ad must also BE that
+    type: a sandal ad scored 41 on a clothing ask must not lead the page."""
     # Pool membership alone let a low-scored off-topic ad (e.g. a women's dress on a
     # men's-shirt query, capped <=40 by the prompt) jump to position 1
     if not smap:
@@ -325,7 +684,10 @@ def _boost_sponsored(full, smap):
     for item in full:
         asin = item.get("parent_asin")
         asin = str(asin) if asin is not None else None
-        if asin and asin in smap and _clears_sponsored_gate(item):
+        if (
+            asin and asin in smap and _clears_sponsored_gate(item)
+            and (not requested or ptype.type_rank(_row_type(item), requested) == 0)
+        ):
             item = dict(item)
             item["is_sponsored"] = True
             item["sponsor"] = smap[asin]["sponsor"]
@@ -392,15 +754,20 @@ def search(
     # The rerank and cross-sell LLMs get only what the translator's guard lets an LLM
     # see (the same pure function); "" = the query opened with an instruction
     llm_query = query_guard.sanitize_query(query).clean
+    # Read ONCE per request, so the window, the display and the cache key agree even if
+    # an eval flips it mid-run
+    typed = cfg.TYPE_AWARE_RANKING
 
     # `recommend` must be in the key or /unified_search's recommend=False poisons it;
     # the LLM identity must be too, or a model switch serves the old model's ranking;
-    # and the guard state, or toggling it in-process serves the other mode's pool
+    # and the guard and ordering states, or toggling one in-process serves the other
+    # mode's pool
     cache_key = page_cache.make_key(
         query,
         (
             page_size, pool_k, rerank, recommend, sponsored,
             translator_mode or TRANSLATOR_MODE, _llm_identity(), cfg.QUERY_GUARD_ENABLED,
+            typed,
         ),
     )
 
@@ -449,23 +816,25 @@ def search(
                 is_recipe = bundle_type == "recipe"
                 constraints = understanding["constraints"]
 
-            gender_stated = (
-                any(c.get("type") == "gender" for c in constraints)
-                or query_specifies_gender(query)  # regex belt-and-braces
-            )
+            gender_stated = _gender_stated(query, constraints, typed)
 
             with timings.stage("retrieve"):
                 if bundle_type:
-                    # Cap per intent so one bundle component can't crowd out the others
+                    # Cap per intent so one bundle component can't crowd out the others;
+                    # keep= is passed only when there is a filter, so a search_products
+                    # stand-in without the parameter (tests, old callers) still works
+                    keep = _bundle_keep(bundle_type) if typed else None
                     candidates = search_products(
                         intents,
                         top_k=RETRIEVAL_TOP_K,
                         per_intent_quota=GROCERY_PER_INTENT_K,
+                        **({"keep": keep} if keep is not None else {}),
                     )
                 elif not gender_stated:
                     # 2x deep so the skewed catalog's men's items reach the rerank window
                     candidates = search_products(intents, top_k=RETRIEVAL_TOP_K * 2)
-                    candidates = _balance_candidate_pool(candidates)
+                    if not typed:
+                        candidates = _balance_candidate_pool(candidates)
                 else:
                     candidates = search_products(intents, top_k=RETRIEVAL_TOP_K)
 
@@ -476,7 +845,6 @@ def search(
                     "interpreted_as": intents,
                     "constraints": constraints,
                     "is_recipe": is_recipe,
-            "bundle_type": bundle_type,
                     "bundle_type": bundle_type,
                     "translator_mode": translator_mode or TRANSLATOR_MODE,
                     "rerank_requested": rerank,
@@ -503,10 +871,7 @@ def search(
                             "intents": intents,
                             "constraints": constraints,
                             "is_recipe": is_recipe,
-            "bundle_type": bundle_type,
-                        "bundle_type": bundle_type,
                             "bundle_type": bundle_type,
-                    "bundle_type": bundle_type,
                             "rerank_succeeded": False,
                             "no_match": True,
                             "recommendations": {"cross_sell": [], "upsell": []},
@@ -514,12 +879,31 @@ def search(
                     )
                 return empty_payload
 
+            # What the reranker is told; the response and the cache keep the translator's
+            rerank_constraints = constraints
+            requested = None   # flat only: a bundle's slots carry their own types
+            if typed:
+                rerank_constraints = _without_setting_constraints(constraints)
+                if bundle_type:
+                    # Every slot gets reranked options inside RERANK_INPUT_K
+                    candidates = _round_robin_by_intent(candidates, intents)
+                else:
+                    # Measured on the RAW score order, before the window reorders it. The
+                    # sanitised query: the shopper's ask is the text before any instruction
+                    # marker (identical for an ordinary query; '' when guarded names none)
+                    requested = _effective_request(llm_query, candidates)
+                    candidates = _flat_window(
+                        candidates, requested, intents, interleave=not gender_stated
+                    )
+                    if requested:
+                        rerank_constraints = rerank_constraints + [_type_constraint(requested)]
+
             rerank_actually_ran = False
             if rerank and candidates and llm_query:
                 with timings.stage("rerank"):
                     ranked_pool = llm_rerank(
                         llm_query, candidates, top_k=pool_k, errors=errors,
-                        constraints=constraints,
+                        constraints=rerank_constraints,
                     )
                 rerank_actually_ran = any(
                     r.get("rerank_score") is not None for r in ranked_pool
@@ -540,18 +924,23 @@ def search(
 
             if bundle_type:
                 # One card per component (ingredient / garment slot / device) + options
-                full = _recipe_slots_with_alternatives(full, max_options=3)
+                if typed:
+                    full = _typed_bundle_slots(full, bundle_type, intents, max_options=3)
+                else:
+                    full = _recipe_slots_with_alternatives(full, max_options=3)
                 if sponsored:
                     # Nested-aware: _boost_sponsored can't see slot `alternatives`
                     with timings.stage("sponsored"):
                         full = _promote_sponsored_options(full, sponsored_map())
             else:
-                if not gender_stated:
+                if typed:
+                    full = _flat_display(full, requested, interleave=not gender_stated)
+                elif not gender_stated:
                     # Re-balance the DISPLAY order after the reranker re-scored the pool
                     full = _balance_by_gender(full)
                 if sponsored:
                     with timings.stage("sponsored"):
-                        full = _boost_sponsored(full, sponsored_map())
+                        full = _boost_sponsored(full, sponsored_map(), requested)
 
             start = (page - 1) * page_size
             results = full[start : start + page_size]
@@ -571,9 +960,7 @@ def search(
                         "intents": intents,
                         "constraints": constraints,
                         "is_recipe": is_recipe,
-            "bundle_type": bundle_type,
                         "bundle_type": bundle_type,
-                    "bundle_type": bundle_type,
                         "rerank_succeeded": rerank_actually_ran,
                         "no_match": False,
                         # A cross-sell fallback isn't pinned, but the clean POOL is: else
