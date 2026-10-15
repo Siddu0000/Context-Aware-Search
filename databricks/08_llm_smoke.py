@@ -9,8 +9,10 @@ counted). A fallback therefore cannot pass.
 
 Covered: the translator (general, gibberish, gender constraint, recipe /
 outfit / setup bundles, the hyde and hybrid benchmark modes), the reranker (with
-and without constraints), the chat assistant (search, refine, reply,
-continuation, new topic), cross-sell, prompt injection against the query guard
+and without constraints, plus a typed clothing window under the [product_type]
+constraint app/main.py adds: WARN if a non-apparel row scores over 40), the chat
+assistant (search, refine, reply, continuation, new topic), cross-sell, prompt
+injection against the query guard
 (app/query_guard.py: the PWNED payload and its fullwidth / zero-width / TAG-char /
 chat-template / payload-first / whitespace-split variants, the prompt-leak probe,
 three probes the guard deliberately does not catch -- a marker-free payload, a
@@ -23,10 +25,10 @@ Not covered: scripts/enhance_attributes.py, an offline batch over the local CSV.
 It needs no index and no Spark, so it runs while the index is deleted. Run it
 FIRST after any model change, before paying ~$20 for an index build.
 
-Cost: 39 LLM calls -- roughly 3.5 minutes at Qwen's measured ~5 s per call. (The
+Cost: 40 LLM calls -- roughly 3.5 minutes at Qwen's measured ~5 s per call. (The
 prompt-leak translator probe makes none: the guard refuses it before any LLM call.)
 
-WARN rows are soft expectations (exact intent count, the gender cap, a partial
+WARN rows are soft expectations (exact intent count, the gender and type caps, a partial
 rerank, a cross-sell phrase the guard screened, an injection probe the model
 refused, the model obeying an instruction the guard deliberately lets through). They do not fail the run, but read them before
 you choose a model. Injection rows FAIL on an actual leak, and translator rows the
@@ -92,6 +94,34 @@ _RERANK_ROWS = [
     ("Men's Black Manga Print Short Sleeve Shirt", "Men's Clothing", "black", "cotton"),
     ("Unisex Anime Canvas Tote Bag", "Unisex Clothing", "beige", "canvas"),
 ]
+
+# A clothing ask over a typed Fashion window, as /search sends it: every row's category
+# says "...Clothing" (the department bucket), so only the title and `type=` tell a
+# sandal from a dress. app/main.py adds the [product_type] constraint for such a query
+_TYPED_QUERY = "clothes for a beach wedding"
+# (title, category, color, material, product_type)
+_TYPED_ROWS = [
+    ("Women's Floral Chiffon Maxi Dress for Summer Wedding Guest", "Women's Clothing",
+     "blue", "chiffon", "apparel"),
+    ("Women's Linen Midi Sundress Sleeveless Flowy", "Women's Clothing", "white", "linen",
+     "apparel"),
+    ("Women's Flat Gladiator Sandals Summer Beach", "Women's Clothing", "gold", "leather",
+     "footwear"),
+    ("Men's Linen Short Sleeve Button Down Shirt", "Men's Clothing", "beige", "linen",
+     "apparel"),
+    ("Gold Plated Pearl Drop Earrings for Women Wedding", "Women's Clothing", "gold",
+     "metal", "jewelry"),
+    ("Women's Wedge Espadrille Sandals Ankle Strap", "Women's Clothing", "tan", "jute",
+     "footwear"),
+    ("Women's Straw Beach Clutch Purse Summer", "Women's Clothing", "natural", "straw",
+     "bag"),
+    ("Women's Boho Wrap Dress Short Sleeve V Neck", "Women's Clothing", "green", "rayon",
+     "apparel"),
+]
+# Mirrors the text app/main.py generates for an apparel request (never query text)
+_TYPED_CONSTRAINTS = [{"type": "product_type", "value": (
+    "clothing only (garments: dresses, tops, bottoms, suits, swimwear, outerwear); "
+    "shoes, jewellery, bags, hats and other accessories violate it")}]
 
 
 class _Probe:
@@ -316,9 +346,8 @@ def _rerank_checks(rows):
             for t, c, k, m in _RERANK_ROWS
         ]
 
-    def ranked(p, constraints, top_k):
-        cands, errs = candidates(), []
-        out = rerank(_RERANK_QUERY, cands, top_k=top_k, errors=errs, constraints=constraints)
+    def shape(p, out, errs, cands):
+        """The checks every rerank row needs; returns (titles, scores)."""
         # A partial ranking is still the LLM's (the app caches and shows it): warn, don't fail
         partial = [e for e in errs if e.get("code") == "partial"]
         p.need(len(errs) == len(partial), f"rerank errors: {errs}")
@@ -330,6 +359,12 @@ def _rerank_checks(rows):
         titles = [r.get("Product_title") for r in out]
         p.need(len(titles) == len(set(titles)), f"duplicate products: {titles}")
         p.need(set(titles) <= {c["Product_title"] for c in cands}, "a product not in the input")
+        return titles, scores
+
+    def ranked(p, constraints, top_k):
+        cands, errs = candidates(), []
+        out = rerank(_RERANK_QUERY, cands, top_k=top_k, errors=errs, constraints=constraints)
+        titles, scores = shape(p, out, errs, cands)
         if not out:
             return ""
         p.prefer(titles[0] == _RERANK_BEST, f"top is {titles[0]!r}, expected {_RERANK_BEST!r}")
@@ -339,11 +374,31 @@ def _rerank_checks(rows):
             p.prefer(not over, f"gender cap (<=40) not applied: {over}")
         return f"{len(out)} ranked; top {titles[0][:34]} = {scores[0]}"
 
+    def typed(p):
+        # Does the model obey the type cap? gpt-oss gave violators 41-42 in the diagnosis
+        cands = [{"Product_title": t, "categ_lvl2_name": c, "bsns_vrtcl_name": "Fashion",
+                  "color": k, "material": m, "occasion": "wedding", "price": 39.99,
+                  "average_rating": 4.4, "rating_number": 600, "prod_description": "",
+                  "product_type": ptype}
+                 for t, c, k, m, ptype in _TYPED_ROWS]
+        errs = []
+        out = rerank(_TYPED_QUERY, cands, top_k=cfg.RERANK_POOL_K, errors=errs,
+                     constraints=_TYPED_CONSTRAINTS)
+        titles, scores = shape(p, out, errs, cands)
+        kind = {c["Product_title"]: c["product_type"] for c in cands}
+        over = {t[:30]: s for t, s in zip(titles, scores)
+                if kind.get(t) != "apparel" and type(s) is int and s > 40}
+        p.prefer(not over, f"type cap (<=40) not applied to non-apparel: {over}")
+        if not out:
+            return ""
+        return f"{len(out)} ranked; top {titles[0][:30]} = {scores[0]} ({kind.get(titles[0])})"
+
     # top_k as the two real callers send it: run_eval (12) and /search's pool (30)
     _check(rows, "reranker", "no constraints (eval)",
            lambda p: ranked(p, None, cfg.FINAL_TOP_K))
     _check(rows, "reranker", "gender constraint (/search)",
            lambda p: ranked(p, [{"type": "gender", "value": "men"}], cfg.RERANK_POOL_K))
+    _check(rows, "reranker", "type constraint (clothes ask)", typed)
 
 
 def _spy_replies(module):

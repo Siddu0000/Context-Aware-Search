@@ -142,7 +142,28 @@ SPONSORED_CONFIG = DATA_DIR / "sponsored.json"
 # The rerank prompt caps constraint violators at 40, so a women's dress scored 40
 # on a men's-shirt query stays organic instead of jumping to position 1. Bundles
 # (_promote_sponsored_options) still gate on slot membership only: owner decision.
+# With TYPE_AWARE_RANKING on, main.py also reads it for the organic display band
+# (`_band`) and the rejected bundle-slot test (`_slot_rejected`): moving the ad floor
+# moves both.
 SPONSORED_MIN_RERANK_SCORE = float(os.getenv("SPONSORED_MIN_RERANK_SCORE", "40"))
+
+# Type-aware ordering (app/main.py, types from app/product_type.py), 2026-10-14. The demo's
+# "cloths for a beach wedding in summer" led with sandals, earrings and bags although the
+# catalog holds 9,218 suitable garments: Fashion has no product-type field (categ_lvl2_name
+# is only a gender bucket), and score order let one intent fill the rerank window. When on,
+# a flat query that NAMES a kind of product ranks that type first in the rerank window and
+# on the page -- only inside a Fashion-majority pool, so "tea bags" / "ring light" are
+# untouched -- the reranker is told the type, an ad must be that type, outfit/setup slots
+# keep their own type, and outfit cards put garments first.
+# false restores the old ordering AND the old reranker inputs from main.py: the old gender
+# balancers, the score-order rerank window and display, the old flat ad gate, the old bundle
+# retrieval, window and slot order, no [product_type] constraint, the translator's
+# setting-only 'other' constraints kept, and no pronoun gender ('for her' is no longer a
+# stated gender). It does NOT revert the word-bounded gender classifier, the setup routing
+# regex, the translator prompt and reranker rubric edits, the `type=` candidate field or the
+# same-type upsell filter -- those need a git revert. Read as cfg.TYPE_AWARE_RANKING at call time and part of the
+# page_cache key, so flipping it in-process (eval/eval_page_types.py --mode both) is real.
+TYPE_AWARE_RANKING = os.getenv("TYPE_AWARE_RANKING", "true").lower() in {"1", "true", "yes"}
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 

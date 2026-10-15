@@ -1,0 +1,301 @@
+[
+  {
+    "query": "cloths for a beach wedding in summer",
+    "group": "stakeholder",
+    "_context": "Demo complaint: shoes, earrings and bags served (sometimes first) for a clothing ask. 'cloths' is the typo for clothes. Flat page of garments in light fabrics; a guest, so no bridal or swimwear, and nothing for cold weather.",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"]
+  },
+  {
+    "query": "summer beach wedding outfit dress",
+    "group": "stakeholder",
+    "_context": "Demo complaint. An outfit bundle whose FIRST slot should be the dress the shopper named, garments before footwear, at most one accessory. Recorded translation turned wedding/summer/beach into hard 'other' constraints.",
+    "types": null,
+    "bundle": "outfit",
+    "vertical_in": ["fashion"],
+    "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"],
+    "component_good": "\\b(sun)?dress(es)?\\b"
+  },
+  {
+    "query": "beach wedding outfit",
+    "group": "stakeholder",
+    "_context": "Demo complaint. An outfit bundle: garment slots first, then footwear, then at most one accessory; guest attire in beach-appropriate fabric.",
+    "types": null,
+    "bundle": "outfit",
+    "vertical_in": ["fashion"],
+    "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"]
+  },
+  {
+    "query": "cozy desk setup ideas",
+    "group": "stakeholder",
+    "_context": "Demo complaint: monitors, SSDs, surge strips and cables. A mood goal: the items that create cosiness (lamp, string lights, desk mat, mug warmer, throw, plant). The catalog has no decor vertical, so expect few 'good' items even when routing is right; read the bad count.",
+    "types": null,
+    "bundle": "setup",
+    "component_bad": "\\b(cable|cables|surge|hub|ssd|adapter|power strip|monitor)\\b",
+    "component_good": "\\b(lamp|string lights?|fairy lights?|mug warmer|throw|blanket|desk mat|plant|candle|slippers?)\\b"
+  },
+  {
+    "query": "clothes for a beach wedding",
+    "group": "case",
+    "_context": "The stakeholder query spelled right: a flat page of guest garments.",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"]
+  },
+  {
+    "query": "what should I wear to a beach wedding",
+    "group": "case",
+    "_context": "Advice-shaped clothing ask. The translator may answer it as a flat page or as an outfit; a setup is wrong.",
+    "types": ["apparel"],
+    "bundle": [null, "outfit"],
+    "vertical_in": ["fashion"],
+    "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"]
+  },
+  {
+    "query": "summer clothes",
+    "group": "case",
+    "_context": "Season as context: garments, nothing built for cold weather.",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_none_of": ["wool", "fleece", "thermal", "sweater", "coat", "parka", "puffer", "down jacket", "snow"]
+  },
+  {
+    "query": "linen outfit ideas",
+    "group": "case",
+    "_context": "Outfit bundle with a fabric stated: the garment slots should be linen.",
+    "types": null,
+    "bundle": "outfit",
+    "vertical_in": ["fashion"],
+    "component_good": "\\blinen\\b"
+  },
+  {
+    "query": "breathable outfit for a humid day",
+    "group": "case",
+    "_context": "Outfit bundle; weather as context -> breathable fabrics (cotton, linen, rayon), nothing heavy.",
+    "types": null,
+    "bundle": "outfit",
+    "vertical_in": ["fashion"],
+    "context_none_of": ["wool", "fleece", "thermal", "sweater", "coat", "parka", "puffer", "leather", "velvet"],
+    "component_good": "\\b(cotton|linen|rayon|breathable|lightweight|moisture[- ]wicking|quick[- ]dry)\\b"
+  },
+  {
+    "query": "outfit for a job interview",
+    "group": "case",
+    "_context": "Outfit bundle; occasion as context -> business attire, nothing casual or for bed or beach.",
+    "types": null,
+    "bundle": "outfit",
+    "vertical_in": ["fashion"],
+    "context_none_of": ["costume", "pajama", "swimsuit", "bikini", "lingerie", "hoodie", "sweatpants", "flip flop", "shorts"]
+  },
+  {
+    "query": "hiking outfit",
+    "group": "case",
+    "_context": "Outfit bundle; activity as context -> trail clothing and footwear.",
+    "types": null,
+    "bundle": "outfit",
+    "vertical_in": ["fashion"],
+    "context_none_of": ["heels", "stiletto", "gown", "sequin", "bikini", "costume", "flip flop"],
+    "component_good": "\\b(hiking|trail|outdoor|trekking|moisture[- ]wicking|quick[- ]dry)\\b"
+  },
+  {
+    "query": "boho summer dress",
+    "group": "case",
+    "_context": "A garment named outright: dresses, not sandals or jewellery that mention dresses.",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_none_of": ["wool", "fleece", "thermal", "sweater", "coat"]
+  },
+  {
+    "query": "wedding guest dress",
+    "group": "case",
+    "_context": "A guest, not the bride. 'bridesmaid' is NOT listed: guest-dress titles are keyword-stuffed with it ('... wedding guest bridesmaid cocktail dress').",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_none_of": ["bride", "bridal", "wedding gown", "costume", "bikini", "swimsuit", "cover up"]
+  },
+  {
+    "query": "something for her to wear to a black-tie gala",
+    "group": "case",
+    "_context": "Clothing ask in the whole query (the head 'something' names nothing); 'her' states the gender. A formal gown; raw retrieval matches 'black tie' literally (neckties).",
+    "types": ["apparel"],
+    "bundle": null,
+    "gender": "women",
+    "vertical_in": ["fashion"],
+    "context_none_of": ["costume", "pajama", "swimsuit", "bikini", "hoodie", "sweatpants", "nightgown", "bride", "bridal", "t-shirt"]
+  },
+  {
+    "query": "cozy clothes for a lazy sunday at home",
+    "group": "case",
+    "_context": "Mood and setting as context -> loungewear, sweatpants, soft knits; nothing formal.",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_none_of": ["gown", "bridal", "cocktail", "sequin", "bikini", "swimsuit", "blazer", "tuxedo", "costume", "heels"]
+  },
+  {
+    "query": "running gear for winter",
+    "group": "routing",
+    "_context": "'(gear|equipment) for' no longer routes to SETUP by regex; the translator may still choose a flat page or an outfit. Season as context.",
+    "types": null,
+    "bundle": [null, "outfit"],
+    "vertical_not": ["grocery"],
+    "context_none_of": ["sandal", "flip flop", "swimsuit", "bikini", "sundress"]
+  },
+  {
+    "query": "rain gear for hiking",
+    "group": "routing",
+    "_context": "As above; weather as context -> rain/waterproof items.",
+    "types": null,
+    "bundle": [null, "outfit"],
+    "vertical_not": ["grocery"],
+    "context_none_of": ["sandal", "flip flop", "swimsuit", "bikini"],
+    "context_any_of": ["rain", "waterproof", "water resistant", "water proof", "raincoat", "poncho", "windbreaker"]
+  },
+  {
+    "query": "what do I need for a beach wedding",
+    "group": "routing",
+    "_context": "'what do i need for' no longer routes to SETUP by regex. A flat page or an outfit is right; a setup (devices) is wrong.",
+    "types": null,
+    "bundle": [null, "outfit"],
+    "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"]
+  },
+  {
+    "query": "first aid kit",
+    "group": "routing",
+    "_context": "Bare 'kit' no longer routes to SETUP: one product, a flat page. (The catalog holds ~1 first aid kit, so only routing is checked.)",
+    "types": null,
+    "bundle": null
+  },
+  {
+    "query": "kit kat",
+    "group": "routing",
+    "_context": "Bare 'kit' no longer routes to SETUP: the chocolate bar, a flat Grocery page.",
+    "types": null,
+    "bundle": null,
+    "vertical_in": ["grocery"]
+  },
+  {
+    "query": "gold drop earrings for a wedding",
+    "group": "case",
+    "_context": "A non-apparel Fashion type named outright: jewelry first, the wedding is context.",
+    "types": ["jewelry"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_any_of": ["gold"]
+  },
+  {
+    "query": "waterproof hiking boots",
+    "group": "case",
+    "_context": "Footwear named outright.",
+    "types": ["footwear"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_any_of": ["waterproof", "water resistant", "water proof"]
+  },
+  {
+    "query": "dress shoes for men",
+    "group": "case",
+    "_context": "Adjacent nouns: 'dress shoes' is footwear, not a dress. Men's formal shoes; the top embedding hits are often typed unknown (shoes named only by model).",
+    "types": ["footwear"],
+    "bundle": null,
+    "gender": "men",
+    "vertical_in": ["fashion"],
+    "context_none_of": ["sneaker", "flip flop", "slipper", "sandal", "slide", "croc"]
+  },
+  {
+    "query": "gift for my wife",
+    "group": "case",
+    "_context": "No type named (requested None): any department. 'wife' states the gender.",
+    "types": null,
+    "bundle": null,
+    "gender": "women"
+  },
+  {
+    "query": "home office setup",
+    "group": "routing",
+    "_context": "A technical setup must stay technical after the SETUP_PROMPT rewrite.",
+    "types": null,
+    "bundle": "setup",
+    "component_good": "\\b(desk|chair|monitor|keyboard|mouse|webcam|headset|lamp|dock|docking station)\\b",
+    "component_bad": "\\b(dress(es)?|earrings?|sandals?|necklaces?|bikinis?)\\b"
+  },
+  {
+    "query": "gaming setup under $500",
+    "group": "routing",
+    "_context": "A technical setup with a budget; must stay technical after the SETUP_PROMPT rewrite.",
+    "types": null,
+    "bundle": "setup",
+    "component_good": "\\b(gaming|headset|keyboard|mouse|monitor|controller|chair|console)\\b",
+    "component_bad": "\\b(dress(es)?|earrings?|sandals?|necklaces?|bikinis?)\\b"
+  },
+  {
+    "query": "organic green tea bags",
+    "group": "collision",
+    "_context": "Type-vocabulary collision ('bags' -> bag). requested_types may return a Fashion type; main.py's pool gate must neutralise it. Catalog: 49 'green tea bags' titles, all Grocery.",
+    "types": null,
+    "bundle": null,
+    "vertical_in": ["grocery"]
+  },
+  {
+    "query": "ring light",
+    "group": "collision",
+    "_context": "Collision ('ring' -> jewelry). Catalog: 216 Electronics titles, 1 Fashion.",
+    "types": null,
+    "bundle": null,
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "smart ring",
+    "group": "collision",
+    "_context": "Collision ('ring' -> jewelry). Catalog: 12 'smart ring' titles, all Electronics; Fashion rings are near neighbours.",
+    "types": null,
+    "bundle": null,
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "apple watch",
+    "group": "collision",
+    "_context": "Collision ('watch' -> accessory). Catalog: 775 Fashion titles name 'apple watch' (mostly bands) vs 71 Electronics, so the absolute Electronics share is low on any code: read the before/after DELTA.",
+    "types": null,
+    "bundle": null,
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "laptop bag",
+    "group": "collision",
+    "_context": "Collision ('bag'). Catalog: 254 Electronics titles, 27 Fashion.",
+    "types": null,
+    "bundle": null,
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "camera bag",
+    "group": "collision",
+    "_context": "Collision ('bag'). Catalog: 138 Electronics titles, 5 Fashion.",
+    "types": null,
+    "bundle": null,
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "desk fan",
+    "group": "collision",
+    "_context": "Collision ('fan' -> hand fan accessory). Catalog: 74 Electronics titles.",
+    "types": null,
+    "bundle": null,
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "watch movies on my bedroom wall",
+    "group": "collision",
+    "_context": "Collision ('watch'), from the context eval set: a projector. The setup over-trigger is an open owner decision, so a flat page or a setup are both accepted.",
+    "types": null,
+    "bundle": [null, "setup"],
+    "vertical_in": ["electronics"]
+  }
+]

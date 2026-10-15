@@ -8,6 +8,7 @@ from typing import List
 from app import query_guard
 from app.config import LLM_PROVIDER, RATING_BOOST_WEIGHT, RERANK_INPUT_K
 from app.llm_client import LLMError, error_code, generate_json
+from app.product_type import FASHION_TYPES, TYPE_COLUMN
 from app.scoring import bayesian_rating, blend_score, rating_quality_tag
 
 logger = logging.getLogger(__name__)
@@ -27,12 +28,20 @@ Rank by how well each matches the user's intent. Scoring rules:
 1. HARD CONSTRAINTS gate the score CEILING, not the score itself. If the
    query names a concrete attribute (color, product type, gender, size,
    dietary requirement), a product that VIOLATES it is capped at 40 — it must
-   sit below every product that satisfies the constraint. Use the `category`
-   field (e.g. "Women's Clothing", "Men's Clothing", "Shoes") as the
-   authoritative signal for gender and product type — it is reliable even
-   when the title omits the word. Examples: "black shirt" -> a non-black or
-   non-shirt item scores <=40; "men's ..." -> any item whose category is
-   Women's scores <=40; "no chicken" -> any chicken product scores <=40.
+   sit below every product that satisfies the constraint. The `category`
+   field (e.g. "Women's Clothing", "Men's Clothing") is a department/gender
+   bucket: reliable for GENDER only, even when the title omits the word.
+   "Women's Clothing" also holds earrings, shoes and bags, so judge PRODUCT
+   TYPE from the title and, when present, the `type` field. If the shopper
+   asks for a kind of product, by name or by need ("clothes for ...", "what
+   to wear"), a product of another type is capped at 40 — and so is an
+   accessory, part or add-on FOR the named product (a case for a phone, a
+   band for a watch). For a wedding, party or gala the shopper is a guest
+   unless they say bride, groom or bridesmaid: bridal gowns, bridesmaid
+   dresses, swimwear and cover-ups do not fit and are capped at 40.
+   Examples: "black shirt" -> a non-black or non-shirt item scores <=40;
+   "men's ..." -> any item whose category is Women's scores <=40;
+   "no chicken" -> any chicken product scores <=40.
 {constraints_block}
 
 2. Among products that SATISFY the hard constraints, score the FULL 41-100
@@ -99,10 +108,22 @@ def _format_candidate(i: int, product: dict) -> str:
         rating_str = f"rating={rating}/5 confidence={confidence}"
 
     return (
-        f"  idx={i} | {title} | vertical={vertical} | category={category} "
+        f"  idx={i} | {title} | vertical={vertical} | category={category}"
+        f"{_type_field(product)} "
         f"| color={color} | material={material} | occasion={occasion} "
         f"| {price_str} | {rating_str} | {desc}"
     )
+
+
+def _type_field(product: dict) -> str:
+    """' | type=<t>' for a typed Fashion row, else '' (the line stays as it was).
+
+    'unknown' is left out on purpose: it is mostly shoes named only by model, and the
+    rubric caps other types, so 'type=unknown' would invite capping a real sandal.
+    """
+    value = product.get(TYPE_COLUMN)
+    # None (non-Fashion or un-annotated rows) and NaN (a CSV round-trip) are no type
+    return f" | type={value}" if isinstance(value, str) and value in FASHION_TYPES else ""
 
 
 def _constraints_block(constraints: List[dict] | None) -> str:

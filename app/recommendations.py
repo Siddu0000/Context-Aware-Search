@@ -9,6 +9,7 @@ import pandas as pd
 import app.config as cfg
 from app import query_guard
 from app.llm_client import LLMError, error_code, generate_json
+from app.product_type import FASHION_TYPES, TYPE_COLUMN
 from app.scoring import bayesian_rating
 from app.search import search_products
 
@@ -153,6 +154,14 @@ def _upsell(anchor: dict, exclude_titles: set) -> List[dict]:
         anchor.get("average_rating"), anchor.get("rating_number")
     )
     anchor_asin = anchor.get("parent_asin")
+    # A dress's look-alikes include the sandals and earrings photographed with it, and
+    # categ_lvl2_name ("Women's Clothing") cannot tell them apart: a typed Fashion anchor
+    # upsells only its own type. 'unknown' (mostly shoes named by model) and None (other
+    # verticals, un-annotated rows) keep the plain neighbour scope.
+    anchor_type = anchor.get(TYPE_COLUMN)
+    same_type = (
+        anchor_type if isinstance(anchor_type, str) and anchor_type in FASHION_TYPES else None
+    )
 
     # scope by neighbours: categ_lvl2_name is too coarse (all of grocery is one bucket)
     try:
@@ -168,6 +177,8 @@ def _upsell(anchor: dict, exclude_titles: set) -> List[dict]:
         if not title or title in exclude_titles:
             continue
         if anchor_asin and nb.get("parent_asin") == anchor_asin:
+            continue
+        if same_type is not None and nb.get(TYPE_COLUMN) != same_type:
             continue
         n = nb.get("rating_number")
         if n is None or float(n) < 50:

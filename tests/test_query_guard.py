@@ -258,16 +258,21 @@ def test_non_ascii_and_whitespace_reach_the_llm_byte_identical():
             assert prompts[0] == prompts[1], q  # the chat scrub leaves them alone too
 
 
-# sha256 of each translator prompt as of 2026-10-12 (NUM_INTENTS=3). A prompt edit
-# makes before/after eval numbers incomparable: if one is intended, re-baseline the
-# evals and update the digest here deliberately
+# sha256 of each translator prompt (NUM_INTENTS=3). A prompt edit makes before/after
+# eval numbers incomparable: if one is intended, re-baseline the evals and update the
+# digest here deliberately. 2026-10-14: QUERY_EXPANSION (clothing asks are garments
+# only; setting/mood words are never constraints; its setup bullet follows SETUP's
+# component rules, since the setup phrasings the regex dropped reach it), OUTFIT
+# (garments first, at most one accessory, guest rule) and SETUP (vertical-neutral,
+# keeps mood words) re-pinned for the context-aware ranking fix; the other three are
+# unchanged since 2026-10-12
 _PROMPT_SHA256 = {
-    "QUERY_EXPANSION_PROMPT": "5863b132a22fd2d834477e8d259da8697a5919507a41c434edbd485d25bfc5d4",
+    "QUERY_EXPANSION_PROMPT": "167a8685d6242b636e0f95dc1107ac66b413698052ecf3127792c03cca695460",
     "RECIPE_PROMPT": "c5e61e9cc288e6fcca13cdfdefa8fd44289b92357bf1ec055d35a4b521db3ecd",
     "HYDE_PROMPT": "9a707bf347824e8e4588f317667622e570d32359d2263f7494c1d1662678bed0",
     "HYBRID_PROMPT": "1f708ccf9f9439ff6d6485c6865f081faf678e4f86722896689cbd7052e07b57",
-    "OUTFIT_PROMPT": "0d47f5ddc5f18ca1a2373e5824bfe7f0f0e9bd9f393cc182397b9722eff6e879",
-    "SETUP_PROMPT": "2b4cb2132203e2c2edd82d04ba3a08241263dc84cc218b9aae5818fc8d0beedb",
+    "OUTFIT_PROMPT": "3feddcf43719fc460f1d54efa4ac224b7cd9dc91fe7cc2bac127ab124e963944",
+    "SETUP_PROMPT": "5b20a07c546c048d0816e9a12a96df775fd865c580f5d276a942301be8ad7f3a",
 }
 
 

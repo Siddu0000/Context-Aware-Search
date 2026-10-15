@@ -43,8 +43,9 @@ products_enriched.csv --01--> dev.cas.products (search_text, text_hash, catalog_
 | `05_compare_llms.py` | `list_models()`, `run([...])` — intent gen + rerank; `control()` = no-LLM baseline | 36 / 32 per model (keyword / context); control 0 | — |
 | `06_compare_translators.py` | query_expansion vs hyde vs hybrid, rerank off | 18 / 16 per mode (keyword / context) | — |
 | `07_calibrate_threshold.py` | calibrates `MIN_RESULT_RELEVANCE` for the VS score scale | ~28 keyword / ~26 context | — |
-| `08_llm_smoke.py` | LLM-only acceptance check: every LLM call site once with the configured model (translator + bundles, rerank, chat assistant, cross-sell, injection x3), asserting no fallback, no JSON-mode/temperature downgrade | 25 | — (**no index needed**) |
+| `08_llm_smoke.py` | LLM-only acceptance check: every LLM call site once with the configured model (translator + bundles, rerank incl. a typed clothing window under the `[product_type]` constraint, chat assistant, cross-sell, injection x3), asserting no fallback, no JSON-mode/temperature downgrade | 40 | — (**no index needed**) |
 | `09_deploy_app.py` | the Databricks App: `export_catalog()` `stage()` `app_create()` `app_grant()` `app_deploy()` `app_share()` `app_status()` `app_stop()` `app_start()` `app_costs()` | 1 tiny check per App start (+ each shopper search) | **App ≈ 0.5 DBU/h (Medium) while RUNNING**, plus the index |
+| `10_page_eval.py` | `run()`: the APP-PATH page-type eval (`eval/eval_page_types.py` through `app.main.search`, page 1 as the App shows it): product types in the top 4 / 12 of clothing asks, outfit slot order, setup components, routing, collisions keep their vertical; `mode="both"` (default) = `TYPE_AWARE_RANKING` off then on, the LLM output replayed into the on arm. Needs FastAPI (not in Cell 1) | ~70-100 per repeat (34 queries) | — (index ONLINE) |
 | `app_bundle/` | what `stage()` puts at the App's root: `app.yaml` (env), `run_app.py` (starts FastAPI + Streamlit), `requirements.txt` (exact pins, no torch) | — | — |
 | `vs_shim.py` | shared setup: switch backend, results → UC Volume, MLflow on, prints the live `llm :` | — | — |
 
@@ -190,6 +191,40 @@ tagged `valid=false`** — an LLM stage fell back. Runs with
 `vs_query_mode=vector` (stored vectors, enriched catalog) are NOT comparable
 with the September numbers (managed index, base catalog).
 
+## Measuring the type-aware ranking change (2026-10-14)
+
+The change (CLAUDE.md, "Type-aware ranking") was measured only LOCALLY (gte-small, Groq); the
+demo complaint came from the App (gte-large-en + Qwen). It needs no `01` / `02` re-run and no
+re-embed: `product_type` is derived from the titles when the catalog loads. With the index ONLINE:
+```python
+# BEFORE pulling the change (old code in the Git folder, Cells 1-2 run): the context set,
+# full pipeline, 3 times (Qwen gets no seed, so one run is noise). KEEP the three CSVs
+os.environ["EVAL_QUERIES_JSON"] = "data/eval_queries_context.json"
+for _ in range(3):
+    sys.argv = ["04", "--rerank"]; exec(open("databricks/04_run_eval.py").read())
+os.environ.pop("EVAL_QUERIES_JSON", None)
+
+# Pull the branch, dbutils.library.restartPython(), Cells 1-2 again (Cell 1 + "fastapi==0.136.3"
+# for 10). Then the same 04 x3 -- the after runs carry MLflow param prompts_sha, the before runs don't
+os.environ["EVAL_QUERIES_JSON"] = "data/eval_queries_context.json"
+for _ in range(3):
+    sys.argv = ["04", "--rerank"]; exec(open("databricks/04_run_eval.py").read())
+os.environ.pop("EVAL_QUERIES_JSON", None)
+
+# App-path page eval: knob off then on, the LLM output replayed (~70-100 calls)
+exec(open("databricks/10_page_eval.py").read()); run(mode="both")
+
+# LLM acceptance (40 calls): read the new row "reranker / type constraint (clothes ask)" --
+# WARN = Qwen scored a non-apparel row above 40 under the [product_type] constraint
+exec(open("databricks/08_llm_smoke.py").read()); run()
+```
+What to read: `fell_back` first (a degraded run measures nothing); the context-set P@10 / MRR
+means before vs after (gaps under ~0.05 P@10 on 16 queries are a tie, .claude/rules/eval.md); on
+the page eval, `mismatch_top4` / `mismatch_top12` of the clothing asks (0 / 0 locally with the
+knob on, Groq qwen3.8-27b, also on the shipped prompts) and the collisions ("tea bags", "apple watch") staying in their vertical. "off" is NOT
+the pre-change code (prompts, routing, the gender fix and `type=` are outside the knob); for a
+true before, see 10's docstring (a Git folder at the previous commit with three files copied in).
+
 ## Deploy the App (09)
 
 The App runs the same code as the notebooks — FastAPI (`app/main.py`) on a private
@@ -232,6 +267,10 @@ exec(open("databricks/02_vector_index.py").read()); pause()
 ```
 Next demo: `02 resume()` → `app_grant()` → `app_start()` (no re-deploy needed). After a
 code change: `stage()` → `app_deploy()`. `app_costs("YYYY-MM-DD")` the day after.
+After pulling the type-aware ranking change (2026-10-14): `stage()` → `app_deploy()` only -- no
+`export_catalog()`, `01` or `02` re-run. `product_type` is derived from the titles at load (adds
+~6-10 s measured on the laptop; not yet measured on the App's 2 vCPU), never stored or embedded;
+`TYPE_AWARE_RANKING` defaults to true.
 
 `app_deploy()` / `app_start()` check BEFORE starting (billed) compute: the export matches
 `dev.cas.products` row for row (else `export_catalog()`), the index is ONLINE with the same
