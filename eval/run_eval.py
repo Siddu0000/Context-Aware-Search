@@ -15,7 +15,7 @@ import pandas as pd
 import app.config as cfg
 import app.search as search_module
 import app.translator as translator_module
-from app import tracking
+from app import llm_memo, tracking
 from app.config import EVAL_QUERIES_JSON, EVAL_RESULTS_DIR, FINAL_TOP_K, RETRIEVAL_TOP_K
 from app.llm_client import active_model, param_downgrades, seed_sent, track_usage
 from app.metrics import StageTimings, approx_tokens
@@ -169,27 +169,31 @@ def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) ->
         # two arms of a guard on/off A/B must be told apart (the knob is in-process)
         "query_guard": cfg.QUERY_GUARD_ENABLED,
         "max_intents": cfg.MAX_INTENTS,
+        # Picks the general prompt (translator.general_prompt) and the outfit route, and
+        # an eval can flip it in-process: off and on arms differ by prompt AND routing
+        "outfit_bundles": cfg.OUTFIT_BUNDLES_ENABLED,
         # Same models + catalog + modes, different prompts: without these two a
         # pre/post prompt-edit pair differs only by timestamp in MLflow
         "prompts_sha": _prompts_sha(),
         "rerank_type_field": _rows_carry_type(),
+        # The rerank lines carry the row text: local rows were lowercased before
+        # 2026-10-15 (no such param then), so rerank-on runs across that date differ
+        "row_text_case": search_module.ROW_TEXT_CASE,
+        # 2026-10-27, app/device_role.py: main.py's device window, `role=` row field and
+        # device constraint. run_eval calls the reranker directly and cannot see any of
+        # them (eval_page_types does); recorded so an A/B of the knob is told apart
+        "device_role_ranking": bool(getattr(cfg, "DEVICE_ROLE_RANKING", False)),
+        # evaluate() turns the LLM reply memo off: a replayed first sample is no
+        # measurement of the model (2026-10-27; absent = older code, which had no memo)
+        "llm_memo": bool(getattr(cfg, "LLM_MEMO", False)),
     }
 
 
 def _prompts_sha() -> str:
-    """First 12 hex of sha256 over the six translator prompts, the rerank template and
-    the assistant prompt, read LIVE (the harnesses swap prompts in-process)."""
-    import hashlib
-
-    import app.assistant as assistant_module
-    import app.reranker as reranker_module
-
-    texts = [getattr(translator_module, name) for name in (
-        "QUERY_EXPANSION_PROMPT", "RECIPE_PROMPT", "HYDE_PROMPT", "HYBRID_PROMPT",
-        "OUTFIT_PROMPT", "SETUP_PROMPT")]
-    texts += [reranker_module.RERANK_PROMPT_TEMPLATE, assistant_module.ASSISTANT_PROMPT]
-    # A separator no prompt contains: moving text across a boundary changes the digest
-    return hashlib.sha256("\x00".join(texts).encode("utf-8")).hexdigest()[:12]
+    """The app's digest of every prompt (app/llm_memo.prompts_digest, read LIVE: the
+    harnesses swap prompts in-process), the one the API logs at start-up. 2026-10-27: the
+    cross-sell prompt joined it, so every value changed once with no prompt edit."""
+    return llm_memo.prompts_digest()
 
 
 def _rows_carry_type() -> bool:
@@ -210,6 +214,10 @@ def evaluate(
     translate_on: bool = True,
 ) -> Path:
     """Run the eval set; CSV always, plus one MLflow run when tracking is on."""
+    # Before the first LLM call: compare_llms / _translators / _temperature /
+    # _embeddings / _search_text and databricks/04-06 all come through here (07 goes
+    # through calibrate_relevance.run, which turns the memo off itself)
+    llm_memo.disable_for_eval()
     with tracking.eval_run(tag) as run:
         out_path, summary = _evaluate(rerank_on, tag, fields, translate_on)
         degraded = int(summary.get("n_degraded", 0))
@@ -299,6 +307,8 @@ def _evaluate(
                 "tokens_completion": usage["completion_tokens"],
                 "tokens_reasoning": usage["reasoning_tokens"],
                 "tokens_total": usage["total_tokens"],
+                # Replies replayed from the LLM memo: 0 unless something re-enabled it
+                "memo_hits": usage.get("memo_hits", 0),
                 "fell_back": ";".join(_stage_label(e) for e in stage_errors),
             }
         )
@@ -362,7 +372,18 @@ def _evaluate(
     print(f"  llm          = {llm['llm_model_used']} "
           f"(seed sent: {'yes' if llm['seed_sent'] else 'no'})")
     _print_downgrades(llm["llm_model_used"])
+    memo_hits = sum(r.get("memo_hits", 0) for r in rows)
+    summary["sum_memo_hits"] = memo_hits
+    print(f"  llm_memo     = {'on' if getattr(cfg, 'LLM_MEMO', False) else 'off'} "
+          f"({memo_hits} memo hits)")
+    if memo_hits:
+        print("  !! replies were REPLAYED from the LLM memo: those stages did not sample "
+              "the model. Set cfg.LLM_MEMO = False before quoting these numbers.")
     print(f"  query_guard  = {cfg.QUERY_GUARD_ENABLED} (max_intents={cfg.MAX_INTENTS})")
+    general = ("QUERY_EXPANSION_OUTFIT_PROMPT" if cfg.OUTFIT_BUNDLES_ENABLED
+               else "QUERY_EXPANSION_PROMPT")
+    print(f"  outfits      = {cfg.OUTFIT_BUNDLES_ENABLED} (OUTFIT_BUNDLES_ENABLED; general "
+          f"prompt {general})")
     print(f"  rerank_on    = {rerank_on}")
     print(f"  fields       = {search_module.embedded_fields() or fields}")
     print(f"  saved to     = {out_path}")

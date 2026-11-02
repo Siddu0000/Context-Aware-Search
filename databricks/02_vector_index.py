@@ -14,6 +14,7 @@ https://learn.microsoft.com/en-us/azure/databricks/ai-search/cost-management
     resume()              # index from stored vectors; polls until ONLINE
     ...                   # 03 - 08
     pause()               # delete the index; endpoint + vectors stay
+    delete_endpoint()     # optional, after pause(): the endpoint too (resume() recreates it)
     costs("2026-10-09")   # a day later: billed DBUs / $ (billing lags ~12h)
 
 Functions, not sys.argv flags: flags do not reach a script run under exec().
@@ -149,8 +150,11 @@ def status():
     if names:
         print("billing   the endpoint hosts an index: ~4 DBU/h (one STANDARD unit) "
               "whether or not anyone queries it. pause() when done.")
+    elif state == "MISSING":
+        print("billing   no endpoint: no Vector Search charge. resume() recreates it.")
     else:
-        print("billing   no index: no serving charge from 24h after the last delete.")
+        print("billing   no index: no serving charge from 24h after the last delete "
+              "(delete_endpoint() ends that now).")
 
 
 # Retrying these cannot help: bad input, missing endpoint, no permission
@@ -372,6 +376,30 @@ def pause():
     else:
         print(f"{ENDPOINT} hosts no index: it stops billing 24h after this delete.")
     print(f"Kept: {EMB}, {VEC} -> resume() rebuilds with no embedding calls.")
+    _warn_if_app_running()
+
+
+def delete_endpoint():
+    """Delete the Vector Search ENDPOINT too (pause() keeps it). An empty endpoint already
+    stops billing 24h after its last index goes; deleting it ends that tail and leaves
+    nothing behind. resume() recreates it; how much that adds to the ~48 min rebuild is
+    unmeasured (_ensure_endpoint waits up to an hour).
+    Refuses while it still hosts any index, so it can never take one down by accident."""
+    if _endpoint_state() == "MISSING":
+        print(f"{ENDPOINT} does not exist: nothing to delete.")
+        return
+    hosted = _index_names()
+    if hosted:
+        print(f"{ENDPOINT} still hosts {hosted}: run pause() first (or delete those). "
+              "Nothing deleted.")
+        return
+    vector_search.rest("DELETE", f"/endpoints/{ENDPOINT}")
+    for _ in range(60):  # asynchronous
+        if _endpoint_state() == "MISSING":
+            break
+        time.sleep(10)
+    print(f"Deleted endpoint {ENDPOINT} ({_endpoint_state()}). Kept: {EMB}, {VEC}; "
+          "resume() rebuilds endpoint + index with no embedding calls.")
     _warn_if_app_running()
 
 

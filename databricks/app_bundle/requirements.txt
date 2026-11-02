@@ -7,6 +7,8 @@
 # requirements.txt is NOT used: it pulls sentence-transformers/torch, google-genai
 # and anthropic, none of which the databricks backend imports. The App image's own
 # streamlit 1.38 / databricks-sdk 0.33 are older than anything this code ran on.
+# tests/test_databricks_bundle.py checks every pin against the local .venv and that
+# every package the App's code imports is pinned here.
 fastapi==0.136.3
 uvicorn[standard]==0.48.0
 streamlit==1.58.0
@@ -18,3 +20,10 @@ python-dotenv==1.2.2
 requests==2.34.2
 openai==2.42.0
 databricks-sdk==0.151.0
+# Transitive (fastapi -> pydantic, starlette; openai -> httpx), pinned to the .venv
+# versions (2026-10-27) so a redeploy cannot resolve newer ones than the laptop ran:
+# "If you use requirements.txt, pin exact version numbers" (.../databricks-apps/best-practices).
+# app/main.py imports pydantic directly; pydantic pins its own pydantic-core exactly.
+pydantic==2.13.4
+starlette==1.2.1
+httpx==0.28.1

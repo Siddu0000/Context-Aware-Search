@@ -5,13 +5,16 @@ import os
 import requests
 import streamlit as st
 
-import ui_cart
 from ui_common import (
+    apply_scroll,
     bundle_ui,
     escape_md,
+    heading_html,
     inject_css,
+    masthead,
+    ns,
     render_detail_page,
-    render_grid_card,
+    render_product_grid,
     set_surface,
     sget,
     sinit,
@@ -23,12 +26,7 @@ CHAT_URL = f"{BACKEND}/chat"
 
 set_surface("assistant")   # own namespace, isolated from the other surfaces
 inject_css()
-
-st.title("💬 Shopping Assistant")
-st.caption(
-    "Chat the way you would with a shop assistant — it remembers the "
-    "conversation, so you can refine your request as you go."
-)
+apply_scroll()             # one-shot: only after View, Back or Back to top
 
 _DEFAULTS = {
     "chat_history": [],          # [{role, content}] — text transcript only
@@ -40,35 +38,40 @@ _DEFAULTS = {
     "view": "search",
     "detail_index": None,
     "detail_response": None,
+    "return_card": None,
 }
 sinit(_DEFAULTS)
 
-with st.sidebar:
-    st.header("Assistant settings")
-    top_k = st.slider("Products to show", 2, 12, 6)
+
+def _clear_conversation() -> None:
+    # a fresh empty list / dict / str each time: _send appends to the history in place
+    for k in ("chat_history", "assistant_results", "assistant_query",
+              "assistant_exclusions", "assistant_meta"):
+        sset(k, type(_DEFAULTS[k])())
+
+
+def _settings():
+    # 12 = three full rows of the 4-wide grid; the API's pool size is unchanged by it
+    top_k = st.slider("Products to show", 2, 12, 12, key=ns("set_top_k"))
     show_recs = st.toggle(
         "Product recommendations",
         value=True,
-        help="Show 'frequently bought together' on a product's page.",
+        key=ns("set_recs"),
+        help="Show items that pair well with a product on its page.",
     )
     show_debug = st.toggle(
         "Developer details",
         value=False,
+        key=ns("set_dev"),
         help="Show the resolved search query, extracted constraints and raw "
         "ranking scores behind the current results.",
     )
-    st.session_state["show_dev_details"] = show_debug
-    if st.button("🗑️ Clear conversation"):
-        for k in ("chat_history", "assistant_results", "assistant_query",
-                  "assistant_exclusions", "assistant_meta"):
-            sset(k, _DEFAULTS[k])
-        st.rerun()
     st.caption("New searches replace the results; refinements update them in place.")
-    st.divider()
-    # st.page_link raises KeyError 'url_pathname' outside full page context
-    st.markdown(f"### 🛒 Cart ({ui_cart.count()})")
-    if ui_cart.count():
-        st.caption("Open **Cart** in the nav to review or check out.")
+    return top_k, show_recs, show_debug
+
+
+_, (top_k, show_recs, show_debug) = masthead(settings=_settings, title="Shopping Assistant")
+st.session_state["show_dev_details"] = show_debug
 
 
 def _send(message: str):
@@ -128,26 +131,40 @@ def _send(message: str):
 
 
 def _render_transcript():
-    if not sget("chat_history"):
-        with st.chat_message("assistant"):
-            st.markdown("Hi! What are you shopping for today?")
-    for turn in sget("chat_history"):
-        with st.chat_message(turn["role"]):
-            st.markdown(turn["content"])
+    with st.container(border=True, key="cas_chat_panel"):
+        with st.container(key="cas_chat_head", horizontal=True,
+                          vertical_alignment="center", horizontal_alignment="distribute"):
+            st.html('<div class="cas-panel-title">Chat</div>', width="stretch")
+            if sget("chat_history") or sget("assistant_results"):
+                st.button("Clear conversation", key=ns("clear_chat"), type="tertiary",
+                          icon=":material/delete:", on_click=_clear_conversation)
+        st.caption(
+            "Chat the way you would with a shop assistant — it remembers the "
+            "conversation, so you can refine your request as you go."
+        )
+        if not sget("chat_history"):
+            with st.chat_message("assistant"):
+                st.markdown("Hi! What are you shopping for today?")
+        for turn in sget("chat_history"):
+            with st.chat_message(turn["role"]):
+                # Shopper text and model text: literal, line by line (a reply's line
+                # breaks survive as markdown hard breaks; nothing in a line can become a
+                # link)
+                lines = str(turn["content"] or "").splitlines()
+                st.markdown("  \n".join(escape_md(line) for line in lines))
 
 
 def _render_results_panel():
     results = sget("assistant_results")
     if not results:
         return
-    st.divider()
     n = len(results)
     excl = sget("assistant_exclusions")
     meta_now = sget("assistant_meta") or {}
     bundle_type = meta_now.get("bundle_type")
     bui = bundle_ui(bundle_type)
     # bundles render one card per component with option tabs, as on AI Search
-    st.subheader(f"{bui['heading']} ({n})" if bui else f"🛍️ Current results ({n})")
+    st.html(heading_html(f"{bui['heading']} ({n})" if bui else f"Current results ({n})"))
     if bui:
         st.caption(bui["blurb"])
     bits = []
@@ -184,26 +201,18 @@ def _render_results_panel():
             continue
         st.caption(f"⚠️ {err.get('stage')} unavailable (error {code})")
 
-    cols_per_row = 3
-    for row_start in range(0, len(results), cols_per_row):
-        row = results[row_start : row_start + cols_per_row]
-        cols = st.columns(cols_per_row)
-        for col, (offset, product) in zip(cols, enumerate(row)):
-            with col:
-                render_grid_card(
-                    product, rank=row_start + offset + 1, key_ns="chatpanel",
-                    bundle_type=bundle_type,
-                )
+    render_product_grid(results, key_ns="chatpanel", bundle_type=bundle_type,
+                        related=show_recs)
 
 
 if sget("view") == "detail" and sget("detail_index") is not None:
-    if st.button("⬅ Back to the conversation"):
-        sset("view", "search")
-        st.rerun()
-    render_detail_page(show_recs=show_recs, show_back_button=False)
+    # Back lands on the card that opened the product (scroll target), as on AI Search
+    render_detail_page(show_recs=show_recs, back_label="Back to the conversation")
 else:
     _render_transcript()
     _render_results_panel()
+    # Pinned to the bottom of the page (an inline input would drop the stick-to-bottom
+    # container the Back-to-card hold works around: a visible-browser pass first)
     if prompt := st.chat_input("Ask me anything about what you're shopping for…"):
         with st.spinner("Looking through the catalogue…"):
             _send(prompt)

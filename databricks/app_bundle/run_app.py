@@ -23,6 +23,30 @@ import time
 
 BACKEND_PORT = "8001"
 
+# The repo's .streamlit/config.toml as CLI flags: 09 stages only .py files and
+# data/sponsored.json, so the App never sees that folder. Without base=light the theme
+# follows the viewer's OS and the shop cards sit on a dark page; toolbarMode=minimal
+# hides "Deploy". Keep these in step with .streamlit/config.toml (the colours are
+# ui_common.SKIN's: marketplace-style layout 2026-10-19, eBay-style palette 2026-10-26;
+# tests/test_ui.py checks all three).
+STREAMLIT_THEME_FLAGS = [
+    "--theme.base", "light",
+    "--theme.primaryColor", "#0968F6",
+    "--theme.backgroundColor", "#FFFFFF",
+    "--theme.secondaryBackgroundColor", "#F7F7F7",
+    "--theme.textColor", "#191919",
+    "--theme.borderColor", "#8F8F8F",
+    "--theme.linkColor", "#0968F6",
+    "--theme.linkUnderline", "false",
+    "--theme.orangeColor", "#191919",   # the rail's stars and the Assistant's bot avatar
+    "--theme.baseRadius", "0.25rem",
+    "--theme.buttonRadius", "0.5rem",
+    "--theme.font", "Arial, Helvetica, sans-serif",
+    "--theme.showWidgetBorder", "true",
+    "--theme.sidebar.backgroundColor", "#FFFFFF",   # config.toml's [theme.sidebar] (= SKIN page)
+    "--client.toolbarMode", "minimal",
+]
+
 
 def _child_env() -> dict:
     env = dict(os.environ)
@@ -68,7 +92,8 @@ def main() -> int:
     # No access log above and none here: request URLs carry the shopper's query
     procs.append(subprocess.Popen([sys.executable, "-m", "streamlit", "run", "ui.py",
                                    "--server.port", port, "--server.address", "0.0.0.0",
-                                   "--server.headless", "true"], env=env))
+                                   "--server.headless", "true",
+                                   *STREAMLIT_THEME_FLAGS], env=env))
     while not stopping and all(p.poll() is None for p in procs):
         time.sleep(0.5)
     if stopping:

@@ -8,10 +8,14 @@ import pandas as pd
 
 import app.config as cfg
 from app import query_guard
-from app.llm_client import LLMError, error_code, generate_json
+from app.catalog_taxonomy import ROLE_COLUMN, WATCH_COLUMN
+from app.page_cache import canonical_query
+from app.llm_client import (
+    LLMError, accept_reply, error_code, generate_json, memo_stage, reject_reply,
+)
 from app.product_type import FASHION_TYPES, TYPE_COLUMN
 from app.scoring import bayesian_rating
-from app.search import search_products
+from app.search import search_products, title_key
 
 logger = logging.getLogger(__name__)
 
@@ -58,17 +62,27 @@ def _complementary_phrases(
     query: str, anchor: dict, k: int, errors: Optional[list] = None
 ) -> List[str]:
     """Ask the LLM for complementary product phrases. [] on any failure (logged to errors)."""
-    prompt = COMPLEMENTARY_PROMPT.format(
-        # JSON literal (quotes included): a quote in the query can't escape the data
-        query=json.dumps(query, ensure_ascii=False),
-        title=anchor.get("Product_title", ""),
-        category=anchor.get("categ_lvl2_name") or anchor.get("bsns_vrtcl_name") or "",
-        k=k,
-    )
+    def render(text) -> str:
+        return COMPLEMENTARY_PROMPT.format(
+            # JSON literal (quotes included): a quote in the query can't escape the data
+            query=json.dumps(text, ensure_ascii=False),
+            title=anchor.get("Product_title", ""),
+            category=anchor.get("categ_lvl2_name") or anchor.get("bsns_vrtcl_name") or "",
+            k=k,
+        )
+
     try:
-        parsed = generate_json(prompt, temperature=0.3)
+        # Memo key on the canonical query, as the /product cache key folds it
+        with memo_stage("cross_sell", key_text=render(canonical_query(query))):
+            parsed = generate_json(render(query), temperature=0.3)
+        if not isinstance(parsed, dict):
+            # A bare array, string, number or null raised AttributeError at .get() (the
+            # same fallback, labelled with the class). Not reinterpreted as phrases: the
+            # prompt asks for an object. The type only (safety.md)
+            raise LLMError(f"Bad shape: reply is {type(parsed).__name__}")
         phrases = _as_phrases(parsed.get("complementary"))[:k]
     except Exception as e:  # noqa: BLE001 — best-effort, the embedding fallback covers it
+        reject_reply("cross_sell")
         detail = query_guard.error_detail(e)
         if errors is not None:
             errors.append({"stage": "cross_sell", "code": error_code(e), "detail": detail})
@@ -80,6 +94,15 @@ def _complementary_phrases(
     # payload can't put a link, a chat token or our prompt there
     dropped: list = []
     kept = query_guard.screen_phrases(phrases, COMPLEMENTARY_PROMPT, query, dropped, cap=False)
+    if kept:
+        # Used: the LLM memo may replay it, so "Pairs well with this" no longer changes on
+        # every product-page open
+        accept_reply("cross_sell", query)
+    else:
+        # Nothing usable (an empty list, or every phrase screened out): never pinned, and
+        # a stored reply today's guard refuses whole is forgotten, so the next open asks
+        # again instead of showing the look-alike fallback for good
+        reject_reply("cross_sell")
     if dropped:
         # 'partial', as for the translator: the screened phrases ARE the model's answer
         detail = query_guard.describe((), dropped)
@@ -89,10 +112,23 @@ def _complementary_phrases(
     return kept
 
 
+def _search_failed(what: str, e: Exception, errors: Optional[list]) -> None:
+    """Record a catalog search that failed inside recommend(). A blocking error, not just
+    a log line: the strip it emptied (no upsell, a look-alike fallback, no cross-sell)
+    otherwise reads as a clean result, and /product's cache and the /search page-1 pin
+    served it until a restart. The type only: the text searched is a title or model text
+    that can echo the shopper's query (safety.md)."""
+    detail = f"{what} search failed ({type(e).__name__})"
+    if errors is not None:
+        errors.append({"stage": "recommend", "code": error_code(e), "detail": detail})
+    logger.warning("%s.", detail)
+
+
 def _ground_phrases(
-    phrases: List[str], exclude_titles: set, max_items: int
+    phrases: List[str], exclude_titles: set, max_items: int, errors: Optional[list] = None
 ) -> List[dict]:
-    """Map each LLM phrase to a real catalog product via embedding retrieval."""
+    """Map each LLM phrase to a real catalog product via embedding retrieval.
+    `exclude_titles` holds search.title_key()s, like every set of titles here."""
     chosen: List[dict] = []
     seen = set(exclude_titles)
     for phrase in phrases:
@@ -102,10 +138,10 @@ def _ground_phrases(
             hits = search_products([phrase], top_k=5)
         except Exception as e:
             # Not the phrase: it is model text that can echo the shopper's query
-            logger.warning("Grounding search failed (%s).", type(e).__name__)
+            _search_failed("Grounding", e, errors)
             continue
         for hit in hits:
-            title = hit.get("Product_title", "")
+            title = title_key(hit.get("Product_title"))
             if title and title not in seen:
                 item = _clean_row(dict(hit))
                 item["recommend_type"] = "complementary"
@@ -117,7 +153,7 @@ def _ground_phrases(
 
 
 def _embedding_fallback(
-    anchor: dict, exclude_titles: set, max_items: int
+    anchor: dict, exclude_titles: set, max_items: int, errors: Optional[list] = None
 ) -> List[dict]:
     """No-LLM fallback: 'more like this' neighbours, not true complements."""
     anchor_title = anchor.get("Product_title", "")
@@ -126,14 +162,15 @@ def _embedding_fallback(
     try:
         hits = search_products([anchor_title], top_k=max_items + 5)
     except Exception as e:
-        logger.warning("Embedding-fallback search failed (%s).", repr(e))
+        _search_failed("Embedding-fallback", e, errors)
         return []
     out: List[dict] = []
     seen = set(exclude_titles)
     for hit in hits:
         if len(out) >= max_items:
             break
-        title = hit.get("Product_title", "")
+        # by key: the anchor's own listing under another casing is no "similar item"
+        title = title_key(hit.get("Product_title"))
         if title and title not in seen:
             item = _clean_row(dict(hit))
             item["recommend_type"] = "similar"
@@ -143,7 +180,13 @@ def _embedding_fallback(
     return out
 
 
-def _upsell(anchor: dict, exclude_titles: set) -> List[dict]:
+def _kind(value) -> Optional[str]:
+    """A load-time role / watch_kind that names a kind of item, else None ('other' is a
+    watch-related row no rule could place: no narrower than none)."""
+    return value if isinstance(value, str) and value and value != "other" else None
+
+
+def _upsell(anchor: dict, exclude_titles: set, errors: Optional[list] = None) -> List[dict]:
     """Better-reviewed version of the same kind of item; empty if none beats it."""
     anchor_title = anchor.get("Product_title", "")
     if not anchor_title:
@@ -162,23 +205,35 @@ def _upsell(anchor: dict, exclude_titles: set) -> List[dict]:
     same_type = (
         anchor_type if isinstance(anchor_type, str) and anchor_type in FASHION_TYPES else None
     )
+    # The same for the other verticals since the 2026-10-27 load-time columns: a phone's
+    # look-alikes include its batteries, cables, mounts and cases (104 of 201 phone
+    # upsells on the enriched catalog had another role or watch_kind) and a wristwatch's
+    # its bands. An anchor with an item_role (Electronics device / accessory / ..., Grocery
+    # food / non_food) upsells only that role, a watch-related one only its watch_kind;
+    # None keeps the plain neighbour scope, as 'unknown' does above
+    same_role = _kind(anchor.get(ROLE_COLUMN))
+    same_watch = _kind(anchor.get(WATCH_COLUMN))
 
     # scope by neighbours: categ_lvl2_name is too coarse (all of grocery is one bucket)
     try:
         neighbours = search_products([anchor_title], top_k=30)
     except Exception as e:
-        logger.warning("Upsell neighbour search failed (%s).", repr(e))
+        _search_failed("Upsell neighbour", e, errors)
         return []
 
     best: Optional[dict] = None
     best_bayes = anchor_bayes
     for nb in neighbours:
-        title = nb.get("Product_title", "")
+        title = title_key(nb.get("Product_title"))
         if not title or title in exclude_titles:
             continue
         if anchor_asin and nb.get("parent_asin") == anchor_asin:
             continue
         if same_type is not None and nb.get(TYPE_COLUMN) != same_type:
+            continue
+        if same_role is not None and nb.get(ROLE_COLUMN) != same_role:
+            continue
+        if same_watch is not None and nb.get(WATCH_COLUMN) != same_watch:
             continue
         n = nb.get("rating_number")
         if n is None or float(n) < 50:
@@ -227,21 +282,21 @@ def recommend(
         return empty
 
     anchor = results[0]
-    on_page = {r.get("Product_title", "") for r in results}
+    on_page = {title_key(r.get("Product_title")) for r in results}
 
     try:
         cross: List[dict] = []
         source = None
         if use_llm:
             phrases = _complementary_phrases(query, anchor, max_cross_sell, errors)
-            cross = _ground_phrases(phrases, on_page, max_cross_sell)
+            cross = _ground_phrases(phrases, on_page, max_cross_sell, errors)
             source = "llm" if cross else None
         if not cross:
-            cross = _embedding_fallback(anchor, on_page, max_cross_sell)
+            cross = _embedding_fallback(anchor, on_page, max_cross_sell, errors)
             source = "fallback" if cross else None
 
-        exclude = on_page | {c.get("Product_title", "") for c in cross}
-        up = _upsell(anchor, exclude)
+        exclude = on_page | {title_key(c.get("Product_title")) for c in cross}
+        up = _upsell(anchor, exclude, errors)
         return {"cross_sell": cross, "upsell": up, "cross_sell_source": source, "errors": errors}
     except Exception as e:
         detail = query_guard.error_detail(e)

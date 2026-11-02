@@ -1,0 +1,81 @@
+{
+  "_comment": [
+    "Local API logging: uvicorn app.main:app --port 8000 --log-config uvicorn_log.json (run from the repo root).",
+    "Why: the terminal scrollback was the only record of a demo, so a failed LLM stage (Translator failed / Rerank failed) could not be traced afterwards.",
+    "app.*, uvicorn.error and the root logger -> console + logs/api.log (rotating, 5 MB x 3; logs/ is gitignored).",
+    "The file handler is app.log_handlers.SharedRotatingFileHandler: with --reload/--workers, or two servers run from the repo root, several processes hold logs/api.log, and on Windows the stock RotatingFileHandler then lost every record past 5 MB (it cannot rename a file another process has open). This one keeps appending and retries the rotation a minute later.",
+    "uvicorn.access -> console ONLY: its request lines carry the query in the URL, and safety.md keeps query text out of log files.",
+    "The make_logs_dir 'filter' is os.makedirs(logs, exist_ok=True): dictConfig builds filters before handlers, so a fresh clone (no logs/) still starts. No handler uses it.",
+    "Console output looks as before: uvicorn lines in uvicorn's own format, app lines in the format app/main.py's basicConfig used (a no-op once this config has set root handlers)."
+  ],
+  "version": 1,
+  "disable_existing_loggers": false,
+  "filters": {
+    "make_logs_dir": {
+      "()": "os.makedirs",
+      "name": "logs",
+      "exist_ok": true
+    }
+  },
+  "formatters": {
+    "uvicorn": {
+      "()": "uvicorn.logging.DefaultFormatter",
+      "fmt": "%(levelprefix)s %(message)s",
+      "use_colors": null
+    },
+    "access": {
+      "()": "uvicorn.logging.AccessFormatter",
+      "fmt": "%(levelprefix)s %(client_addr)s - \"%(request_line)s\" %(status_code)s"
+    },
+    "plain": {
+      "format": "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    }
+  },
+  "handlers": {
+    "uvicorn_console": {
+      "class": "logging.StreamHandler",
+      "formatter": "uvicorn",
+      "stream": "ext://sys.stderr"
+    },
+    "access_console": {
+      "class": "logging.StreamHandler",
+      "formatter": "access",
+      "stream": "ext://sys.stdout"
+    },
+    "console": {
+      "class": "logging.StreamHandler",
+      "formatter": "plain",
+      "stream": "ext://sys.stderr"
+    },
+    "file": {
+      "class": "app.log_handlers.SharedRotatingFileHandler",
+      "formatter": "plain",
+      "filename": "logs/api.log",
+      "maxBytes": 5242880,
+      "backupCount": 3,
+      "encoding": "utf-8"
+    }
+  },
+  "loggers": {
+    "uvicorn": {
+      "handlers": ["uvicorn_console", "file"],
+      "level": "INFO",
+      "propagate": false
+    },
+    "uvicorn.error": {
+      "level": "INFO"
+    },
+    "uvicorn.access": {
+      "handlers": ["access_console"],
+      "level": "INFO",
+      "propagate": false
+    },
+    "app": {
+      "level": "INFO"
+    }
+  },
+  "root": {
+    "handlers": ["console", "file"],
+    "level": "INFO"
+  }
+}

@@ -6,7 +6,7 @@ sentence-transformers>=2.7.0
 scikit-learn>=1.3.0
 python-dotenv>=1.0.0
 google-genai>=0.3.0
-streamlit>=1.32.0
+streamlit==1.58.*  # pinned: the UI's CSS hooks and scroll fix rely on 1.58 internals (stMain, st-key-*)
 requests>=2.31.0
 
 openai>=1.106.0,<3  # 1.106: callable api_key (OPENAI_AUTH=databricks); 3.x untested; tested on 2.42.0

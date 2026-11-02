@@ -21,6 +21,7 @@ import logging
 import statistics
 
 import app.config as cfg
+from app import llm_memo
 from app.config import RETRIEVAL_TOP_K
 from app.llm_client import configured_model
 from app.search import best_score, search_products
@@ -90,12 +91,14 @@ def run(translate: bool = False, margin: float = 0.02, queries: str | None = Non
     path = cfg.eval_queries_path(queries)
     with open(path, "r", encoding="utf-8") as f:
         in_domain = [q["query"] for q in json.load(f)]
+    # The floor is calibrated on the translator's own wording: fresh samples, not replays
+    memo = llm_memo.disable_for_eval()
 
     backend = (cfg.SEARCH_BACKEND or "local").lower()
     # The floor depends on the translator's wording, so the result is per-LLM
     llm = (configured_model() or cfg.LLM_PROVIDER) if translate else "off"
     print(f"\n=== MIN_RESULT_RELEVANCE calibration ===")
-    print(f"backend={backend}  translate={translate}  llm={llm}  "
+    print(f"backend={backend}  translate={translate}  llm={llm}  llm_memo={memo}  "
           f"current floor={cfg.MIN_RESULT_RELEVANCE}  set={path.name}\n")
 
     degraded: dict = {}
@@ -142,7 +145,7 @@ def run(translate: bool = False, margin: float = 0.02, queries: str | None = Non
         print(f"  {s:.3f}  {q}")
     # in_domain / out_of_catalog hold clean scores only; degraded maps query -> stage
     return {"recommended": floor, "in_domain": ins, "out_of_catalog": outs,
-            "gibberish": gib, "degraded": degraded, "llm": llm}
+            "gibberish": gib, "degraded": degraded, "llm": llm, "llm_memo": memo}
 
 
 def main():

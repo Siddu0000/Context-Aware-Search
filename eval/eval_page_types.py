@@ -14,7 +14,10 @@ rerank on, sponsored on, no cross-sell -- and scores the page a shopper would se
                served-page P@4 / P@12 when an entry has relevance criteria
   bundle    -> routing (bundle_type), components that look right or wrong in the
                intents and in the slot primaries; for an outfit also garment slots
-               before the first non-garment slot and a mixed-gender flag
+               before the first non-garment slot and a mixed-gender flag (outfit
+               bundles exist only with OUTFIT_BUNDLES_ENABLED=true; off, the default
+               since 2026-10-15, the outfit rows are flat apparel pages, and with it
+               on they accept an outfit too: expected_bundles)
 
 The queries live in data/page_type_queries.json; each entry documents itself in
 `_context`. Keys: query, group, types (expected FASHION_TYPES, or null = not scored),
@@ -22,7 +25,10 @@ bundle (expected bundle_type, or a list of acceptable ones), vertical_in /
 vertical_not, context_none_of / context_any_of (title terms, word-bounded, case-
 insensitive, a space also matches a hyphen, a trailing s/es plural allowed),
 component_bad / component_good (word-bounded regexes), gender (women|men: share of
-the opposite gender served), relevance (eval.run_eval.build_relevance_set criteria).
+the opposite gender served), relevance (eval.run_eval.build_relevance_set criteria),
+core (2026-10-27: a device family of app/device_role.FAMILIES -- the share of the top 4 /
+top 12 that IS that device, by device_role.is_core on catalog_taxonomy's columns, derived
+from the title when a row lacks them, so a pre-change worktree is scored the same way).
 
 It ALSO runs on the pre-change code (a HEAD worktree with only this file, its JSON
 and app/product_type.py copied in): rows without `product_type` are typed here with
@@ -41,7 +47,7 @@ Every run starts from an EMPTY page_cache: its key ignores repeats (and, before 
 change, the knob), so repeat 2 would otherwise serve repeat 1's pool.
 
 Cost: 2 LLM calls per query run (translate + rerank); in `both` the second arm adds
-only the rerank calls it cannot replay. 34 queries x 3 repeats ~ 200-300 calls.
+only the rerank calls it cannot replay. 48 queries x 3 repeats ~ 290-430 calls.
 
 Usage:
     python -m eval.eval_page_types                          # --mode both, 1 repeat
@@ -87,15 +93,17 @@ MODES = ("on", "off", "both")
 _ABSENT = object()
 
 COLUMNS = [
-    "arm", "knob", "repeat", "group", "query", "requested",
+    "arm", "knob", "outfit_bundles", "row_text_case", "rejects_after_tail", "variant_collapse",
+    "device_role_ranking", "prompts_sha", "repeat", "group", "query", "requested",
     "bundle_expected", "bundle_type", "bundle_ok", "no_match", "n_results", "types_page",
     "mismatch_top4", "mismatch_top12", "first_mismatch", "unknown_top12",
     "context_fit_top4", "context_fit_top12", "vertical_top4", "vertical_top12",
     "wrong_gender_top4", "wrong_gender_top12", "P@4", "P@12",
+    "core_top4", "core_top12", "first_core", "match_weak",
     "garment_slots_first", "first_non_garment_slot", "mixed_gender", "slot_intent_types",
     "intents_bad", "intents_good", "items_bad", "items_good",
     "n_sponsored", "rerank_succeeded", "intents", "constraints",
-    "fell_back", "partial", "memo",
+    "fell_back", "partial", "memo", "llm_memo", "memo_hits",
     "llm_calls", "tokens_total", "ms_translate", "ms_retrieve", "ms_rerank", "ms_total",
 ]
 
@@ -115,12 +123,16 @@ class QuerySpec:
     good_re: Optional[re.Pattern] = None
     gender: Optional[str] = None
     relevance: Optional[dict] = None
+    core: Optional[str] = None
     raw: dict = field(default_factory=dict)
 
 
 _KEYS = {"query", "_context", "group", "types", "bundle", "vertical_in", "vertical_not",
          "context_none_of", "context_any_of", "component_bad", "component_good", "gender",
-         "relevance"}
+         "relevance", "core"}
+# app/device_role.FAMILIES (owner call D2, 2026-10-27), spelled out so a spec is validated
+# in a worktree from before the module existed too
+_DEVICE_FAMILIES = ("watch", "laptop", "headphones", "phone", "tablet", "camera", "speaker")
 _BUNDLES = (None, "recipe", "outfit", "setup")
 
 
@@ -151,6 +163,9 @@ def prepare(entry: dict) -> QuerySpec:
     gender = entry.get("gender")
     if gender not in (None, "women", "men"):
         raise ValueError(f"{entry['query']!r}: gender must be women or men")
+    core = entry.get("core")
+    if core is not None and core not in _DEVICE_FAMILIES:
+        raise ValueError(f"{entry['query']!r}: core must be one of {_DEVICE_FAMILIES}")
     regex = {k: re.compile(entry[k], re.IGNORECASE) if entry.get(k) else None
              for k in ("component_bad", "component_good")}
     return QuerySpec(
@@ -166,6 +181,7 @@ def prepare(entry: dict) -> QuerySpec:
         good_re=regex["component_good"],
         gender=gender,
         relevance=entry.get("relevance"),
+        core=core,
         raw=entry,
     )
 
@@ -201,8 +217,8 @@ _MEN_RE = re.compile(r"\b(men|men's|mens|man|boys?|gentlemen)\b")
 
 def row_type(row: dict) -> Optional[str]:
     """The row's product type: its own product_type when annotated, else the title's
-    (Fashion only), else None. Lowercase local rows and Title-case Databricks rows
-    type the same (classify_title and is_fashion are case-insensitive)."""
+    (Fashion only), else None. Lowercase rows (the local shape until 2026-10-15) and
+    Title-case rows type the same (classify_title and is_fashion are case-insensitive)."""
     value = row.get(TYPE_COLUMN)
     if isinstance(value, str) and value:
         return value
@@ -251,6 +267,50 @@ def _top(flags) -> tuple:
     return _share(flags[:HEAD_K]), _share(flags[:PAGE_SIZE])
 
 
+_TAXONOMY_COLUMNS = ("watch_kind", "item_category", "item_role")
+
+
+def core_flags(results: list, family: str) -> Optional[list]:
+    """[the row IS a `family` device] for a page, by app/device_role.is_core (2026-10-27).
+    A row without catalog_taxonomy's load-time columns (a pre-change worktree's rows)
+    gets them derived from its vertical and title first, so before and after are scored
+    by the same ruler. None when the code has no device_role / catalog_taxonomy."""
+    try:
+        import pandas as pd
+
+        from app import catalog_taxonomy, device_role
+    except ImportError:
+        return None
+    rows = [dict(r) for r in results]
+    missing = [i for i, r in enumerate(rows) if not all(c in r for c in _TAXONOMY_COLUMNS)]
+    if missing:
+        frame = pd.DataFrame([{"bsns_vrtcl_name": rows[i].get("bsns_vrtcl_name"),
+                               "Product_title": rows[i].get("Product_title")} for i in missing])
+        catalog_taxonomy.annotate_catalog(frame)
+        for i, derived in zip(missing, frame.to_dict(orient="records")):
+            for column in _TAXONOMY_COLUMNS:
+                rows[i].setdefault(column, derived[column])
+    return [device_role.is_core(r, family) for r in rows]
+
+
+def expected_bundles(spec: QuerySpec) -> tuple:
+    """The bundle_types a row accepts under the CURRENT outfit knob.
+
+    The JSON records the default (OUTFIT_BUNDLES_ENABLED=false), where an outfit-worded
+    clothing row is a flat page. With the knob on, the same query routes to 'outfit' by
+    regex (app/translator.detect_bundle_type, which reads the knob at call time), so
+    'outfit' is accepted too: else the documented revert arm scored every outfit row
+    bundle_ok=False and listed it as misrouted (Oct 15 review). The JSON's own value
+    stays accepted (a translator failure is flat with either knob value). Code without
+    the knob (a HEAD worktree) keeps the JSON's: its outfit route is what is measured."""
+    if not getattr(cfg, "OUTFIT_BUNDLES_ENABLED", False) or "outfit" in spec.bundles:
+        return spec.bundles
+    from app.translator import detect_bundle_type   # lazy: only with the knob present
+    if detect_bundle_type(spec.query) == "outfit":
+        return spec.bundles + ("outfit",)
+    return spec.bundles
+
+
 def page_metrics(spec: QuerySpec, payload: dict, relevant=None) -> dict:
     """Score one served page. Flat-page type metrics only for a flat page with
     expected types; outfit metrics only for an outfit; the rest wherever their spec
@@ -261,7 +321,7 @@ def page_metrics(spec: QuerySpec, payload: dict, relevant=None) -> dict:
     intents = [str(i) for i in payload.get("interpreted_as") or []]
     m = {
         "bundle_type": bundle or "",
-        "bundle_ok": bundle in spec.bundles,
+        "bundle_ok": bundle in expected_bundles(spec),
         "no_match": bool(payload.get("no_match")),
         "n_results": len(results),
         "types_page": ",".join(type_label(r) for r in results),
@@ -292,6 +352,15 @@ def page_metrics(spec: QuerySpec, payload: dict, relevant=None) -> dict:
     if relevant:
         m["P@4"] = round(precision_at_k(titles, relevant, HEAD_K), 3)
         m["P@12"] = round(precision_at_k(titles, relevant, PAGE_SIZE), 3)
+    if spec.core and not bundle:
+        flags = core_flags(results, spec.core)
+        if flags is not None:
+            m["core_top4"], m["core_top12"] = _top(flags)
+            # 0 = no core row on the page
+            m["first_core"] = flags.index(True) + 1 if True in flags else 0
+    quality = payload.get("match_quality")
+    if isinstance(quality, dict) and "weak" in quality:
+        m["match_weak"] = bool(quality["weak"])
     if bundle == "outfit":
         kinds = [row_type(r) for r in results]
         lead = next((i for i, k in enumerate(kinds) if k != "apparel"), len(kinds))
@@ -444,8 +513,8 @@ def _relevance_sets(specs, catalog) -> dict:
     need = [s for s in specs if s.relevance]
     if not need:
         return {}
-    # The served frame, never a fresh read_csv: the local backend lowercases titles
-    # in place, and relevance is matched on the exact title (eval.md)
+    # The served frame, never a fresh read_csv: relevance is matched on the titles
+    # as served (the local backend lowercased them in place until 2026-10-15; eval.md)
     from eval.run_eval import build_relevance_set
 
     if catalog is None:
@@ -459,6 +528,22 @@ def _relevance_sets(specs, catalog) -> dict:
             print(f"[warn] no relevant products for {s.query!r}: P@k left blank")
         out[s.query] = rel or None
     return out
+
+
+def _row_text_case() -> str:
+    import app.search as search_module
+
+    return getattr(search_module, "ROW_TEXT_CASE", "absent")
+
+
+def _prompts_sha() -> str:
+    """run_eval's digest of every prompt (the QE and rerank prompts changed 2026-10-19),
+    or "absent" in a tree from before it existed (the selftest travels to worktrees)."""
+    try:
+        from eval.run_eval import _prompts_sha as digest
+    except ImportError:
+        return "absent"
+    return digest()
 
 
 def _run_one(main, spec, arm, knob, rep, kwargs, memo, relevant) -> dict:
@@ -480,11 +565,29 @@ def _run_one(main, spec, arm, knob, rep, kwargs, memo, relevant) -> dict:
     requested = requested_types(spec.query)
     row = {
         "arm": arm, "knob": "absent" if knob is None else knob, "repeat": rep,
+        # Outside the arms: it picks the general prompt and routing, so both arms share it
+        "outfit_bundles": getattr(cfg, "OUTFIT_BUNDLES_ENABLED", "absent"),
+        # The case of the row text the reranker reads; "absent" = code from before
+        # 2026-10-15, whose local rows were lowercased (app/search.py ROW_TEXT_CASE)
+        "row_text_case": _row_text_case(),
+        # Display knobs of 2026-10-19 (owner calls 1 and 2): both change page 1 as
+        # served -- the band order and the cards (total_results counts cards) -- so an
+        # A/B of either, or a before/after pair, must say which page it scored
+        "rejects_after_tail": getattr(cfg, "REJECTS_AFTER_TAIL", "absent"),
+        "variant_collapse": getattr(cfg, "VARIANT_COLLAPSE", "absent"),
+        # 2026-10-27: device asks order the window, display, sorts and ads, and change the
+        # reranker's inputs (a device text, a ` | role=` field); inside the arm's knob
+        "device_role_ranking": getattr(cfg, "DEVICE_ROLE_RANKING", "absent"),
+        "prompts_sha": _prompts_sha(),
         "group": spec.group, "query": spec.query,
         "requested": ",".join(sorted(requested)) if requested else "",
-        "bundle_expected": "|".join(b or "flat" for b in spec.bundles),
+        "bundle_expected": "|".join(b or "flat" for b in expected_bundles(spec)),
         "fell_back": fell_back, "partial": partial,
         "memo": ";".join(sorted(memo.reused)),
+        # The app's LLM reply memo (2026-10-27), which run() turns off; not the `memo`
+        # column, which is this script's own replay of the first arm
+        "llm_memo": getattr(cfg, "LLM_MEMO", "absent"),
+        "memo_hits": usage.get("memo_hits", 0),
         "llm_calls": usage["calls"], "tokens_total": usage["total_tokens"],
     }
     if failure is None:
@@ -502,6 +605,7 @@ def _print_row(row: dict) -> None:
     bits = [f"{row['arm']:4s} r{row['repeat']} {row['query'][:44]!r:47s}"]
     for label, col in (("mm4", "mismatch_top4"), ("mm12", "mismatch_top12"),
                        ("ctx4", "context_fit_top4"), ("vert4", "vertical_top4"),
+                       ("core4", "core_top4"), ("core12", "core_top12"),
                        ("P@12", "P@12"), ("garm1st", "garment_slots_first"),
                        ("bad", "items_bad"), ("good", "items_good")):
         if row.get(col) not in (None, ""):
@@ -545,6 +649,10 @@ def run(mode="both", repeats=1, rerank=True, queries=None, relevance=None,
     (no catalog load); 10_page_eval.py passes out_dir (the UC Volume) and a tag."""
     import app.main as main
 
+    # The app's LLM reply memo (2026-10-27) would replay the first sample of every
+    # request: each arm and repeat must sample the model. A plain assignment, not
+    # app.llm_memo, so this file still runs in a worktree from before the memo existed
+    cfg.LLM_MEMO = False
     specs = _specs(queries, relevance)
     plan = arms(mode)
     mode_label = "head" if plan[0][0] == "head" else mode
@@ -604,6 +712,7 @@ _SUMMARY_COLS = (
     ("ctx4", "context_fit_top4"), ("ctx12", "context_fit_top12"),
     ("vert4", "vertical_top4"), ("vert12", "vertical_top12"),
     ("wrongG12", "wrong_gender_top12"), ("P@4", "P@4"), ("P@12", "P@12"),
+    ("core4", "core_top4"), ("core12", "core_top12"), ("weak", "match_weak"),
     ("garm1st", "garment_slots_first"), ("int_bad", "intents_bad"),
     ("int_good", "intents_good"), ("item_bad", "items_bad"), ("item_good", "items_good"),
 )
@@ -687,7 +796,20 @@ def summarise(rows, specs, rerank, out_path) -> dict:
                                  if "absent" in knobs.values() else
                                  ", ".join(f"{a}: TYPE_AWARE_RANKING={k}"
                                            for a, k in knobs.items())))
+    print("  outfits      = OUTFIT_BUNDLES_ENABLED="
+          + ",".join(sorted({str(r.get("outfit_bundles", "absent")) for r in rows})))
+    print("  row text     = "
+          + ",".join(sorted({str(r.get("row_text_case", "absent")) for r in rows})))
+    print("  display      = " + "; ".join(
+        f"{name}=" + ",".join(sorted({str(r.get(column, "absent")) for r in rows}))
+        for name, column in (("REJECTS_AFTER_TAIL", "rejects_after_tail"),
+                             ("VARIANT_COLLAPSE", "variant_collapse"),
+                             ("DEVICE_ROLE_RANKING", "device_role_ranking"))))
+    print("  prompts_sha  = "
+          + ",".join(sorted({str(r.get("prompts_sha", "absent")) for r in rows})))
     print(f"  rerank_on    = {rerank}")
+    print("  llm_memo     = " + ",".join(sorted({str(r.get("llm_memo", "absent")) for r in rows}))
+          + f" ({sum(int(r.get('memo_hits') or 0) for r in rows)} memo hits)")
     print(f"  backend      = {(cfg.SEARCH_BACKEND or 'local').lower()}")
     print(f"  saved to     = {out_path}")
     summary["n_runs"], summary["n_degraded"] = len(rows), len(degraded)
@@ -697,8 +819,9 @@ def summarise(rows, specs, rerank, out_path) -> dict:
 # ------------------------------------------------------------------ offline selftest
 def _fake_row(ci, title, vertical, categ, gender=None, score=0.9, shape="databricks",
               typed=False):
-    """A catalog row as each backend serves it: Databricks keeps the case and None
-    for a missing gender; the local backend lowercases in place and fills ''."""
+    """A catalog row in each backend's shape: Databricks keeps the case and None for a
+    missing gender; 'local' fills '' and is LOWERCASED, the local shape until
+    2026-10-15, kept so the selftest still proves main.py reads either case."""
     row = {"catalog_index": ci, "Product_title": title, "bsns_vrtcl_name": vertical,
            "categ_lvl2_name": categ, "gender": gender, "score": score,
            "parent_asin": f"SELFTEST{ci}", "average_rating": 4.5, "rating_number": 120,
@@ -783,9 +906,26 @@ def _selftest_metrics():
     assert error_labels([{"stage": "translate", "code": "partial"},
                          {"stage": "rerank", "code": "LLMError"}]) == \
         ("rerank", "translate:partial")
+    # Device core share (2026-10-27), both shapes: a row without the load-time columns
+    # (every _fake_row here) gets them derived from its title
+    spec = prepare({"query": "gift for a vintage watch collector", "core": "watch"})
+    for shape in ("databricks", "local"):
+        page = [_fake_row(1, "Men's Automatic Mechanical Wrist Watch", "Fashion",
+                          "Men's Clothing", shape=shape),
+                _fake_row(2, "Automatic Watch Winder for Single Watch", "Fashion",
+                          "Unisex Clothing", shape=shape),
+                _fake_row(3, "Screen Cleaner Kit, Laptop Monitor Cleaner", "Electronics",
+                          "Computers", shape=shape)]
+        m = page_metrics(spec, {"results": page, "match_quality": {"weak": True}})
+        if core_flags(page, "watch") is not None:   # None in a pre-change worktree
+            assert (m["core_top4"], m["core_top12"], m["first_core"]) ==                 (0.333, 0.333, 1), (shape, m)
+            winder_first = page_metrics(spec, {"results": page[1:] + page[:1]})
+            assert winder_first["first_core"] == 3 and "match_weak" not in winder_first
+        assert m["match_weak"] is True
     # Validation fails fast
     for bad in ({"query": "x", "types": ["shoes"]}, {"query": "x", "bundle": "kit"},
-                {"query": "x", "typo": 1}, {"query": "x", "component_bad": "("}):
+                {"query": "x", "typo": 1}, {"query": "x", "component_bad": "("},
+                {"query": "x", "core": "tracker"}):
         try:
             prepare(bad)
         except (ValueError, re.error):
@@ -984,6 +1124,11 @@ def _selftest_run():
     with open(out_path, encoding="utf-8") as f:
         written = list(csv.DictReader(f))
     assert len(written) == n_runs and list(written[0]) == COLUMNS
+    # provenance columns: what the served page depended on beyond the arm's knob
+    assert {r["row_text_case"] for r in written} == {_row_text_case()}
+    assert {r["rejects_after_tail"] for r in written} ==         {str(getattr(cfg, "REJECTS_AFTER_TAIL", "absent"))}
+    assert {r["variant_collapse"] for r in written} ==         {str(getattr(cfg, "VARIANT_COLLAPSE", "absent"))}
+    assert {r["prompts_sha"] for r in written} == {_prompts_sha()}
     assert out_path.name.startswith(f"page_types_{'head' if len(plan) == 1 else 'both'}_")
     for p in tmp.iterdir():
         p.unlink()

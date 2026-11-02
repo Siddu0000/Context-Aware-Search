@@ -11,9 +11,9 @@
   {
     "query": "summer beach wedding outfit dress",
     "group": "stakeholder",
-    "_context": "Demo complaint. An outfit bundle whose FIRST slot should be the dress the shopper named, garments before footwear, at most one accessory. Recorded translation turned wedding/summer/beach into hard 'other' constraints.",
-    "types": null,
-    "bundle": "outfit",
+    "_context": "Demo complaint. A flat page of garments led by the dress the shopper named (outfit bundles off since 2026-10-15: OUTFIT_BUNDLES_ENABLED); a guest, so no bridal or swimwear. Recorded translation turned wedding/summer/beach into hard 'other' constraints.",
+    "types": ["apparel"],
+    "bundle": null,
     "vertical_in": ["fashion"],
     "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"],
     "component_good": "\\b(sun)?dress(es)?\\b"
@@ -21,9 +21,9 @@
   {
     "query": "beach wedding outfit",
     "group": "stakeholder",
-    "_context": "Demo complaint. An outfit bundle: garment slots first, then footwear, then at most one accessory; guest attire in beach-appropriate fabric.",
-    "types": null,
-    "bundle": "outfit",
+    "_context": "Demo complaint. A flat, paginated page of guest garments in beach-appropriate fabric (outfit bundles off since 2026-10-15: OUTFIT_BUNDLES_ENABLED); requested_types reads the outfit ask as apparel, so garments rank first.",
+    "types": ["apparel"],
+    "bundle": null,
     "vertical_in": ["fashion"],
     "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"]
   },
@@ -48,9 +48,9 @@
   {
     "query": "what should I wear to a beach wedding",
     "group": "case",
-    "_context": "Advice-shaped clothing ask. The translator may answer it as a flat page or as an outfit; a setup is wrong.",
+    "_context": "Advice-shaped clothing ask: a flat page of garments (outfit bundles off since 2026-10-15: OUTFIT_BUNDLES_ENABLED); a setup is wrong.",
     "types": ["apparel"],
-    "bundle": [null, "outfit"],
+    "bundle": null,
     "vertical_in": ["fashion"],
     "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"]
   },
@@ -66,18 +66,18 @@
   {
     "query": "linen outfit ideas",
     "group": "case",
-    "_context": "Outfit bundle with a fabric stated: the garment slots should be linen.",
-    "types": null,
-    "bundle": "outfit",
+    "_context": "Outfit ask with a fabric stated: a flat page of linen garments (outfit bundles off since 2026-10-15: OUTFIT_BUNDLES_ENABLED).",
+    "types": ["apparel"],
+    "bundle": null,
     "vertical_in": ["fashion"],
     "component_good": "\\blinen\\b"
   },
   {
     "query": "breathable outfit for a humid day",
     "group": "case",
-    "_context": "Outfit bundle; weather as context -> breathable fabrics (cotton, linen, rayon), nothing heavy.",
-    "types": null,
-    "bundle": "outfit",
+    "_context": "Outfit ask; weather as context -> a flat page of breathable fabrics (cotton, linen, rayon), nothing heavy (outfit bundles off since 2026-10-15: OUTFIT_BUNDLES_ENABLED). The AI Search placeholder and the CLAUDE.md tagline.",
+    "types": ["apparel"],
+    "bundle": null,
     "vertical_in": ["fashion"],
     "context_none_of": ["wool", "fleece", "thermal", "sweater", "coat", "parka", "puffer", "leather", "velvet"],
     "component_good": "\\b(cotton|linen|rayon|breathable|lightweight|moisture[- ]wicking|quick[- ]dry)\\b"
@@ -85,18 +85,18 @@
   {
     "query": "outfit for a job interview",
     "group": "case",
-    "_context": "Outfit bundle; occasion as context -> business attire, nothing casual or for bed or beach.",
-    "types": null,
-    "bundle": "outfit",
+    "_context": "Outfit ask; occasion as context -> a flat page of business attire, nothing casual or for bed or beach (outfit bundles off since 2026-10-15: OUTFIT_BUNDLES_ENABLED).",
+    "types": ["apparel"],
+    "bundle": null,
     "vertical_in": ["fashion"],
     "context_none_of": ["costume", "pajama", "swimsuit", "bikini", "lingerie", "hoodie", "sweatpants", "flip flop", "shorts"]
   },
   {
     "query": "hiking outfit",
     "group": "case",
-    "_context": "Outfit bundle; activity as context -> trail clothing and footwear.",
-    "types": null,
-    "bundle": "outfit",
+    "_context": "Outfit ask; activity as context -> a flat page of trail clothing (outfit bundles off since 2026-10-15: OUTFIT_BUNDLES_ENABLED).",
+    "types": ["apparel"],
+    "bundle": null,
     "vertical_in": ["fashion"],
     "context_none_of": ["heels", "stiletto", "gown", "sequin", "bikini", "costume", "flip flop"],
     "component_good": "\\b(hiking|trail|outdoor|trekking|moisture[- ]wicking|quick[- ]dry)\\b"
@@ -141,18 +141,18 @@
   {
     "query": "running gear for winter",
     "group": "routing",
-    "_context": "'(gear|equipment) for' no longer routes to SETUP by regex; the translator may still choose a flat page or an outfit. Season as context.",
+    "_context": "'(gear|equipment) for' no longer routes to SETUP by regex: a flat page (outfit bundles off since 2026-10-15: OUTFIT_BUNDLES_ENABLED). A setup reply is the open inferred-setup owner decision, reported as misrouted. Season as context.",
     "types": null,
-    "bundle": [null, "outfit"],
+    "bundle": null,
     "vertical_not": ["grocery"],
     "context_none_of": ["sandal", "flip flop", "swimsuit", "bikini", "sundress"]
   },
   {
     "query": "rain gear for hiking",
     "group": "routing",
-    "_context": "As above; weather as context -> rain/waterproof items.",
+    "_context": "As above; weather as context -> rain/waterproof items, a flat page.",
     "types": null,
-    "bundle": [null, "outfit"],
+    "bundle": null,
     "vertical_not": ["grocery"],
     "context_none_of": ["sandal", "flip flop", "swimsuit", "bikini"],
     "context_any_of": ["rain", "waterproof", "water resistant", "water proof", "raincoat", "poncho", "windbreaker"]
@@ -160,9 +160,9 @@
   {
     "query": "what do I need for a beach wedding",
     "group": "routing",
-    "_context": "'what do i need for' no longer routes to SETUP by regex. A flat page or an outfit is right; a setup (devices) is wrong.",
+    "_context": "'what do i need for' no longer routes to SETUP by regex. A flat page is right (outfit bundles off since 2026-10-15: OUTFIT_BUNDLES_ENABLED); a setup (devices) is wrong.",
     "types": null,
-    "bundle": [null, "outfit"],
+    "bundle": null,
     "context_none_of": ["bride", "bridal", "bridesmaid", "gown", "bikini", "swimsuit", "cover up", "wool", "fleece", "thermal", "sweater", "coat", "costume"]
   },
   {
@@ -179,6 +179,42 @@
     "types": null,
     "bundle": null,
     "vertical_in": ["grocery"]
+  },
+  {
+    "query": "wedding dress",
+    "group": "bridal",
+    "_context": "A bridal ask (meeting item d): the rerank rubric's guest cap must NOT apply, so bridal gowns score > 40 and lead the page. context_any_of counts the bridal wear served.",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_any_of": ["bride", "bridal", "wedding dress", "wedding gown", "gown", "lehenga"]
+  },
+  {
+    "query": "wedding costume",
+    "group": "bridal",
+    "_context": "Meeting item d: 'worse than before' -- the 2026-10-14 guest line capped bridal gowns at 30-38 on gpt-oss-120b. A bridal ask, never capped; the translator may also read it as formal wedding attire (suits), which is fine.",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_any_of": ["bride", "bridal", "wedding dress", "wedding gown", "gown", "lehenga", "wedding suit", "tuxedo", "sherwani"]
+  },
+  {
+    "query": "bride costume",
+    "group": "bridal",
+    "_context": "The shopper names the bride: bridal wear is the ask, never capped.",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_any_of": ["bride", "bridal", "wedding dress", "wedding gown", "gown", "lehenga"]
+  },
+  {
+    "query": "Wedding dresses for a destination wedding in rajasthan",
+    "group": "bridal",
+    "_context": "Meeting query: wedding dresses for the bride, even at a destination wedding (the guest cap's 'destination wedding' trigger must not fire on a bridal ask). Lehengas fit; a men's dashiki over the women's dresses is the gender-interleave issue (WP2), not this rule.",
+    "types": ["apparel"],
+    "bundle": null,
+    "vertical_in": ["fashion"],
+    "context_any_of": ["bride", "bridal", "wedding dress", "wedding gown", "gown", "lehenga", "saree", "sari"]
   },
   {
     "query": "gold drop earrings for a wedding",
@@ -297,5 +333,95 @@
     "types": null,
     "bundle": [null, "setup"],
     "vertical_in": ["electronics"]
+  },
+  {
+    "query": "gift for a vintage watch collector",
+    "group": "device",
+    "_context": "The Oct 27 meeting query (owner call D1: the watch itself is the gift). Recorded 10-15 (qwen3.8-27b) and 10-27: three accessory intents (winder, display case, repair kit), 0 watches in the rerank window, 0 on page 1. Expect watches to lead page 1 (core_top4 1.0; core_top12 >= 0.75 with a reranker that follows the gift text), storage and display pieces after them (they may open page 2) and no tool, repair or cleaning kit on page 1 (context_none_of).",
+    "types": null,
+    "bundle": null,
+    "core": "watch",
+    "context_none_of": ["repair kit", "tool kit", "cleaning kit", "cleaner", "polishing cloth"]
+  },
+  {
+    "query": "laptop for college",
+    "group": "device",
+    "_context": "A device ask (D2). Offline with a sleeve / backpack intent the window held 1 laptop of 15; the live 10-27 battery's intents were all laptops (page-1 strict 1.00). Expect core_top12 >= 0.9: laptops, no sleeves or backpacks ahead of them.",
+    "types": null,
+    "bundle": null,
+    "core": "laptop",
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "airtag",
+    "group": "device",
+    "_context": "A supply gap, not a family (D2): 0 AirTags among the catalog's 202 AirTag-titled rows (holders and cases). The reader returns None, so the page is the 10-19 one; the rubric's accessory cap ('even when no candidate is the named product') should make match_weak true (the 10-27 battery scored holders 55-92 and the banner stayed off).",
+    "types": null,
+    "bundle": null,
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "iphone",
+    "group": "device",
+    "_context": "A device ask with a tiny supply: 3-4 handsets among 2,696 iPhone-titled rows. The 10-27 battery seated 1 handset (raw #121-125) behind 13 chargers. Expect the handsets first (first_core 1) and match_weak true (accessories never count as on type under a device ask).",
+    "types": null,
+    "bundle": null,
+    "core": "phone",
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "noise cancelling headphones for travel",
+    "group": "device",
+    "_context": "A device ask that already worked (10-27 battery page-1 strict 0.92): expect core_top12 >= 0.9 and no travel case or adapter ahead of a pair of headphones.",
+    "types": null,
+    "bundle": null,
+    "core": "headphones",
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "watch winder",
+    "group": "device",
+    "_context": "An accessory ask (the noun after 'watch' is the head): no device action, winders lead (context_any_of); typed {accessory} as before.",
+    "types": ["accessory"],
+    "bundle": null,
+    "context_any_of": ["winder"]
+  },
+  {
+    "query": "stop my laptop from overheating",
+    "group": "device",
+    "_context": "A device OWNER's need (the context eval set's row): the reader returns None and the QE DEVICE bullet's counter-examples keep laptop intents away. Expect cooling pads and stands (context_any_of) and core_top12 = 0 (no laptops).",
+    "types": null,
+    "bundle": null,
+    "core": "laptop",
+    "vertical_in": ["electronics"],
+    "context_any_of": ["cooling", "cooler", "fan", "stand"]
+  },
+  {
+    "query": "women's watch",
+    "group": "device",
+    "_context": "A typed device ask ({accessory} and the watch family): the role orders the inside of the accessory tier. 21% of women's watches were typed jewelry (\"bracelet watch\") and pushed out of the window until catalog_taxonomy's 10-27 fix. Expect core_top12 >= 0.9, no men's watch (gender).",
+    "types": ["accessory"],
+    "bundle": null,
+    "core": "watch",
+    "gender": "women"
+  },
+  {
+    "query": "ipad",
+    "group": "device",
+    "_context": "The 2026-10-27 review's core-precision case: the tablets category also holds iPad cases, handles, pillow stands and a book, which went to the reranker as role=device (and led every band) before is_core's title rules. Expect tablets first (first_core 1, core_top4 1.0) and no case or stand ahead of a tablet.",
+    "types": null,
+    "bundle": null,
+    "core": "tablet",
+    "vertical_in": ["electronics"]
+  },
+  {
+    "query": "headphone pads",
+    "group": "device",
+    "_context": "An add-on compound the accessory list does not know (2026-10-27 review): the family noun is not the head, so the reader fails closed (None) and the page is the knob-off one. Before the review it read as a headphones ask and the device took over the window. Expect ear pads and cushions (context_any_of), core_top12 low.",
+    "types": null,
+    "bundle": null,
+    "core": "headphones",
+    "vertical_in": ["electronics"],
+    "context_any_of": ["pad", "pads", "cushion", "cushions"]
   }
 ]

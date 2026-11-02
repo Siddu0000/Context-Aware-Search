@@ -1,0 +1,30 @@
+# UI theme for `streamlit run ui.py`. The shop stylesheet in ui_common.py assumes a
+# LIGHT base: without this file the theme follows the viewer's OS, and dark mode
+# puts white product cards on a dark page.
+# The Databricks App does not stage this folder (09 APP_SOURCES): the same settings
+# are passed as flags in databricks/app_bundle/run_app.py -- keep the two in step.
+# The colours are ui_common.SKIN's (the marketplace-style layout of 2026-10-19 with an
+# eBay-style palette since 2026-10-26, from eBay's open-source design tokens): Streamlit's
+# own widgets (checkboxes, slider, focus rings, links) read them from here.
+# tests/test_ui.py checks all three agree.
+
+[theme]
+base = "light"
+primaryColor = "#0968F6"            # accent blue: checkbox ticks, slider, focus
+backgroundColor = "#FFFFFF"         # page
+secondaryBackgroundColor = "#F7F7F7"   # light-grey input fill (the search band's is white); also tints the phone sidebar and rail expander header (= SKIN pill-bg)
+textColor = "#191919"
+borderColor = "#8F8F8F"
+linkColor = "#0968F6"
+linkUnderline = false               # links underline on hover (ui_common CSS)
+orangeColor = "#191919"             # the :orange[★] stars in the rail's review links and the Assistant's bot avatar background (near-black)
+baseRadius = "0.25rem"
+buttonRadius = "0.5rem"
+font = "Arial, Helvetica, sans-serif"   # system fonts only, never a marketplace's own
+showWidgetBorder = true
+
+[theme.sidebar]
+backgroundColor = "#FFFFFF"
+
+[client]
+toolbarMode = "minimal"             # hides "Deploy" and the developer menu items

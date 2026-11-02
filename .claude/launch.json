@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cas-ui-test",
+      "runtimeExecutable": "C:/Users/AnnamneediSaiSiddard/Documents/Context-Aware-Search/.venv/Scripts/streamlit.exe",
+      "runtimeArgs": ["run", "ui.py", "--server.port", "8599", "--server.headless", "true"],
+      "port": 8599
+    }
+  ]
+}

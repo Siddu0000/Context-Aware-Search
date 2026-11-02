@@ -147,9 +147,14 @@ class KeywordSearchEngine:
             return np.zeros_like(x)
         return (x - lo) / (hi - lo)
 
-    def search(self, query: str, k: int = 12) -> Tuple[List[dict], int, float, float]:
+    def search(
+        self, query: str, k: int = 12, offset: int = 0
+    ) -> Tuple[List[dict], int, float, float]:
         """Return (results, num_matched, top_relevance, top_coverage), Best-Match ranked.
 
+        `offset` skips that many ranked rows (a page of the Keyword Search page) and
+        builds only the k rows returned; num_matched, top_relevance and top_coverage
+        describe the whole match set, whatever the offset.
         top_coverage = fraction of the query's terms present in the top result."""
         if self._df is None:
             raise RuntimeError("KeywordSearchEngine.index() not called.")
@@ -182,7 +187,8 @@ class KeywordSearchEngine:
         )
 
         results = []
-        for j in order[:k]:
+        offset = max(0, int(offset))
+        for j in order[offset:offset + k]:
             cat_idx = int(idx[j])
             raw = self._df.iloc[cat_idx].to_dict()
             # Starlette serializes with allow_nan=False — a NaN would 500 the endpoint

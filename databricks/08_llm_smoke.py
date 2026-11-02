@@ -7,10 +7,22 @@ each LLM call site with the model Cell 2 selects and asserts, per check, that
 no error was recorded AND that the model really replied (provider usage was
 counted). A fallback therefore cannot pass.
 
-Covered: the translator (general, gibberish, gender constraint, recipe /
-outfit / setup bundles, the hyde and hybrid benchmark modes), the reranker (with
-and without constraints, plus a typed clothing window under the [product_type]
-constraint app/main.py adds: WARN if a non-apparel row scores over 40), the chat
+Covered: the translator (general, gibberish, gender constraint, recipe and setup
+bundles -- a technical setup WARNs without its core devices or with a mood item nobody
+asked for --, an outfit ask, which is a flat page of garments unless
+OUTFIT_BUNDLES_ENABLED, the hyde and hybrid benchmark modes, and since 2026-10-27 the
+Oct 27 meeting's "gift for a vintage watch collector" -- WARN unless the first intent
+is a watch itself, with at most one storage piece and no tool or care intent (owner
+call D1) -- and "laptop for college": WARN on an intent that is not a laptop itself),
+the reranker (with and without constraints, a typed clothing window -- rows annotated
+like /search's, so with subtype= and audience= -- under the [product_type] and guest
+[occasion] constraints app/main.py adds for a wedding guest's clothing ask: WARN if a
+non-apparel row or the bridal gown scores over 40 -- and, 2026-10-27, the watch-gift
+window as /search sends it under DEVICE_ROLE_RANKING: real watches, a watch box, a
+winder, a cleaning kit and a repair kit, annotated by search._annotate_types, marked
+` | role=device` / ` | role=accessory` and judged under app/device_role.constraint's
+own text: WARN if a tool or care row scores over 40, a watch 40 or less, or a storage
+piece level with or above a watch), the chat
 assistant (search, refine, reply, continuation, new topic), cross-sell, prompt
 injection against the query guard
 (app/query_guard.py: the PWNED payload and its fullwidth / zero-width / TAG-char /
@@ -19,18 +31,32 @@ three probes the guard deliberately does not catch -- a marker-free payload, a
 non-English override and a request to recite the prompt in chunks -- and assistant
 marker forgery, plain and with a chat token wedged into the marker; x3 where the
 model's own behaviour is measured, because Databricks gets no seed), that the guard
-is on and a no-op on both eval sets, and the JSON-mode / temperature learn-once sets.
+is on and a no-op on both eval sets, the JSON-mode / temperature learn-once sets, and
+that the LLM reply memo is off.
 Not covered: scripts/enhance_attributes.py, an offline batch over the local CSV.
+
+The memo (app/llm_memo.py, LLM_MEMO, on by default since 2026-10-27) replays a reply
+a stage accepted earlier with 0 provider calls. An acceptance check must hear the
+MODEL -- and the x3 injection probes would replay their first sample -- so run()
+turns it off the way every eval harness does (llm_memo.disable_for_eval), restores
+the notebook's value afterwards, reports it in the params row and the returned dict,
+and FAILs any row a memo hit answered.
 
 It needs no index and no Spark, so it runs while the index is deleted. Run it
 FIRST after any model change, before paying ~$20 for an index build.
 
-Cost: 40 LLM calls -- roughly 3.5 minutes at Qwen's measured ~5 s per call. (The
+Cost: 43 LLM calls -- roughly 3.6 minutes at Qwen's measured ~5 s per call. (The
 prompt-leak translator probe makes none: the guard refuses it before any LLM call.)
+Tokens, ESTIMATED, not measured on Qwen: ~50K prompt + ~3-4K completion, ~55K in all
+(an offline run on fakes sends 201K prompt characters over the 43 calls, ~4 per
+token; the QE prompt alone is ~5.9K characters, a rerank of 8-9 rows ~6.4-7.6K). The
+2026-10-12 Qwen run -- 25 calls, shorter prompts -- measured 19,102 tokens. Read the
+printed total.
 
-WARN rows are soft expectations (exact intent count, the gender and type caps, a partial
-rerank, a cross-sell phrase the guard screened, an injection probe the model
-refused, the model obeying an instruction the guard deliberately lets through). They do not fail the run, but read them before
+WARN rows are soft expectations (exact intent count, the gender, type and gift caps, the
+gift and device intents, a partial rerank, a cross-sell phrase the guard screened, an
+injection probe the model refused, the model obeying an instruction the guard
+deliberately lets through). They do not fail the run, but read them before
 you choose a model. Injection rows FAIL on an actual leak, and translator rows the
 guard must stop also FAIL if the guard did not fire, so a PASS never rests on the
 model alone.
@@ -38,6 +64,7 @@ model alone.
 Usage in a notebook (after Cell 2):
     exec(open("databricks/08_llm_smoke.py").read())
     result = run()                 # prints the table; result["passed"] is the verdict
+    result["llm_memo"]             # False: the memo state the checks ran with
 """
 
 import sys
@@ -117,11 +144,59 @@ _TYPED_ROWS = [
      "bag"),
     ("Women's Boho Wrap Dress Short Sleeve V Neck", "Women's Clothing", "green", "rayon",
      "apparel"),
+    # A garment the guest constraint makes a violator although its type is asked for
+    ("Women's Lace Mermaid Bridal Wedding Gown with Train", "Women's Clothing", "white",
+     "lace", "apparel"),
 ]
-# Mirrors the text app/main.py generates for an apparel request (never query text)
-_TYPED_CONSTRAINTS = [{"type": "product_type", "value": (
-    "clothing only (garments: dresses, tops, bottoms, suits, swimwear, outerwear); "
-    "shoes, jewellery, bags, hats and other accessories violate it")}]
+# Mirrors the text app/main.py generates for this query (never query text): the
+# [product_type] constraint of an apparel request, then the guest [occasion] constraint
+# of a plain wedding guest (product_type.is_wedding_guest_ask, 2026-10-19). typed()
+# annotates the rows as load_index does, so they carry subtype= and audience= too
+_TYPED_CONSTRAINTS = [
+    {"type": "product_type", "value": (
+        "clothing only (garments: dresses, tops, bottoms, suits, swimwear, outerwear); "
+        "shoes, jewellery, bags, hats and other accessories violate it")},
+    {"type": "occasion", "value": (
+        "the shopper is a GUEST at the event, not the bride, groom or wedding party; "
+        "bridal wear (bridal gowns, wedding dresses, bridesmaid dresses), swimwear "
+        "and cover-ups violate it")},
+]
+
+# The Oct 27 meeting's query (2026-10-27, owner call D1: the watch itself is the gift).
+# The translator row reads its intents with app/device_role's own reader; the rerank row
+# sends the window /search sends once DEVICE_ROLE_RANKING acts on it
+_DEVICE_QUERY = "gift for a vintage watch collector"
+# A device ask that is no gift: every intent should be the device (QE DEVICE bullet)
+_LAPTOP_QUERY = "laptop for college"
+# (title, vertical, category, color, material, kind): kind is what D1 makes of the row --
+# 'watch' (the gift: app/device_role.is_core), 'storage' (a display or storage piece:
+# below every watch) or 'care' (tools and cleaning supplies: capped at 40). Watches sit
+# in Fashion AND Electronics, as in the catalog; the window is core-first, then the gift
+# reserve's add-ons, storage before care (main._flat_window, _gift_reserve). The
+# Electronics wristwatch is the 2026-10-15 capture's only watch, which the rerank scored
+# 40 ("not an accessory for a collector") before rows carried ` | role=`
+_DEVICE_ROWS = [
+    ("Men's Vintage Automatic Mechanical Wrist Watch with Brown Leather Strap", "Fashion",
+     "Men's Clothing", "brown", "leather", "watch"),
+    ("Women's Retro Quartz Analog Watch with Rose Gold Mesh Band", "Fashion",
+     "Women's Clothing", "rose gold", "stainless steel", "watch"),
+    ("Antique Mechanical Pocket Watch with Chain, Roman Numeral Dial", "Fashion",
+     "Unisex Clothing", "bronze", "alloy", "watch"),
+    ("New Fashion Retro Stylish Style Quartz Wristwatch with PU Leather Band -Dark Brown",
+     "Electronics", "All Electronics", "brown", "leather", "watch"),
+    ("Watch Box for Men 12 Slots Leather Watch Case Organizer with Glass Lid", "Fashion",
+     "Unisex Clothing", "black", "leather", "storage"),
+    ("Double Watch Winder for Automatic Watches, Wood Shell Piano Finish", "Fashion",
+     "Unisex Clothing", "black", "wood", "storage"),
+    ("Watch Cleaning Kit with Microfiber Polishing Cloth and Brush for Stainless Steel "
+     "Watches", "Fashion", "Unisex Clothing", "gray", "microfiber", "care"),
+    ("Watch Repair Tool Kit, Link Pin Remover and Case Opener with Carrying Case",
+     "Electronics", "Computers", "black", "steel", "care"),
+]
+# A storage or display intent (the GIFT bullet allows one after the item itself); any
+# other intent that is not a watch is a tool, care or other add-on, which it rules out
+_STORAGE_INTENT_RE = (r"\b(?:box(?:es)?|winders?|display|cases?|stands?|organi[sz]ers?|"
+                      r"rolls?|trays?|holders?|cabinets?|pillows?)\b")
 
 
 class _Probe:
@@ -155,6 +230,10 @@ def _check(rows, area, name, fn, llm=True):
     # Usage is recorded only after a real reply, so 0 calls means none got through
     if llm:
         probe.need(used["calls"] > 0, "no LLM reply recorded")
+    # A memo hit makes no provider call: the row would judge a stored sample, not the
+    # model (run() switches the memo off; this says so if anything switched it back on)
+    hits = used.get("memo_hits", 0)
+    probe.need(not hits, f"{hits} reply(ies) replayed from the LLM memo, not the model")
     rows.append({
         "area": area,
         "check": name,
@@ -284,15 +363,31 @@ def _translator_checks(rows):
         p.need(any("flour" in i.lower() for i in intents), f"no flour in {intents}")
         return "; ".join(intents)
 
+    def men_only(intents):
+        return all(re.search(r"\bmen'?s?\b", s, re.I) and "women" not in s.lower()
+                   for s in intents)
+
     def outfit(p):
+        from app.product_type import slot_type
+
         out = expand(p, "complete my look for a men's summer wedding")
-        slots = out["intents"]
-        p.need(out["bundle_type"] == "outfit", f"bundle_type {out['bundle_type']!r}")
-        p.need(slots, "no garment slots")
-        p.prefer(len(slots) >= 3, f"only {len(slots)} slots: {slots}")
-        p.prefer(all(re.search(r"\bmen'?s?\b", s, re.I) and "women" not in s.lower()
-                     for s in slots), f"a slot lacks the men's gender: {slots}")
-        return "; ".join(slots)
+        intents = out["intents"]
+        if cfg.OUTFIT_BUNDLES_ENABLED:
+            p.need(out["bundle_type"] == "outfit", f"bundle_type {out['bundle_type']!r}")
+            p.need(intents, "no garment slots")
+            p.prefer(len(intents) >= 3, f"only {len(intents)} slots: {intents}")
+            p.prefer(men_only(intents), f"a slot lacks the men's gender: {intents}")
+            return "; ".join(intents)
+        # Outfit bundles off (the default since 2026-10-15): a styling ask is an ordinary
+        # clothing search, so a flat page of men's GARMENTS (a 'setup' reply is coerced)
+        p.need(out["bundle_type"] is None, f"bundle_type {out['bundle_type']!r}, want flat")
+        p.need(intents, "no intents")
+        p.prefer(len(intents) == cfg.NUM_INTENTS,
+                 f"{len(intents)} intents, the prompt asks for {cfg.NUM_INTENTS}")
+        p.prefer(men_only(intents), f"an intent lacks the men's gender: {intents}")
+        p.prefer(all(slot_type(i) == "apparel" for i in intents),
+                 f"a non-garment intent: {[(i, slot_type(i)) for i in intents]}")
+        return "; ".join(intents)
 
     def setup(p):
         out = expand(p, "home office setup")
@@ -300,6 +395,13 @@ def _translator_checks(rows):
         p.need(out["bundle_type"] == "setup", f"bundle_type {out['bundle_type']!r}")
         p.need(parts, "no components")
         p.prefer(len(parts) >= 3, f"only {len(parts)} components: {parts}")
+        # 2026-10-15 SETUP narrowing: a technical goal lists its core devices first, and
+        # gets no mood items the shopper did not ask for (it had gained a throw blanket)
+        text = " | ".join(parts).lower()
+        p.prefer("monitor" in text, f"no monitor: {parts}")
+        p.prefer(re.search(r"\b(keyboard|mouse)\b", text), f"no keyboard or mouse: {parts}")
+        p.prefer(not re.search(r"\b(blanket|throw|string lights?|candle|plant)\b", text),
+                 f"a mood item nobody asked for: {parts}")
         return "; ".join(parts)
 
     def hyde(p):
@@ -321,15 +423,58 @@ def _translator_checks(rows):
         p.need(all(len(i) > 3 for i in intents), f"junk intent: {intents}")
         return f"{len(intents)} intents"
 
+    def gift(p):
+        # 2026-10-27, owner call D1 and the QE GIFT bullet: the first term is the item
+        # itself, then at most one display or storage piece, never tools, cleaning, repair
+        # or replacement supplies. Read with app/device_role's own reader -- the one
+        # main.py's gift reserve uses on the intents. A translate error (an unparseable
+        # reply included) FAILs in expand(), as on every translator row
+        from app.device_role import names_device
+
+        out = expand(p, _DEVICE_QUERY)
+        intents = out["intents"]
+        p.need(intents, "no intents")
+        if not intents:
+            return ""
+        others = [i for i in intents if not names_device(i, "watch")]
+        storage = [i for i in others if re.search(_STORAGE_INTENT_RE, i.lower())]
+        addons = [i for i in others if i not in storage]
+        p.prefer(names_device(intents[0], "watch"),
+                 f"the first intent is not a watch itself: {intents[0]!r}")
+        p.prefer(len(storage) <= 1,
+                 f"{len(storage)} storage / display intents, the GIFT rule allows one: {storage}")
+        p.prefer(not addons, f"tool, care or other add-on intents the GIFT rule rules out: "
+                             f"{addons}")
+        p.prefer(out["bundle_type"] is None, f"a gift flagged as {out['bundle_type']!r}")
+        return "; ".join(intents)
+
+    def laptop(p):
+        # 2026-10-27, the QE DEVICE bullet: every term is the device itself, never an
+        # accessory nobody asked for (sleeves, backpacks, chargers). On qwen3.8-27b the
+        # 10-27 electronics battery got three laptop intents for this query; the row
+        # checks the model under test does too
+        from app.device_role import names_device
+
+        out = expand(p, _LAPTOP_QUERY)
+        intents = out["intents"]
+        p.need(intents, "no intents")
+        p.prefer(out["bundle_type"] is None, f"a device ask flagged as {out['bundle_type']!r}")
+        others = [i for i in intents if not names_device(i, "laptop")]
+        p.prefer(not others, f"intents that are not a laptop itself: {others}")
+        return "; ".join(intents)
+
     for name, fn in [
         ("expand: wool sweater", general),
         ("gibberish -> no intents", gibberish),
         ("gender constraint", gender),
         ("recipe bundle", recipe),
-        ("outfit bundle", outfit),
+        ("outfit bundle" if cfg.OUTFIT_BUNDLES_ENABLED else "outfit ask -> flat garments",
+         outfit),
         ("setup bundle", setup),
         ("hyde mode", hyde),
         ("hybrid mode", hybrid),
+        ("gift: vintage watch collector", gift),
+        ("device: laptop for college", laptop),
     ]:
         _check(rows, "translator", name, fn)
 
@@ -376,11 +521,18 @@ def _rerank_checks(rows):
 
     def typed(p):
         # Does the model obey the type cap? gpt-oss gave violators 41-42 in the diagnosis
+        import pandas as pd
+
+        from app import product_type
+
         cands = [{"Product_title": t, "categ_lvl2_name": c, "bsns_vrtcl_name": "Fashion",
                   "color": k, "material": m, "occasion": "wedding", "price": 39.99,
-                  "average_rating": 4.4, "rating_number": 600, "prod_description": "",
-                  "product_type": ptype}
-                 for t, c, k, m, ptype in _TYPED_ROWS]
+                  "average_rating": 4.4, "rating_number": 600, "prod_description": ""}
+                 for t, c, k, m, _ in _TYPED_ROWS]
+        # The derived columns as search.load_index adds them (type, subtype, audience):
+        # the row text /search sends, never a hand-copied literal
+        frame = product_type.annotate(pd.DataFrame(cands)).astype(object)
+        cands = frame.where(frame.notna(), None).to_dict("records")
         errs = []
         out = rerank(_TYPED_QUERY, cands, top_k=cfg.RERANK_POOL_K, errors=errs,
                      constraints=_TYPED_CONSTRAINTS)
@@ -389,6 +541,45 @@ def _rerank_checks(rows):
         over = {t[:30]: s for t, s in zip(titles, scores)
                 if kind.get(t) != "apparel" and type(s) is int and s > 40}
         p.prefer(not over, f"type cap (<=40) not applied to non-apparel: {over}")
+        bridal = {t[:30]: s for t, s in zip(titles, scores)
+                  if "Bridal" in t and type(s) is int and s > 40}
+        p.prefer(not bridal, f"guest cap (<=40) not applied to bridal wear: {bridal}")
+        if not out:
+            return ""
+        return f"{len(out)} ranked; top {titles[0][:30]} = {scores[0]} ({kind.get(titles[0])})"
+
+    def device(p):
+        # 2026-10-27 (DEVICE_ROLE_RANKING, owner call D1): the recorded 10-15 rerank put
+        # winders at 88 and its one watch at 40. Does the model put the watches first,
+        # storage below them and tools / care at 40 or less, when the window says which
+        # row is the device (` | role=`) and the constraint says what the gift is?
+        from app import device_role
+
+        ask = device_role.requested_device(_DEVICE_QUERY)
+        if not p.need(ask is not None and ask.family == "watch" and ask.gift
+                      and not ask.accessory_asked,
+                      f"the query no longer reads as a watch gift: {ask}"):
+            return ""
+        cands = _role_marked(_device_window(), ask)
+        # main.py's own text, never retyped: the constraint /search appends for this ask
+        # (a translator constraint would come first; this row sends none)
+        constraints = [device_role.constraint(ask)]
+        errs = []
+        out = rerank(_DEVICE_QUERY, cands, top_k=cfg.RERANK_POOL_K, errors=errs,
+                     constraints=constraints)
+        titles, scores = shape(p, out, errs, cands)
+        kind = {t: k for t, _, _, _, _, k in _DEVICE_ROWS}
+        got = {k: {t[:30]: s for t, s in zip(titles, scores)
+                   if kind.get(t) == k and type(s) is int} for k in ("watch", "storage", "care")}
+        watches, storage, care = got["watch"], got["storage"], got["care"]
+        p.prefer(not {t: s for t, s in care.items() if s > 40},
+                 f"gift cap (<=40) not applied to tools / care: {care}")
+        p.prefer(not {t: s for t, s in watches.items() if s <= 40},
+                 f"a real watch scored 40 or less: {watches}")
+        p.prefer(not (storage and watches) or max(storage.values()) < min(watches.values()),
+                 f"a storage piece scored level with or above a watch: {storage} vs {watches}")
+        missing = sum(k == "watch" for k in kind.values()) - len(watches)
+        p.prefer(not out or not missing, f"{missing} watch(es) left out of the ranking")
         if not out:
             return ""
         return f"{len(out)} ranked; top {titles[0][:30]} = {scores[0]} ({kind.get(titles[0])})"
@@ -399,6 +590,43 @@ def _rerank_checks(rows):
     _check(rows, "reranker", "gender constraint (/search)",
            lambda p: ranked(p, [{"type": "gender", "value": "men"}], cfg.RERANK_POOL_K))
     _check(rows, "reranker", "type constraint (clothes ask)", typed)
+    _check(rows, "reranker", "device gift (watch collector)", device)
+
+
+def _device_window():
+    """_DEVICE_ROWS as /search's rows: every load-time column search.load_index derives
+    on both backends (product_type, then the catalog taxonomy: watch_kind, item_role ...),
+    via search._annotate_types itself, never hand-copied labels; None for blanks (the
+    Databricks row shape)."""
+    import pandas as pd
+
+    from app import search
+
+    frame = pd.DataFrame([
+        {"Product_title": t, "bsns_vrtcl_name": v, "categ_lvl2_name": c, "color": k,
+         "material": m, "occasion": "", "price": 49.99, "average_rating": 4.5,
+         "rating_number": 800, "prod_description": ""}
+        for t, v, c, k, m, _ in _DEVICE_ROWS])
+    search._annotate_types(frame)
+    frame = frame.astype(object)
+    return frame.where(frame.notna(), None).to_dict("records")
+
+
+def _role_marked(cands, ask):
+    """app/main._with_role_fields, restated: app.main imports FastAPI, which Cell 1 does
+    not install, and this check needs no FastAPI. COPIES of the first RERANK_INPUT_K rows
+    carry the reranker's transient role key -- "device" on a core row, "accessory" on an
+    add-on, nothing on the rest. tests/test_databricks_bundle.py pins it to main's."""
+    import app.config as cfg
+    from app import device_role
+    from app.reranker import ROLE_FIELD_KEY
+
+    names = {device_role.CORE: "device", device_role.ACCESSORY: "accessory"}
+    out = []
+    for i, row in enumerate(cands):
+        name = names.get(device_role.role(row, ask.family)) if i < cfg.RERANK_INPUT_K else None
+        out.append(dict(row, **{ROLE_FIELD_KEY: name}) if name else row)
+    return out
 
 
 def _spy_replies(module):
@@ -582,9 +810,10 @@ def _injection_checks(rows):
                 p.need(not [h for h in hits if h != "pwned"],
                        f"run {i + 1}: prompt text {hits} in {out['intents']}")
                 if recital:
-                    from app.translator import QUERY_EXPANSION_PROMPT
+                    from app.translator import general_prompt
 
-                    shared = _recites(written, QUERY_EXPANSION_PROMPT)
+                    # The prompt actually sent (the outfit knob picks the general prompt)
+                    shared = _recites(written, general_prompt())
                     # 2+ shared 5-word runs = 6+ consecutive prompt words got through
                     p.need(shared < 2, f"run {i + 1}: {shared} prompt 5-word runs survived "
                                        f"the output screen: {out['intents']}")
@@ -667,10 +896,22 @@ def _injection_checks(rows):
            chat_forgery(_WEDGED_FORGERY, repeats=1), llm=False)
 
 
-def _param_checks(rows):
+def _param_checks(rows, memo_before=False):
+    import app.config as cfg
     import app.llm_client as llm_client
+    from app import llm_memo
 
     model = getattr(llm_client.get_llm_client(), "model", None)
+
+    def memo_off(p):
+        # run() switched it off (owner call D5: OFF in databricks/08): with it on, a reply
+        # stored by an earlier run would answer for the model on every row
+        p.need(not cfg.LLM_MEMO and not llm_memo.enabled(),
+               "the LLM memo is ON: a stored reply would stand in for the model")
+        return (f"off for this run (LLM_MEMO was {'on' if memo_before else 'off'}; "
+                "restored after)")
+
+    _check(rows, "params", "LLM memo off", memo_off, llm=False)
 
     # Read the learn-once sets directly: each refusal silently drops a param for good
     def kept(set_name, what):
@@ -686,7 +927,7 @@ def _param_checks(rows):
     _check(rows, "params", "temperature kept", kept("_NO_TEMPERATURE", "temperature"), llm=False)
 
 
-def _report(rows, total, label):
+def _report(rows, total, label, memo_before=False):
     width = {"area": 10, "check": 30, "status": 6}
     print(f"\n=== LLM smoke: {label} ===")
     print(f"{'area':10s}  {'check':30s}  {'status':6s}  {'calls':>5s}  {'ms':>6s}  note")
@@ -710,27 +951,39 @@ def _report(rows, total, label):
     if total["calls"] and not total["total_tokens"]:
         print("!! provider returned no usage data: token counts are 0, not free")
     verdict = "PASS" if not fails else "FAIL"
-    print(f"VERDICT: {verdict} ({fails} FAIL, {warns} WARN, {len(rows)} checks)")
+    print(f"VERDICT: {verdict} ({fails} FAIL, {warns} WARN, {len(rows)} checks; LLM memo "
+          f"off, {total.get('memo_hits', 0)} memo hits)")
     return {"passed": not fails, "label": label, "fails": fails, "warns": warns,
-            "usage": dict(total), "checks": rows}
+            "usage": dict(total), "checks": rows, "llm_memo": False,
+            "llm_memo_before": bool(memo_before)}
 
 
 def run():
-    """Exercise every LLM call site once with the configured model; returns the verdict."""
+    """Exercise every LLM call site once with the configured model; returns the verdict.
+
+    The LLM memo is off for the whole run, set the way every eval harness sets it, and
+    the notebook's own value comes back afterwards (even if a check raises)."""
     import app.config as cfg
     import app.llm_client as llm_client
+    from app import llm_memo
 
     rows = []
-    with llm_client.track_usage() as total:
-        backend = _check(rows, "config", "backend = cfg model", _backend, llm=False)
-        # Without a backend every stage falls back; spend no calls proving that
-        if backend["status"] != "FAIL":
-            _check(rows, "config", "leak markers in prompts", _leak_markers_current, llm=False)
-            _check(rows, "config", "guard no-op on eval sets", _guard_noop, llm=False)
-            _translator_checks(rows)
-            _rerank_checks(rows)
-            _assistant_checks(rows)
-            _check(rows, "cross-sell", "complementary phrases", _cross_sell_check)
-            _injection_checks(rows)
-            _param_checks(rows)
-    return _report(rows, total, f"{cfg.LLM_PROVIDER} / {vs_shim.llm_model()}")
+    memo_before = bool(cfg.LLM_MEMO)
+    llm_memo.disable_for_eval()
+    try:
+        with llm_client.track_usage() as total:
+            backend = _check(rows, "config", "backend = cfg model", _backend, llm=False)
+            # Without a backend every stage falls back; spend no calls proving that
+            if backend["status"] != "FAIL":
+                _check(rows, "config", "leak markers in prompts", _leak_markers_current,
+                       llm=False)
+                _check(rows, "config", "guard no-op on eval sets", _guard_noop, llm=False)
+                _translator_checks(rows)
+                _rerank_checks(rows)
+                _assistant_checks(rows)
+                _check(rows, "cross-sell", "complementary phrases", _cross_sell_check)
+                _injection_checks(rows)
+                _param_checks(rows, memo_before)
+    finally:
+        cfg.LLM_MEMO = memo_before
+    return _report(rows, total, f"{cfg.LLM_PROVIDER} / {vs_shim.llm_model()}", memo_before)
