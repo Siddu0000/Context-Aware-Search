@@ -5,6 +5,7 @@ import json
 import logging
 from statistics import mean
 
+from app import llm_memo
 from app.config import DATA_DIR, FINAL_TOP_K, RETRIEVAL_TOP_K
 from app.query_guard import sanitize_query
 from app.recommendations import recommend
@@ -38,6 +39,8 @@ def main():
     parser.add_argument("--top-k", type=int, default=FINAL_TOP_K,
                         help="How many search results to anchor cross-sell on.")
     args = parser.parse_args()
+    # Scores the model's complements: a replayed first sample is no measurement
+    memo = llm_memo.disable_for_eval()
 
     load_index()
     spec = json.loads(CROSS_SELL_FILE.read_text(encoding="utf-8"))
@@ -93,6 +96,7 @@ def main():
     if sub_scores:
         print(f"mean substitute_rate:      {mean(sub_scores):.1%}  (lower is better)")
     print("Note: proxy metric — 'complementary' is judgment-based, no co-purchase ground truth.")
+    print(f"llm_memo: {'on' if memo else 'off'}")
 
 
 if __name__ == "__main__":

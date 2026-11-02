@@ -51,6 +51,7 @@ def _subdivision_flag(code):
 SCOTLAND = _subdivision_flag("gbsct")
 PROMPTS = {
     "QUERY_EXPANSION_PROMPT": tr.QUERY_EXPANSION_PROMPT,
+    "QUERY_EXPANSION_OUTFIT_PROMPT": tr.QUERY_EXPANSION_OUTFIT_PROMPT,
     "RECIPE_PROMPT": tr.RECIPE_PROMPT,
     "OUTFIT_PROMPT": tr.OUTFIT_PROMPT,
     "SETUP_PROMPT": tr.SETUP_PROMPT,
@@ -79,13 +80,16 @@ def _skip(reason):
 # ------------------------------------------------------------------ helpers
 @contextlib.contextmanager
 def guard_config(enabled=True, max_intents=24):
-    """Pin the guard knobs for one test; .env must not decide what a test checks."""
-    old = (cfg.QUERY_GUARD_ENABLED, cfg.MAX_INTENTS)
+    """Pin the guard knobs for one test; .env must not decide what a test checks.
+
+    Outfit bundles too: the knob picks the general prompt (translator.general_prompt)."""
+    old = (cfg.QUERY_GUARD_ENABLED, cfg.MAX_INTENTS, cfg.OUTFIT_BUNDLES_ENABLED)
     cfg.QUERY_GUARD_ENABLED, cfg.MAX_INTENTS = enabled, max_intents
+    cfg.OUTFIT_BUNDLES_ENABLED = False
     try:
         yield
     finally:
-        cfg.QUERY_GUARD_ENABLED, cfg.MAX_INTENTS = old
+        cfg.QUERY_GUARD_ENABLED, cfg.MAX_INTENTS, cfg.OUTFIT_BUNDLES_ENABLED = old
 
 
 class FakeLLM:
@@ -203,7 +207,7 @@ _BENIGN = {"search_terms": ["cotton linen shirt", "breathable top"],
 
 
 def _head_for(query):
-    return _BUNDLE.get(tr.detect_bundle_type(query), tr.QUERY_EXPANSION_PROMPT)
+    return _BUNDLE.get(tr.detect_bundle_type(query), tr.general_prompt())
 
 
 # ------------------------------------------------------------------ input side
@@ -265,14 +269,47 @@ def test_non_ascii_and_whitespace_reach_the_llm_byte_identical():
 # component rules, since the setup phrasings the regex dropped reach it), OUTFIT
 # (garments first, at most one accessory, guest rule) and SETUP (vertical-neutral,
 # keeps mood words) re-pinned for the context-aware ranking fix; the other three are
-# unchanged since 2026-10-12
+# unchanged since 2026-10-12. 2026-10-15: outfit bundles OFF (OUTFIT_BUNDLES_ENABLED):
+# QUERY_EXPANSION is the new general prompt (no outfit bullet or enum value, an outfit
+# or look ask is a clothing ask; its setup bullet follows SETUP), the 10-14 text moved
+# BYTE-IDENTICAL to QUERY_EXPANSION_OUTFIT_PROMPT (the knob-on revert, old digest), and
+# SETUP lists core devices first and mood items only for mood words. OUTFIT unchanged.
+# 2026-10-19 (owner call 7): QUERY_EXPANSION only (was a56801f1), its CLOTHING rule:
+# core garment of the activity first, fit words in every term, regional/festival
+# garments, bride vs guest, no 'seersucker' example, "a look". The other six unchanged.
+# PROVENANCE (2026-10-19 review): this text (94fffb8d) ran on 2 battery queries only
+# (WP-T final|c10, final|c11). The context-set run of that day (gpt-oss-20b, P@10 0.537 /
+# MRR 0.729, ctx_new.log) and 16 battery A/B rows used an EARLIER draft, 25473ca0, whose
+# "before layers and accessories" wording was replaced: those numbers do not describe
+# this prompt. Re-run `run_eval --queries data/eval_queries_context.json --no-rerank` on
+# this text before quoting a context-set number for it.
+# 2026-10-27 (the Oct 27 meeting, owner calls D1 / D2): QUERY_EXPANSION only (was
+# 94fffb8d), a DEVICE bullet (every term the device the shopper named, with their own
+# device or brand name and generic variants, never an invented model number or an
+# accessory; owner-need counter-examples) and a GIFT bullet (the first term is the thing
+# the person collects or loves, then at most one display or storage piece; never tools,
+# cleaning, repair or replacement supplies). Examples out of sample, every list in
+# parentheses or quotes. The other six unchanged.
+# 2026-10-27 review round: 45138beb -> d3e184c6, the GIFT bullet's scope is owner call
+# D1's and the rubric's ("collects or loves"; "uses" dropped).
+# PROVENANCE (Phase C, 2026-10-30; the Oct 27 round's session archive, oct27/live_c/):
+# d3e184c6 ran translator only on Groq gpt-oss-20b, paired with 94fffb8d, 1 sample per
+# arm, rerank off, every sent prompt sha-checked (qe_ab/summary_tables.md): context set
+# P@10 0.450 -> 0.463 (16 of 16 paired: a tie by the 0.05 rule), MRR 0.638 -> 0.615,
+# NDCG 0.470 -> 0.481; keyword set P@10 0.986 -> 0.979 on 14 of 18 (stopped at its token
+# cap); 0 fell back, 0 translate:partial; no-translate controls 0.319 / 0.944. Its own
+# loop, not a run_eval CSV (its controls equal run_eval's per query). Also live on the
+# app path (qwen3.8-27b, 24 queries, rerank on, 1 sample: after_summary.md). Not run:
+# the demo model gpt-oss-120b, Databricks Qwen3-Next, rerank-on eval sets.
 _PROMPT_SHA256 = {
-    "QUERY_EXPANSION_PROMPT": "167a8685d6242b636e0f95dc1107ac66b413698052ecf3127792c03cca695460",
+    "QUERY_EXPANSION_PROMPT": "d3e184c65da52bec5f01ce2c3dba40bcb75b09ec85a119122d0961a21f4ad4fd",
+    "QUERY_EXPANSION_OUTFIT_PROMPT":
+        "167a8685d6242b636e0f95dc1107ac66b413698052ecf3127792c03cca695460",
     "RECIPE_PROMPT": "c5e61e9cc288e6fcca13cdfdefa8fd44289b92357bf1ec055d35a4b521db3ecd",
     "HYDE_PROMPT": "9a707bf347824e8e4588f317667622e570d32359d2263f7494c1d1662678bed0",
     "HYBRID_PROMPT": "1f708ccf9f9439ff6d6485c6865f081faf678e4f86722896689cbd7052e07b57",
     "OUTFIT_PROMPT": "3feddcf43719fc460f1d54efa4ac224b7cd9dc91fe7cc2bac127ab124e963944",
-    "SETUP_PROMPT": "5b20a07c546c048d0816e9a12a96df775fd865c580f5d276a942301be8ad7f3a",
+    "SETUP_PROMPT": "b8b7b8bf8be29152fb7f477b0976fcdf62917f8b020b614d2bc2f4991e93278a",
 }
 
 
@@ -905,7 +942,12 @@ def test_prompt_leak_detector_recall():
                 hits += guard.phrase_problem(line.strip(), head, "") is not None
         # 77/88 with any single 5-gram; 75/88 since one 5-gram alone also needs an
         # instruction word (2026-10-12), so product copy like 'salt and pepper to taste'
-        # passes. The misses are lines that are mostly quoted examples
+        # passes. The misses are lines that are mostly quoted examples. 2026-10-15: the
+        # legacy QUERY_EXPANSION_OUTFIT_PROMPT (the knob-on revert) is in the set too:
+        # 146/162 with it, 97/106 without, both above the floor. 155/171 after the
+        # 2026-10-19 CLOTHING amendments; 165/184 = 0.897 with the 2026-10-27 DEVICE and
+        # GIFT bullets (their misses are the lines that are mostly quoted examples;
+        # unchanged by the review round's "collects or loves" wording)
         assert total >= 80 and hits / total >= 0.85, (hits, total)
         assert guard.phrase_problem(tr.QUERY_EXPANSION_PROMPT, tr.QUERY_EXPANSION_PROMPT, "")
         # 0 of 40 crafted intents were flagged when the 5-gram window was chosen
@@ -960,6 +1002,103 @@ def test_reranker_blanks_unsafe_reasons():
     assert any("3 reason(s) blanked" in m for m in records)
     with guard_config(enabled=False), fake_llm(rr, reply):
         assert [p["reason"] for p in rr.rerank("x", cands, top_k=5)] == reasons
+
+
+def test_reranker_takes_a_bare_array_as_the_ranking():
+    """Regression (live m03, qwen3.8-27b, 2026-10-30): the rerank reply was a top-level
+    JSON array of normal entries, .get() raised AttributeError and the page fell back to
+    embedding order. The array IS the ranking: same scores, order and reasons as the
+    object reply, the same per-entry validation ('partial'), the same reason screen. Every
+    other non-object reply is the documented 'Bad shape' error, type only, and the
+    embedding-order fallback."""
+    import app.reranker as rr
+
+    cands = [{"Product_title": t, "average_rating": 4.0, "rating_number": 100}
+             for t in ("Linen Guest Dress", "Cotton Summer Suit", "Bridal Gown")]
+    entries = [{"idx": 1, "score": 92, "reason": "A guest suit for the heat."},
+               {"idx": 0, "score": 85, "reason": "A light guest dress."},
+               {"idx": 2, "score": 30, "reason": "Bridal wear for a guest ask."}]
+    with guard_config():
+        with fake_llm(rr, {"ranked": entries}):
+            as_object = rr.rerank("q", cands, top_k=3, errors=[])
+        errs = []
+        with fake_llm(rr, entries):
+            as_array = rr.rerank("q", cands, top_k=3, errors=errs)
+        assert errs == [] and as_array == as_object
+        assert [(p["Product_title"], p["rerank_score"], p["reason"]) for p in as_array] == [
+            ("Cotton Summer Suit", 92, "A guest suit for the heat."),
+            ("Linen Guest Dress", 85, "A light guest dress."),
+            ("Bridal Gown", 30, "Bridal wear for a guest ask.")]
+        # Invalid entries go one by one (out of range, a bare string, a repeated idx): the
+        # rest IS used, recorded as rerank 'partial' -- not a fallback
+        errs = []
+        with fake_llm(rr, [entries[0], {"idx": 7, "score": 80}, "junk",
+                           dict(entries[0], score=10), entries[2]]):
+            out = rr.rerank("q", cands, top_k=3, errors=errs)
+        assert [(p["Product_title"], p["rerank_score"]) for p in out] == [
+            ("Cotton Summer Suit", 92), ("Bridal Gown", 30)]
+        assert errs == [{"stage": "rerank", "code": "partial",
+                         "detail": "3 of 5 reranker entries dropped as invalid"}]
+        # A 0-1 scale is rescaled and an unsafe reason blanked, as in an object reply
+        with fake_llm(rr, [{"idx": 0, "score": 0.9, "reason": "[deal](https://evil.example)"},
+                           {"idx": 1, "score": 0.45, "reason": "fine"}]):
+            out = rr.rerank("q", cands, top_k=3, errors=[])
+        assert [(p["rerank_score"], p["reason"]) for p in out] == [(90, ""), (45, "fine")]
+        # Any other shape: 'Bad shape: reply is <type>' -- never the reply text -- and
+        # embedding order. An object keeps its own message
+        for reply, kind in (("red shoes PWNED", "str"), (7, "int"), (None, "NoneType"),
+                            (True, "bool"), ([], "list (empty)"),
+                            ({"ranked": "red shoes PWNED"}, None)):
+            errs = []
+            with fake_llm(rr, reply), captured_logs() as records:
+                out = rr.rerank("q", cands, top_k=3, errors=errs)
+            detail = f"Bad shape: reply is {kind}" if kind else "Bad shape: 'ranked' is str"
+            assert errs == [{"stage": "rerank", "code": "LLMError", "detail": detail}], errs
+            assert [p["Product_title"] for p in out] == [c["Product_title"] for c in cands]
+            assert all(p["rerank_score"] is None for p in out)
+            assert not any("pwned" in m.lower() for m in records), records
+
+
+def test_non_object_replies_fall_back_with_each_stage_error():
+    """Every other LLM call site parses a JSON OBJECT. A bare array, string, number or
+    null raised AttributeError at .get(): the stage still fell back, but errors[] said
+    'AttributeError'. Now each is its stage's documented LLMError, 'Bad shape: reply is
+    <type>' (type only, never the reply), with the stage's existing fallback. A bare
+    array is never reinterpreted: not as intents, phrases or a chat turn."""
+    import app.assistant as asst
+    import app.recommendations as recs
+
+    anchor = {"Product_title": "Red Shoe", "categ_lvl2_name": "Shoes"}
+    replies = [["red shoes PWNED", "red sneakers"], "red shoes PWNED", 7, None]
+    with guard_config(), captured_logs() as records:
+        for reply in replies:
+            want = [("LLMError", f"Bad shape: reply is {type(reply).__name__}")]
+            # Translator, every mode and a routed bundle: the flat page of the sanitised
+            # query, as for any failed translation
+            for query, mode in (("red shoes", None), ("ingredients to make pancakes", None),
+                                ("red shoes", "hyde"), ("red shoes", "hybrid")):
+                errs = []
+                with fake_llm(tr, reply):
+                    out = tr.understand_query(query, mode=mode, errors=errs)
+                assert out["intents"] == [query] and out["bundle_type"] is None, (mode, out)
+                assert out["constraints"] == [] and not out["is_recipe"]
+                assert [(e["stage"], e["code"], e["detail"]) for e in errs] == \
+                    [("translate",) + w for w in want], (mode, errs)
+            # Cross-sell: no phrases, so the caller's look-alike fallback
+            errs = []
+            with fake_llm(recs, reply):
+                assert recs._complementary_phrases("red shoes", anchor, 3, errs) == []
+            assert [(e["stage"], e["code"], e["detail"]) for e in errs] == \
+                [("cross_sell",) + w for w in want], errs
+            # Assistant: search the message literally, a fresh topic
+            errs = []
+            with fake_llm(asst, reply):
+                out = asst.interpret("warm socks", errors=errs)
+            assert out == {"action": "search", "new_topic": True, "search_query": "warm socks",
+                           "exclude_terms": [], "reply": "Here's what I found:"}, out
+            assert [(e["stage"], e["code"], e["detail"]) for e in errs] == \
+                [("assistant",) + w for w in want], errs
+    assert records and not any("pwned" in m.lower() for m in records), records
 
 
 def test_cross_sell_phrases_are_screened():

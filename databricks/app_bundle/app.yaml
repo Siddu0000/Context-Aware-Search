@@ -48,6 +48,16 @@ env:
   # Tracing a shared deployment needs a trace-storage decision first (CLAUDE.md)
   - name: MLFLOW_ENABLED
     value: "false"
+  # Persistent memo of ACCEPTED LLM replies: the same search gives the same results
+  # (2026-10-27). The App's own disk is wiped on every restart, so the memo lives on
+  # the UC Volume 09 app_create() / app_grant() create and grant (READ + WRITE VOLUME);
+  # 09 stage() refuses any other LLM_MEMO_DIR. Each new search reads and writes the
+  # volume through the Files API (latency unmeasured on the App). REVERT: "false"
+  # (repeats then re-sample; 09 then neither creates nor grants the volume).
+  - name: LLM_MEMO
+    value: "true"
+  - name: LLM_MEMO_DIR
+    value: "/Volumes/dev/cas/app_state/llm_memo"
   - name: BACKEND_URL
     value: "http://127.0.0.1:8001"
   - name: STREAMLIT_BROWSER_GATHER_USAGE_STATS

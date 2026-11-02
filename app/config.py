@@ -130,6 +130,33 @@ RERANK_INPUT_K = int(os.getenv("RERANK_INPUT_K", "15"))
 
 PAGE_CACHE_SIZE = int(os.getenv("PAGE_CACHE_SIZE", "64"))
 
+# Persistent memo of ACCEPTED LLM replies (app/llm_memo.py), 2026-10-27: "the same search
+# must give the same results" (Oct 27 meeting). With a fake LLM the pipeline is
+# byte-identical run to run; the LLM is not -- Groq's seed is best effort (the same
+# translator prompt gave 3 different replies in 3 cold runs) and Databricks gets no seed --
+# and page_cache dies with the process. On: a reply a stage accepted is replayed for the
+# byte-identical request (0 provider calls), so the page repeats across restarts. A
+# fallback is never stored. OFF in every eval harness (eval/*.py call
+# llm_memo.disable_for_eval(): an eval must sample the model) and in databricks/08.
+# false = every search asks the LLM again (the pre-2026-10-27 behaviour). Read as cfg.X at
+# call time.
+LLM_MEMO = os.getenv("LLM_MEMO", "true").lower() in {"1", "true", "yes"}
+# Where: a local directory (relative = the project root; SQLite inside, gitignored under
+# .cache/) or a UC Volume path /Volumes/<catalog>/<schema>/<volume>/... (one JSON file per
+# key; the FUSE mount in a notebook, the Files API in a Databricks App, whose own disk is
+# lost on restart). The App sets /Volumes/<CAS_CATALOG>/<CAS_SCHEMA>/app_state/llm_memo
+# (databricks/app_bundle/app.yaml).
+LLM_MEMO_DIR = os.getenv("LLM_MEMO_DIR", ".cache/llm_memo")
+# Bound, least recently used out (SQLite on every new entry; a Volume store on
+# `python -m app.llm_memo purge --to-limit`). A search adds ~2-3 replies of 1-3 KB.
+LLM_MEMO_MAX_ENTRIES = int(os.getenv("LLM_MEMO_MAX_ENTRIES", "50000"))
+# Age limit in days (0 = never expire, the default: the memo exists to repeat a page).
+# The stored replies echo shopper text (intents, rerank reasons, assistant rewrites), and
+# on the App they sit in a shared Volume: a limit bounds how long they are kept. An older
+# entry is a miss and is deleted when read; `python -m app.llm_memo purge --expired` (or
+# --to-limit) deletes the ones never read again.
+LLM_MEMO_MAX_AGE_DAYS = float(os.getenv("LLM_MEMO_MAX_AGE_DAYS", "0"))
+
 GROCERY_PER_INTENT_K = int(os.getenv("GROCERY_PER_INTENT_K", "4"))
 
 RECOMMEND_ENABLED = os.getenv("RECOMMEND_ENABLED", "true").lower() in {"1", "true", "yes"}
@@ -164,6 +191,68 @@ SPONSORED_MIN_RERANK_SCORE = float(os.getenv("SPONSORED_MIN_RERANK_SCORE", "40")
 # same-type upsell filter -- those need a git revert. Read as cfg.TYPE_AWARE_RANKING at call time and part of the
 # page_cache key, so flipping it in-process (eval/eval_page_types.py --mode both) is real.
 TYPE_AWARE_RANKING = os.getenv("TYPE_AWARE_RANKING", "true").lower() in {"1", "true", "yes"}
+
+# Outfit bundles ("beach wedding outfit" -> one card per garment slot: dress, sandals, hat).
+# OFF since Niharika's review (2026-10-15): the combinations did not tell a coherent story,
+# a bundle page shows only 3-5 products with no page 2, and one rerank window capped the
+# outfit's own shoes and bag at <=40. Off, an outfit-worded query is an ordinary clothing
+# search (garment intents, paginated, type-aware). Gated in the translator, the only
+# producer of bundle_type, so main.py's outfit code is simply unreachable. true restores the
+# outfit route AND the previous general prompt byte-identical. Read as cfg.X at call time and
+# part of the page_cache key. Recipe and setup bundles are unaffected.
+OUTFIT_BUNDLES_ENABLED = os.getenv("OUTFIT_BUNDLES_ENABLED", "false").lower() in {"1", "true", "yes"}
+
+# Display band order of a flat page (app/main.py _flat_display / _relevance_groups),
+# 2026-10-19 owner call 1 (Sai). The 41-query apparel battery (two grader lenses) found
+# rows the reranker REJECTED (<= SPONSORED_MIN_RERANK_SCORE) average 0.32 on a 0-2 label
+# while never-reranked tail rows average 1.01, yet the 2026-10-14 order showed the rejects
+# first: 41 of them sat on page 1 across 13 queries. true = reranked > floor, then the
+# unreranked tail, then the rejects; and the gender interleave stays inside 15-point rerank
+# tiers of the top band, so a men's 55 is never lifted above a women's 92. false = the
+# 2026-10-14 order (rejects before the tail, interleave across the whole band). It changes
+# the CACHED pool, so it is part of the page_cache key; read as cfg.X at call time.
+REJECTS_AFTER_TAIL = os.getenv("REJECTS_AFTER_TAIL", "true").lower() in {"1", "true", "yes"}
+
+# Device asks (2026-10-27, the Oct 27 meeting: "gift for a vintage watch collector" put
+# watch boxes, winders and cleaning kits on page 1 and the watches on page 2; "redo the
+# electronics category"). When a flat query names a device itself -- watch, laptop,
+# headphones, phone, tablet, camera or speaker (app/device_role.py), or a gift for someone
+# who collects or loves one -- and the family leads the raw head with at least one real
+# device in the pool: the rerank window seats the device first and accessories for it
+# last (a gift keeps 3 seats for its add-on intents), the device leads each display band
+# and every sort group, an accessory ad stays organic, an accessory never counts toward
+# match_quality, the reranker gets a code-written [product_type] text and a ` | role=`
+# field on its window rows. Only inside TYPE_AWARE_RANKING (its false turns this off
+# too). false = the 2026-10-19 window, display, ads, banner and reranker inputs, except
+# for watches: app/product_type.py types a watch or watch band `accessory`, no longer
+# `jewelry` (500 Fashion rows change their `type=` field and type tier), and reads "apple
+# watch bracelet" (accessory) and "dress watch" (no dresses subtype) as their titles read,
+# with this knob on or off (knob off, 10 of the 15 window rows of "women's bracelet watch"
+# are not the 2026-10-19 ones). That typing, the prompt and rubric lines (QE DEVICE /
+# GIFT bullets, the rubric's GIFTS sentence) and the `_format_candidate` blank-value fix
+# need a git revert. It changes the CACHED pool, so it is part of the page_cache key;
+# read as cfg.X at call time.
+DEVICE_ROLE_RANKING = os.getenv("DEVICE_ROLE_RANKING", "true").lower() in {"1", "true", "yes"}
+
+# Colour/size variants of one product as ONE card (2026-10-19 owner call 2). Fashion rows
+# sharing search.style_key (store + title minus colour, size and pack words; the catalog
+# audit's strict key: 0 false merges on the audited page-1 duplicates) collapse onto the
+# best-placed one, which lists them under `variants`. Graders tagged 60 duplicate cards in
+# 32 of 41 battery queries ("Hubby & Wifey" tee at #1-3). Applied AFTER the cache lookup
+# (filters -> sort -> collapse -> paginate), so it is NOT in the page_cache key and costs no
+# LLM call. Fashion only: the key drops 1-2 digit numbers, which name models elsewhere
+# ("Series 7" / "Series 8"). false = one card per row, as before.
+VARIANT_COLLAPSE = os.getenv("VARIANT_COLLAPSE", "true").lower() in {"1", "true", "yes"}
+
+# The "No exact matches" banner (/search match_quality.weak). Contract C2 (2026-10-19):
+# weak = fewer than 4 rows judged above the floor, or a best score <= 55. N > 0 ALSO calls
+# a page weak when fewer than N rows scored >= 71 ("strong"). Why it exists: replayed on
+# the recorded apparel battery (0 LLM), C2 alone flagged only p07 of its four target pages
+# (x02, p03, p07, m04: sandals at 48-55 and kids' shoes count as accepts); N = 4 flagged
+# m04, p07, x02 and c07 and none of the 20 best (p03 still passes, its canvas shoes scored
+# 70-92). Not an owner call yet, so 0 = C2 exactly. Applied after the cache lookup: NOT in
+# the page_cache key; read as cfg.X at call time.
+WEAK_MATCH_MIN_STRONG = int(os.getenv("WEAK_MATCH_MIN_STRONG", "0"))
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 

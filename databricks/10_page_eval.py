@@ -2,22 +2,45 @@
 
 eval/eval_page_types.py calls app.main.search in-process -- the code the App serves --
 and scores page 1 as a shopper sees it: product types in the top 4 / top 12 of a
-clothing ask, context fit (no bridal gowns or wool at a beach wedding), outfit slot
-order, setup components, and that type-vocabulary collisions ("ring light", "tea
-bags", "apple watch") keep their vertical. 04-06 score the reranker's own list and
+clothing ask, context fit (no bridal gowns or wool at a beach wedding, bridal wear on
+a bridal ask), outfit slot order (outfit metrics only with OUTFIT_BUNDLES_ENABLED;
+off, the default, outfit asks are flat apparel pages), setup components, that
+type-vocabulary collisions ("ring light", "tea bags", "apple watch") keep their
+vertical, and since 2026-10-27 the 10 'device' rows: the share of the top 4 / top 12
+that IS the device ("gift for a vintage watch collector": watches before boxes,
+winders and cleaning kits; "laptop for college", "iphone", "ipad", noise cancelling
+headphones, "women's watch"), and the asks where DEVICE_ROLE_RANKING must do nothing
+(an accessory ask "watch winder" / "headphone pads", an owner need "stop my laptop
+from overheating", "airtag" with no device in the catalog). Watches sit in Fashion AND
+Electronics, so whether the device gate acts can differ between gte-large-en and the
+local gte-small: read core_top4 / core_top12 / first_core (a gate that dropped the ask
+logs "Device-role ranking: device ask dropped (minority_pool | no_core_rows)"; the CSV
+has no column for it). 04-06 score the reranker's own list and
 cannot see main.py's ordering, which is where the demo complaint lived. The demo ran
 on the App (gte-large-en + Qwen) while the diagnosis traces are local (gte-small +
 gpt-oss), so this is the run that measures what the stakeholder saw.
 
 mode="both" runs TYPE_AWARE_RANKING off then on and replays the translator (and any
 identical rerank call) into the second arm. "off" is NOT the pre-change code: the
-prompts, routing, the gender fix and the type= field sit outside the knob. For a true
+prompts, routing, the gender fix and the type= field sit outside the knob, while
+DEVICE_ROLE_RANKING acts only inside it: the off arm has no device ordering, the on
+arm has it while DEVICE_ROLE_RANKING is on (the default). For a true
 before, run this from a Git folder at the previous commit with only
 eval/eval_page_types.py, data/page_type_queries.json and app/product_type.py copied
-in (the script types rows itself there and runs one 'head' arm).
+in (the script types rows itself there and runs one 'head' arm); the 'core' columns
+there also need app/device_role.py and app/catalog_taxonomy.py copied in (scoring
+only: the old main.py never calls them).
+
+The LLM memo (app/llm_memo.py) is OFF for the run: patch_eval_harness(memo=False) and
+eval_page_types.run() both switch it off, and run() refuses to start otherwise -- a
+memo would replay the first sample of every query on every repeat and arm. The CSV's
+`llm_memo` / `memo_hits` columns record it (memo hits must be 0).
 
 Cost: 2 LLM calls per query run; "both" adds only the rerank calls it cannot replay:
-34 queries ~ 70-100 calls per repeat. No index rebuild; the index must be ONLINE.
+48 queries ~ 100-145 calls per repeat (96 in the off arm, at most one more rerank per
+query in the on arm). Tokens, ESTIMATED: ~4.9K per translate + rerank (the 2026-10-20
+live qwen3.8-27b mean was 4.4K, before 2026-10-27's ~0.5K of prompt growth), so
+~0.24-0.38M per repeat. No index rebuild; the index must be ONLINE.
 
 app.main is a FastAPI module and the runbook's Cell 1 does not install FastAPI. If
 the import fails:
@@ -58,7 +81,11 @@ def run(mode="both", repeats=1, rerank=True, queries=None, relevance=None):
     # One INFO line per LLM request otherwise (the URL, never the query, but noise)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     spark = SparkSession.builder.getOrCreate()
-    vs_shim.patch_eval_harness(spark)
+    # memo=False, said out loud: an eval compares samples (owner call D5)
+    vs_shim.patch_eval_harness(spark, memo=False)
+    if cfg.LLM_MEMO:
+        raise RuntimeError("The LLM memo is still on after vs_shim.patch_eval_harness: "
+                           "this eval would replay stored replies. Set cfg.LLM_MEMO = False.")
 
     # The CSV name carries the model (eval_page_types adds it) and the index mode:
     # "vector" = the stored-vector index (2026-10-09 on), "text" = the old managed

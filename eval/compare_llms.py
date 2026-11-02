@@ -7,6 +7,7 @@ import time
 
 import app.config as config_module
 import app.llm_client as llm_client_module
+from app import llm_memo
 from eval.run_eval import evaluate
 
 logging.basicConfig(level=logging.WARNING)
@@ -68,8 +69,11 @@ def main():
         help="Built-ins (gemini/openai/anthropic) or any OpenAI-compatible model id.",
     )
     args = parser.parse_args()
+    # Models are compared on fresh samples: a memo would replay the first model's
+    # translation for the next one whenever their requests matched (evaluate() does too)
+    llm_memo.disable_for_eval()
 
-    print("\n=== LLM comparison (rerank ON; same eval set) ===\n")
+    print("\n=== LLM comparison (rerank ON; same eval set; llm_memo off) ===\n")
     ran, skipped, failed = [], [], []
     for name in args.models:
         print(f"--- {name} ---")

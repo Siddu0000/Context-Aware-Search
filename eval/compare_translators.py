@@ -6,6 +6,7 @@ import time
 
 import app.config as cfg
 import app.translator as translator_module
+from app import llm_memo
 from eval.run_eval import evaluate
 
 logging.basicConfig(level=logging.WARNING)
@@ -37,9 +38,11 @@ def main():
         help="Translator modes to compare.",
     )
     args = parser.parse_args()
+    # Each mode must sample the model (evaluate() turns it off too)
+    llm_memo.disable_for_eval()
 
     print("\n=== Translator-strategy comparison ===")
-    print("Reranker is DISABLED so differences are purely from translation.")
+    print("Reranker is DISABLED so differences are purely from translation (llm_memo off).")
     for mode in args.modes:
         print(f"\n--- mode={mode} ---")
         try:

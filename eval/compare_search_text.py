@@ -4,6 +4,7 @@ import logging
 import time
 from typing import Tuple
 
+from app import llm_memo
 from app import search as search_module
 from eval.run_eval import evaluate
 
@@ -44,6 +45,8 @@ def run_for_variant(name: str, fields: Tuple[str, ...]):
 
 
 def main():
+    # The translator runs in every variant: each must sample it (evaluate() does too)
+    llm_memo.disable_for_eval()
     print("\n=== Search-text (chunking) comparison ===")
     for name, fields in VARIANTS.items():
         print(f"\n--- {name}: {fields} ---")

@@ -6,6 +6,7 @@ import logging
 
 import pandas as pd
 
+from app import llm_memo
 from app.config import DATA_DIR, EVAL_RESULTS_DIR
 from app.search import load_index, search_products
 from app.translator import translate_query
@@ -34,6 +35,8 @@ def _search_titles(dish_query: str, top_k: int) -> list[str]:
 
 
 def evaluate(top_k: int, query_template: str):
+    # Coverage of the model's ingredient lists: fresh samples, not replays
+    memo = llm_memo.disable_for_eval()
     load_index()
     spec = json.loads(RECIPE_FILE.read_text(encoding="utf-8"))
     target = spec.get("target_coverage", 0.7)
@@ -70,7 +73,8 @@ def evaluate(top_k: int, query_template: str):
 
         for ing, ok in found_flags.items():
             all_rows.append(
-                {"dish": dish, "ingredient": ing, "found": int(ok), "coverage": round(coverage, 3)}
+                {"dish": dish, "ingredient": ing, "found": int(ok), "coverage": round(coverage, 3),
+                 "llm_memo": memo}
             )
 
     overall = sum(coverages) / len(coverages) if coverages else 0.0
@@ -84,6 +88,7 @@ def evaluate(top_k: int, query_template: str):
     print(f"\n  Overall mean coverage: {overall:.0%}   (target {target:.0%})")
     n_pass = sum(1 for c in coverages if c >= target)
     print(f"  Dishes meeting target: {n_pass}/{len(dishes)}")
+    print(f"  llm_memo: {'on' if memo else 'off'}")
 
     from datetime import datetime
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

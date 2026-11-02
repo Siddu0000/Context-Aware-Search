@@ -10,6 +10,7 @@ import pandas as pd
 
 import app.config as cfg
 import eval.run_eval as run_eval
+from app import llm_memo
 from app.query_guard import sanitize_query
 from app.search import get_dataframe, load_index, search_products
 from app.translator import translate_query
@@ -51,6 +52,9 @@ def _run_stability_at(temp: float, queries: list[str], repeats: int, rerank_on: 
 
     A fallback skips the LLM, so it looks perfectly stable; count it separately.
     """
+    # Run-to-run stability IS the measurement: a memo would replay repeat 1 and report
+    # every temperature as perfectly stable
+    llm_memo.disable_for_eval()
     orig_det, orig_ovr = cfg.DETERMINISTIC, cfg.TEMPERATURE_OVERRIDE
     cfg.DETERMINISTIC = False
     cfg.TEMPERATURE_OVERRIDE = temp
@@ -101,6 +105,7 @@ def main():
         help="How many times to repeat each stability query. Default 3.",
     )
     args = p.parse_args()
+    llm_memo.disable_for_eval()   # before any LLM call: every repeat must sample
 
     rerank_on = args.rerank
     # Resolve at CALL time (a notebook sets EVAL_QUERIES_JSON after importing config),
@@ -113,6 +118,8 @@ def main():
     print(f"  temps         = {args.temps}")
     print(f"  rerank        = {rerank_on}  (off = translator-only, lighter on quota)")
     print(f"  seed          = DISABLED during sweep (so temperature is observable)")
+    print(f"  llm_memo      = {'on' if cfg.LLM_MEMO else 'off'} (replayed replies would "
+          "look perfectly stable)")
     print(f"  eval set      = {queries_path.name}")
     print("=" * 78)
 

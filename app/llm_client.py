@@ -9,6 +9,7 @@ from typing import Optional
 
 # Read as cfg.X, never `from app.config import X` — evals override cfg at runtime
 import app.config as cfg
+from app import llm_memo
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,8 @@ def _new_usage() -> dict:
         "completion_tokens": 0,
         "total_tokens": 0,
         "reasoning_tokens": 0,
+        # Replies served from the LLM memo: no provider call, no tokens (app/llm_memo.py)
+        "memo_hits": 0,
     }
 
 
@@ -60,6 +63,12 @@ def _record_usage(prompt=None, completion=None, total=None, reasoning=None) -> N
         u["completion_tokens"] += c
         u["total_tokens"] += t
         u["reasoning_tokens"] += r
+
+
+def _record_memo_hit() -> None:
+    """A memo hit made no provider call: it counts here, never in `calls`."""
+    for u in _USAGE_STACK.get():
+        u["memo_hits"] += 1
 
 
 def _usage_openai(resp) -> None:
@@ -233,15 +242,25 @@ class _GeminiBackend:
         self.rotator = GeminiKeyRotator(cfg.GOOGLE_API_KEYS)
         self.model = cfg.GEMINI_MODEL
 
-    def generate_json(self, prompt: str, temperature: float) -> str:
+    def _config(self, temperature: float) -> dict:
         config = {
             "temperature": cfg.effective_temperature(temperature),
             "response_mime_type": "application/json",
         }
         if _use_seed():
             config["seed"] = cfg.LLM_SEED
+        return config
+
+    def memo_request(self, prompt: str, temperature: float) -> dict:
+        """What generate_json sends, as app/llm_memo.make_key reads it (no network)."""
+        config = self._config(temperature)
+        return {"model": self.model, "messages": prompt, "json_mode": True,
+                "temperature": config["temperature"], "seed": config.get("seed"),
+                "reasoning_format": None}
+
+    def generate_json(self, prompt: str, temperature: float) -> str:
         response = self.rotator.generate_content(
-            model=self.model, contents=prompt, config=config
+            model=self.model, contents=prompt, config=self._config(temperature)
         )
         _usage_gemini(response)
         return response.text
@@ -315,6 +334,22 @@ class _OpenAIBackend:
             params["extra_body"] = {"reasoning_format": cfg.GROQ_REASONING_FORMAT}
         return params
 
+    def memo_request(self, prompt: str, temperature: float) -> dict:
+        """What generate_json sends NOW, as app/llm_memo.make_key reads it (no network).
+
+        Read after a call it describes that call's successful attempt: a refusal adds the
+        model to _NO_JSON_MODE / _NO_TEMPERATURE for good, so the sets only grow."""
+        params = self._params(prompt, temperature, self.model not in _NO_JSON_MODE,
+                              self.model not in _NO_TEMPERATURE)
+        return {
+            "model": params["model"],
+            "messages": params["messages"],
+            "json_mode": "response_format" in params,
+            "temperature": params.get("temperature"),
+            "seed": params.get("seed"),
+            "reasoning_format": (params.get("extra_body") or {}).get("reasoning_format"),
+        }
+
     def generate_json(self, prompt: str, temperature: float) -> str:
         # Each refusal permanently drops one param, so this ends within 3 attempts
         while True:
@@ -358,18 +393,28 @@ class _AnthropicBackend:
         self.client = Anthropic(api_key=cfg.ANTHROPIC_API_KEY)
         self.model = cfg.ANTHROPIC_MODEL
 
-    def generate_json(self, prompt: str, temperature: float) -> str:
-        resp = self.client.messages.create(
-            model=self.model,
-            max_tokens=1024,
-            temperature=cfg.effective_temperature(temperature),
-            messages=[
+    def _request(self, prompt: str, temperature: float) -> dict:
+        return {
+            "model": self.model,
+            "max_tokens": 1024,
+            "temperature": cfg.effective_temperature(temperature),
+            "messages": [
                 {
                     "role": "user",
                     "content": prompt + "\n\nRespond with ONLY valid JSON, no prose.",
                 }
             ],
-        )
+        }
+
+    def memo_request(self, prompt: str, temperature: float) -> dict:
+        """What generate_json sends, as app/llm_memo.make_key reads it (no network)."""
+        req = self._request(prompt, temperature)
+        return {"model": req["model"], "messages": req["messages"], "json_mode": False,
+                "temperature": req["temperature"], "seed": None, "reasoning_format": None,
+                "extra": {"max_tokens": req["max_tokens"]}}
+
+    def generate_json(self, prompt: str, temperature: float) -> str:
+        resp = self.client.messages.create(**self._request(prompt, temperature))
         _usage_anthropic(resp)
         return resp.content[0].text
 
@@ -431,15 +476,150 @@ def get_llm_client():
     return _singleton
 
 
-def generate_json(prompt: str, temperature: float = 0.2) -> dict:
-    """Call the backend and parse the reply as JSON, tolerating code-fence wrappers."""
-    client = get_llm_client()
-    raw = client.generate_json(prompt, temperature)
+# ------------------------------------------------------------------ the LLM reply memo
+# app/llm_memo.py keeps replies a stage ACCEPTED. A stage declares its calls with
+# memo_stage(...) and reports its verdict with accept_reply / reject_reply, so only an
+# accepted reply is ever stored and a refused replay is forgotten. ContextVars, like the
+# usage stack above: each request (a uvicorn threadpool context) has its own.
+_MEMO_STAGE: ContextVar[Optional[str]] = ContextVar("llm_memo_stage", default=None)
+# memo_stage(..., key_text=...): what the memo keys the calls inside on, instead of their
+# prompt (a ContextVar, not a generate_json argument at the call sites, so the tests'
+# stand-ins for generate_json keep their (prompt, temperature) signature)
+_MEMO_KEY_TEXT: ContextVar[Optional[str]] = ContextVar("llm_memo_key_text", default=None)
+# (stage, key, raw or None for a memo hit, model) of the last memo-keyed call in context
+_PENDING: ContextVar[Optional[tuple]] = ContextVar("llm_memo_pending", default=None)
+# Open memo_outcome() scopes: dicts the stages' verdicts are written into (a tuple, like
+# the usage stack, so a scope is isolated per context and seen by nested calls)
+_OUTCOMES: ContextVar[tuple] = ContextVar("llm_memo_outcomes", default=())
+
+
+@contextmanager
+def memo_stage(stage: str, key_text: Optional[str] = None):
+    """Mark the generate_json calls inside as `stage`'s (llm_memo.STAGES).
+
+    Only such calls use the memo: a reply is safe to replay only once a stage accepted
+    it, and a call outside any stage (the start-up probe, an ad-hoc notebook call) has
+    no accept point. `key_text`: see generate_json (the stages pass their prompt
+    rendered with the canonical query)."""
+    token = _MEMO_STAGE.set(stage)
+    key_token = _MEMO_KEY_TEXT.set(key_text)
+    try:
+        yield
+    finally:
+        _MEMO_KEY_TEXT.reset(key_token)
+        _MEMO_STAGE.reset(token)
+
+
+@contextmanager
+def memo_outcome():
+    """What the LLM stages inside said about their replies, for main.py's caches.
+
+    `superseded`: a stage's reply lost the memo race -- a concurrent request (another
+    thread, process or App instance) stored another reply for the same request first.
+    That stored one is what every later request gets, so a run built on ours must not be
+    cached (page_cache, the /product cache): the next request rebuilds from the winner.
+    `rejected`: the stages that fell back on (or refused) their reply."""
+    outcome = {"superseded": False, "rejected": []}
+    token = _OUTCOMES.set(_OUTCOMES.get() + (outcome,))
+    try:
+        yield outcome
+    finally:
+        _OUTCOMES.reset(token)
+
+
+def accept_reply(stage: str, query: Optional[str] = None) -> bool:
+    """`stage` USED the reply it just got: keep it (a memo hit is already kept).
+
+    `query` (the sanitised shopper text) is stored only as a hash, for `purge --query`.
+    Returns False when the memo already held ANOTHER reply for this request (a concurrent
+    request committed first); the open memo_outcome() scopes are marked superseded."""
+    pending = _PENDING.get()
+    if pending is None or pending[0] != stage:
+        return True
+    _PENDING.set(None)
+    _, key, raw, model = pending
+    if raw is None:
+        return True
+    ours = llm_memo.commit(stage, key, raw, model=model, query=query)
+    if not ours:
+        for outcome in _OUTCOMES.get():
+            outcome["superseded"] = True
+    return ours
+
+
+def reject_reply(stage: str) -> None:
+    """`stage` fell back on the reply it just got: never keep it, and forget a replayed
+    one (a guard or parser change now refuses it), so the next search asks again."""
+    for outcome in _OUTCOMES.get():
+        outcome["rejected"].append(stage)
+    pending = _PENDING.get()
+    if pending is None or pending[0] != stage:
+        return
+    _PENDING.set(None)
+    _, key, raw, _ = pending
+    if raw is None:
+        llm_memo.discard(stage, key)
+
+
+def _memo_key(client, prompt: str, temperature: float) -> str:
+    return llm_memo.make_key(cfg.LLM_PROVIDER, getattr(client, "base_url", None),
+                             client.memo_request(prompt, temperature))
+
+
+def _reply_text(raw) -> str:
     if not isinstance(raw, str):
         raw = _message_text(raw)
     if not raw.strip():
         raise LLMError("LLM returned no text content (reasoning-only reply?)")
+    return raw
+
+
+def _parse_reply(raw: str):
     try:
         return _parse_json_reply(raw)
     except json.JSONDecodeError as e:
         raise LLMError(f"LLM returned invalid JSON: {raw!r}") from e
+
+
+def generate_json(prompt: str, temperature: float = 0.2, *, memo: bool = True,
+                  key_text: Optional[str] = None) -> dict:
+    """Call the backend and parse the reply as JSON, tolerating code-fence wrappers.
+
+    Inside memo_stage(...) with cfg.LLM_MEMO on, a reply the stage accepted earlier for
+    the byte-identical request is replayed instead: 0 provider calls, no usage recorded
+    (`memo_hits` counts it), and it is parsed and screened by today's code like a fresh
+    one. A backend that cannot describe its request (no memo_request, e.g. a test fake)
+    is never memoised. memo=False always asks the provider: the start-up probe, which a
+    replayed reply would let pass over a revoked grant.
+
+    `key_text` (or memo_stage's), when given, stands in for `prompt` in the memo KEY only
+    (the provider is always sent `prompt`): the stages pass the prompt rendered with the
+    canonical query (page_cache.canonical_query), so "Black Dress" and "black  dress" --
+    one page_cache entry within a process -- also share their replies after a restart."""
+    _PENDING.set(None)
+    client = get_llm_client()
+    stage = _MEMO_STAGE.get() if memo else None
+    keyed = bool(stage) and llm_memo.enabled() and hasattr(client, "memo_request")
+    if key_text is None:
+        key_text = _MEMO_KEY_TEXT.get()
+    keyed_text = prompt if key_text is None else key_text
+    if keyed:
+        key = _memo_key(client, keyed_text, temperature)
+        stored = llm_memo.lookup(stage, key)
+        if stored is not None:
+            try:
+                parsed = _parse_reply(_reply_text(stored))
+            except LLMError:
+                llm_memo.discard(stage, key)   # unreadable by today's parser: ask again
+            else:
+                _record_memo_hit()
+                _PENDING.set((stage, key, None, getattr(client, "model", None)))
+                return parsed
+    raw = _reply_text(client.generate_json(prompt, temperature))
+    parsed = _parse_reply(raw)
+    if keyed:
+        # Keyed again from what was SENT: a JSON-mode or temperature refusal during this
+        # call changed the request, and only the final attempt's reply came back
+        _PENDING.set((stage, _memo_key(client, keyed_text, temperature), raw,
+                      getattr(client, "model", None)))
+    return parsed

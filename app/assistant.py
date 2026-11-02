@@ -5,7 +5,9 @@ import logging
 from typing import List, Optional
 
 from app import query_guard
-from app.llm_client import LLMError, error_code, generate_json
+from app.llm_client import (
+    LLMError, accept_reply, error_code, generate_json, memo_stage, reject_reply,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,11 +155,18 @@ def interpret(
         message=query_guard.strip_structure(message),
     )
     try:
-        parsed = generate_json(prompt, temperature=0.3)
+        with memo_stage("assistant"):
+            parsed = generate_json(prompt, temperature=0.3)
+        if not isinstance(parsed, dict):
+            # A bare array, string, number or null raised AttributeError at .get(): the
+            # same literal search, labelled with the class. The type only (safety.md)
+            raise LLMError(f"Bad shape: reply is {type(parsed).__name__}")
         action = str(parsed.get("action", "")).strip().lower()
         if action not in {"refine", "search", "reply"}:
             # The type only: the reply can echo the shopper's message (safety.md)
             raise LLMError(f"Bad action ({type(parsed.get('action')).__name__})")
+        # A usable decision: the LLM memo may replay it for the same turn and history
+        accept_reply("assistant", message)
         # Instruct models loosely type fields (null, "false", "socks"); coerce strictly
         reply = _as_text(parsed.get("reply"))
         query = _as_text(parsed.get("search_query"))
@@ -203,6 +212,7 @@ def interpret(
             ),
         }
     except Exception as e:  # noqa: BLE001 — best-effort, must not break the chat
+        reject_reply("assistant")
         detail = query_guard.error_detail(e)
         if errors is not None:
             errors.append({"stage": "assistant", "code": error_code(e), "detail": detail})

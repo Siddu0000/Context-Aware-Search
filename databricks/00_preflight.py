@@ -2,7 +2,8 @@
 
 Written for classic clusters (e.g. Retail_DE_cluster), where access mode and
 runtime are whatever the cluster was created with; it also passes on serverless.
-Costs nothing but one ~2-token embedding call. One PASS / WARN / FAIL row per
+Costs nothing but one ~2-token embedding call (and a tiny probe file written to and
+deleted from the App's memo volume, when it exists). One PASS / WARN / FAIL row per
 check; any FAIL raises, so the cell turns red BEFORE 01/02 spend money.
 
     exec(open("databricks/00_preflight.py").read()); preflight()
@@ -16,6 +17,8 @@ Sources (checked 2026-10-10):
   https://learn.microsoft.com/en-us/azure/databricks/compute/group-access
 - Idle clusters keep billing DBUs + VMs until auto-termination:
   https://learn.microsoft.com/en-us/azure/databricks/compute/clusters-manage
+- The App keeps its LLM reply memo on a UC Volume (local disk is lost on restart):
+  https://learn.microsoft.com/en-us/azure/databricks/dev-tools/databricks-apps/key-concepts
 """
 
 import os
@@ -23,6 +26,10 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import app.config as cfg
+
+if "databricks" not in sys.path:  # exec()ed again on every re-run of the cell
+    sys.path.insert(0, "databricks")
+import vs_shim  # noqa: E402 -- the App's memo volume and pins, shared with 09
 
 _UC_MODES = {"DATA_SECURITY_MODE_STANDARD", "USER_ISOLATION",
              "DATA_SECURITY_MODE_DEDICATED", "SINGLE_USER"}
@@ -40,6 +47,66 @@ def _pf_check(rows, name, fn):
     except Exception as e:  # noqa: BLE001 -- a preflight reports, it never crashes
         status, detail = "FAIL", f"{type(e).__name__}: {str(e)[:160]}"
     _pf_row(rows, status, name, detail)
+
+
+def _pf_versus_app(installed, pins=None):
+    """(status, detail): this notebook's pandas / numpy against the App's pins.
+
+    The notebooks (10's page eval above all) run the app's code on the runtime's own
+    pandas, the App on the pinned one: a different major can change NaN/str dtype
+    semantics under the same code. A report, not a fix -- do NOT %pip install pandas 3
+    on DBR (PySpark's toPandas support for it is unverified).
+    `installed` maps a distribution name to its version, or None when absent.
+    """
+    if pins is None:
+        try:
+            pins = vs_shim.bundle_pins()
+        except OSError as e:
+            return "WARN", (f"{vs_shim.APP_REQUIREMENTS} unreadable ({type(e).__name__}): "
+                            "run from the repo root (Cell 2's os.chdir)")
+    rows, off = [], []
+    for name in ("pandas", "numpy"):
+        have, want = installed.get(name), pins.get(name)
+        rows.append(f"{name} {have or '-'} (App {want or 'unpinned'})")
+        if want and have != want:
+            off.append(name)
+    if not off:
+        return "PASS", ", ".join(rows)
+    return "WARN", (", ".join(rows) + f" -- {'/'.join(off)} differ: a page-eval number here may "
+                    "not be what the App serves; do not %pip install pandas 3 on DBR")
+
+
+def _pf_memo_probe(volume_path):
+    """(status, detail) for the App's memo volume, by a dry write the notebook user makes.
+
+    The probe goes to the volume ROOT (not the memo folder), so it never mixes with
+    memo entries, and is deleted at once. It proves the volume exists and takes
+    writes; the App's own WRITE VOLUME grant is 09 app_grant()'s job (its start-up
+    check reports it). WARN, never FAIL: 01-08 and 10 do not need it.
+    """
+    import json
+    import uuid
+
+    if not os.path.isdir(volume_path):
+        return "WARN", (f"{volume_path} missing (or not readable): 09 app_grant() creates it "
+                        "(needs CREATE VOLUME on the schema); only the App needs it")
+    probe = os.path.join(volume_path, f".preflight_{uuid.uuid4().hex}.json")
+    body = json.dumps({"probe": "00_preflight"})
+    try:
+        with open(probe, "w", encoding="utf-8") as f:
+            f.write(body)
+        with open(probe, encoding="utf-8") as f:
+            back = f.read()
+    except OSError as e:
+        return "WARN", f"{volume_path} exists but a dry write failed ({type(e).__name__})"
+    finally:
+        try:
+            os.remove(probe)
+        except OSError:
+            pass
+    if back != body:
+        return "WARN", f"{volume_path}: the dry write read back different bytes"
+    return "PASS", f"{volume_path} exists and took a dry write (removed)"
 
 
 def _pf_cluster_id():
@@ -170,6 +237,20 @@ def preflight():
         return ("PASS" if ok else "FAIL",
                 cfg.VS_CATALOG_CSV + ("" if ok else " missing: upload products_enriched.csv"))
 
+    def versus_app():
+        import importlib.metadata as md
+
+        def have(p):
+            try:
+                return md.version(p)
+            except md.PackageNotFoundError:
+                return None
+
+        return _pf_versus_app({p: have(p) for p in ("pandas", "numpy")})
+
+    def memo_volume():
+        return _pf_memo_probe(vs_shim.memo_volume_path())
+
     def billing():
         # Optional: only 02 costs() needs it, so a missing grant must not block the run
         try:
@@ -203,9 +284,10 @@ def preflight():
     print(f"preflight: {cfg.CAS_CATALOG}.{cfg.CAS_SCHEMA} | embeddings {cfg.VS_EMBEDDING_MODEL}"
           f" | llm {cfg.OPENAI_MODEL}\n")
     for name, fn in [("python", python), ("runtime", runtime), ("packages", packages),
-                     ("databricks-sdk", sdk),
+                     ("databricks-sdk", sdk), ("pandas / numpy vs the App", versus_app),
                      ("access mode", access_mode), ("auto-termination", auto_terminate),
                      ("unity catalog", unity_catalog), ("catalog file on the Volume", catalog_file),
+                     ("App memo volume (dry write)", memo_volume),
                      ("billing tables", billing), ("serving endpoints", endpoints),
                      ("embedding from a worker thread", embed_from_thread),
                      ("vector search endpoint", vs_endpoint)]:

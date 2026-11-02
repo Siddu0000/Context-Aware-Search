@@ -1,5 +1,7 @@
 """Session-only dummy cart, deliberately shared across surfaces (one basket)."""
 
+import math
+
 import streamlit as st
 
 CART_KEY = "cart"          # {catalog_index: {"product": {...}, "qty": int}}
@@ -26,7 +28,7 @@ def add(product: dict, qty: int = 1) -> int:
                 k: product.get(k)
                 for k in (
                     "catalog_index", "Product_title", "img_url", "price", "price_estimate",
-                    "categ_lvl2_name", "bsns_vrtcl_name", "store",
+                    "categ_lvl2_name", "bsns_vrtcl_name", "store", "brand",
                     "average_rating", "rating_number", "source_intent",
                 )
             },
@@ -67,12 +69,18 @@ def distinct_count() -> int:
     return len(_cart())
 
 
+def _missing(x) -> bool:
+    """None or NaN: pandas hands a missing price over as float NaN, which `is None` misses
+    and which would turn the whole total into $nan."""
+    return x is None or (isinstance(x, float) and math.isnan(x))
+
+
 def estimated_total():
     """(sum, n_items) over items with NO listed price but an estimate -- never in the real total."""
     total, n = 0.0, 0
     for i in _cart().values():
         p, e = i["product"].get("price"), i["product"].get("price_estimate")
-        if p is None and e is not None:
+        if _missing(p) and not _missing(e):
             try:
                 total += float(e) * i["qty"]
                 n += i["qty"]
@@ -87,7 +95,7 @@ def total_price():
     for i in _cart().values():
         p = i["product"].get("price")
         try:
-            if p is None:
+            if _missing(p):
                 unpriced += i["qty"]
                 continue
             total += float(p) * i["qty"]

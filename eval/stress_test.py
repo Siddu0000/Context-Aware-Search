@@ -19,6 +19,7 @@ import unicodedata
 
 import pandas as pd
 
+from app import llm_memo
 from app.config import DATA_DIR, EVAL_RESULTS_DIR
 from app.query_guard import sanitize_query
 from app.search import load_index, search_products
@@ -147,6 +148,8 @@ def main():
     p.add_argument("--rerank", action="store_true", help="Include the rerank stage.")
     p.add_argument("--top-k", type=int, default=10)
     args = p.parse_args()
+    # Injection inertness is a property of the MODEL's replies: sample them every run
+    memo = llm_memo.disable_for_eval()
 
     load_index()
     spec = json.loads(STRESS_FILE.read_text(encoding="utf-8"))
@@ -216,6 +219,7 @@ def main():
     print(f"  known false positives    : {n_known}/{len(known_fps)} still touched by the "
           "guard (documented trade-off, not a failure)")
     print(f"  returned zero results    : {n_empty}")
+    print(f"  llm_memo                 : {'on' if memo else 'off'}")
     print("\n  " + _verdict(n_err, n_bypass, n_fp, n_residual))
     if n_err == 0 and n_bypass == 0 and n_fp == 0:
         if n_any_fb:
@@ -229,7 +233,7 @@ def main():
     from datetime import datetime
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out = EVAL_RESULTS_DIR / f"stress_test_{ts}.csv"
-    pd.DataFrame(rows).to_csv(out, index=False)
+    pd.DataFrame(rows).assign(llm_memo=memo).to_csv(out, index=False)
     print(f"\n  Report saved to: {out}")
 
 

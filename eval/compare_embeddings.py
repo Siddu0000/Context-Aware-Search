@@ -6,6 +6,7 @@ import time
 from statistics import mean
 
 import app.embeddings as embeddings_module
+from app import llm_memo
 from app.embeddings import Embedder
 from eval.run_eval import evaluate
 
@@ -46,6 +47,8 @@ def main():
         help="Embedding model names. text-embedding-3-* triggers the OpenAI path.",
     )
     args = p.parse_args()
+    # No LLM call today (translate_on=False), but never a replay if that changes
+    llm_memo.disable_for_eval()
 
     print("\n=== Embedding-model comparison ===")
     for model in args.models:
