@@ -1,0 +1,3310 @@
+[
+  {
+    "query": "long sleeve dress for my cousins outdoor wedding in october, it gets cold at night",
+    "_context": "fashion-01: Wedding GUEST dresses with long or 3/4 sleeves warm enough for a cool autumn evening outdoors (cocktail, midi, maxi, velvet, knit). Wrong: bridal gowns or a 'wedding dress' for the bride (a long-sleeve mother-of-the-bride or '... wedding guest' dress is a defensible guest pick), sleeveless / strapless summer dresses, shoes, jewelry, men's items.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "context_any_of": [
+      "long sleeve",
+      "3/4 sleeve"
+    ],
+    "context_none_of": [
+      "wedding gown",
+      "sleeveless",
+      "strapless",
+      "spaghetti strap",
+      "bridal gown"
+    ]
+  },
+  {
+    "query": "grad party fit for a guy, its gonna be like 90 degrees out",
+    "_context": "fashion-02: Light, smart-casual men's clothes for a hot graduation party: short-sleeve button-downs, linen or camp-collar shirts, polos, chino shorts. Wrong: wool, fleece, hoodies, sweaters, women's items, 'slim fit' gym wear read from the word 'fit'. ('Athletic Fit' is a normal shirt cut, so 'athletic' is deliberately NOT a misfit term.)",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "men",
+    "context_none_of": [
+      "wool",
+      "fleece",
+      "flannel",
+      "sweater",
+      "hoodie",
+      "thermal",
+      "puffer",
+      "sweatshirt",
+      "parka",
+      "gym",
+      "workout",
+      "compression"
+    ]
+  },
+  {
+    "query": "prom dress with sleeves thats modest, nothing strapless or super low cut",
+    "_context": "fashion-03: Formal / prom gowns and dresses WITH sleeves (long, 3/4, short or cap) and a modest neckline. Wrong: strapless, off-the-shoulder, spaghetti-strap, plunging or backless dresses; bridal gowns; men's prom shirts. context_any_of rewards a title that names sleeves (word-bounded: 'sleeveless' does not match); 112 of 526 Fashion prom-dress titles name sleeves (review, measured).",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "context_none_of": [
+      "strapless",
+      "sleeveless",
+      "off shoulder",
+      "off the shoulder",
+      "spaghetti strap",
+      "backless",
+      "plunge",
+      "deep v"
+    ],
+    "context_any_of": [
+      "sleeve",
+      "long sleeve",
+      "3/4 sleeve",
+      "short sleeve",
+      "cap sleeve",
+      "flutter sleeve"
+    ]
+  },
+  {
+    "query": "sparkly outfit for my 14 yo daughter's first taylor swift concert",
+    "_context": "fashion-04: Sequin, glitter or metallic tops, skirts and dresses in girls' / teen sizes for a pop concert. Wrong: baby or toddler sizes, adult club or 'sexy' outfits, costumes, shoes or jewelry first, concert tickets or electronics. 'taylor swift' is an occasion signal only: the catalog has no Eras / Swiftie apparel to expect (see sidecar supply_detail), so licensed merch is not expected.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "context_any_of": [
+      "sequin",
+      "sparkly",
+      "sparkle",
+      "sparkling",
+      "glitter",
+      "metallic",
+      "shiny",
+      "rhinestone"
+    ],
+    "context_none_of": [
+      "baby",
+      "toddler",
+      "infant",
+      "sexy",
+      "lingerie",
+      "costume"
+    ]
+  },
+  {
+    "query": "mothers day gift for my mom, she gardens every weekend and always gets sunburned",
+    "_context": "fashion-05: Sun protection she can garden in: wide-brim sun hats, UPF shirts, gardening gloves, garden clogs or boots. Wrong: generic Mother's Day jewelry or bags that ignore the gardening and sunburn, men's items, garden-named grocery items.",
+    "group": "complex_fashion",
+    "types": [
+      "headwear",
+      "apparel",
+      "accessory",
+      "footwear"
+    ],
+    "gender": "women",
+    "vertical_not": [
+      "Grocery"
+    ],
+    "context_any_of": [
+      "sun hat",
+      "wide brim",
+      "garden",
+      "gardening",
+      "upf",
+      "sun protection",
+      "uv protection",
+      "straw hat",
+      "bucket hat",
+      "visor"
+    ]
+  },
+  {
+    "query": "fathers day present for my husband who golfs every saturday",
+    "_context": "fashion-06: Golf things a man would wear or use: golf polos, golf shoes, gloves, caps, quarter-zips, golf belts. A golf gadget (rangefinder, GPS watch) is also a fair gift. Wrong: generic men's gifts (ties, wallets, cologne) that ignore golf, women's golf wear.",
+    "group": "complex_fashion",
+    "gender": "men",
+    "context_any_of": [
+      "golf"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "golf"
+      ],
+      "title_none_of": [
+        "women",
+        "ladies",
+        "girl",
+        "kid",
+        "youth",
+        "toddler",
+        "liner",
+        "disposable"
+      ],
+      "category_in": [
+        "Men's Clothing",
+        "Unisex Clothing"
+      ]
+    }
+  },
+  {
+    "query": "snow pants for my 5 yr old, he comes home soaked from recess evry day",
+    "_context": "fashion-07: Waterproof, insulated snow pants or bibs (or a snowsuit) in a 5-year-old's size. Wrong: baby / infant snowsuits, adult ski pants, rain boots or jackets alone, plain sweatpants.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "men",
+    "context_any_of": [
+      "snow pant",
+      "snowpant",
+      "snow bib",
+      "snowsuit",
+      "snow suit",
+      "ski pant",
+      "ski bib",
+      "bib",
+      "waterproof",
+      "water resistant",
+      "insulated"
+    ],
+    "context_none_of": [
+      "baby",
+      "infant",
+      "newborn",
+      "women",
+      "men"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "snow pant",
+        "snowpant",
+        "snow bib",
+        "snowbib",
+        "snowsuit",
+        "snow suit",
+        "ski pant",
+        "ski bib"
+      ],
+      "category_in": [
+        "Kids"
+      ]
+    }
+  },
+  {
+    "query": "light up sneakers for my 6 year old daughter, under $30",
+    "_context": "fashion-08: Kids' light-up (LED) sneakers in a 6-year-old girl's size. None of them lists a price in this catalog, so the budget cannot be confirmed: the page should still show light-up kids' shoes and must not claim they are under $30. Wrong: adult shoes, LED strips or shoelaces from Electronics, plain sneakers.",
+    "group": "complex_fashion",
+    "types": [
+      "footwear"
+    ],
+    "gender": "women",
+    "vertical_in": [
+      "Fashion"
+    ],
+    "context_any_of": [
+      "light up",
+      "led",
+      "flashing",
+      "luminous"
+    ],
+    "context_none_of": [
+      "women",
+      "men",
+      "adult"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "light up",
+        "light-up",
+        "flashing"
+      ],
+      "category_in": [
+        "Kids"
+      ]
+    }
+  },
+  {
+    "query": "flower girl dress for a 4 year old but not white, the bride is the only one in white",
+    "_context": "fashion-09: Flower-girl / girls' party dresses in toddler-to-little-girl sizes in any colour EXCEPT white (blush, champagne, pastel, floral; ivory and off-white count as white here). Wrong: white dresses (the explicit negation), adult bridal or bridesmaid gowns, shoes or baskets first.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "context_none_of": [
+      "white",
+      "bridal",
+      "women",
+      "ivory",
+      "off white"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "flower girl"
+      ],
+      "title_none_of": [
+        "white",
+        "shoe",
+        "headband",
+        "basket",
+        "crown",
+        "wreath",
+        "veil",
+        "petals",
+        "ivory",
+        "off white",
+        "off-white"
+      ],
+      "category_in": [
+        "Kids"
+      ]
+    }
+  },
+  {
+    "query": "plus size swimsuit with tummy control, no bikinis please",
+    "_context": "fashion-10: Plus-size one-piece swimsuits, tankinis or swimdresses with tummy control. Wrong: bikinis (explicitly refused), straight-size swimsuits, men's trunks, cover-ups only.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "context_any_of": [
+      "plus"
+    ],
+    "context_none_of": [
+      "bikini"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "plus",
+        "tummy control"
+      ],
+      "title_any_of": [
+        "swim",
+        "bathing suit",
+        "tankini",
+        "monokini",
+        "one piece"
+      ],
+      "title_none_of": [
+        "bikini"
+      ],
+      "category_in": [
+        "Fashion"
+      ]
+    }
+  },
+  {
+    "query": "wireless bra that actually supports a 38DD, underwires dig into me",
+    "_context": "fashion-11: Wire-free bras built for a full bust (full coverage, minimizer, plus, DD+ sizes). Wrong: underwire bras (the explicit negation), bralettes with no support for a small bust, men's undershirts, Electronics 'wireless' gadgets.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "context_any_of": [
+      "wireless",
+      "wire free",
+      "wirefree",
+      "no wire",
+      "non wire",
+      "non wired"
+    ],
+    "context_none_of": [
+      "underwire",
+      "underwired"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "wire free",
+        "wire-free",
+        "wirefree",
+        "wireless",
+        "no wire",
+        "non-wire",
+        "non wired",
+        "non-wired"
+      ],
+      "title_must_include": [
+        "bra"
+      ],
+      "category_in": [
+        "Fashion"
+      ]
+    }
+  },
+  {
+    "query": "comfy flats i can wear to a weding, my feet are killing me in heels after like an hour",
+    "_context": "fashion-12: Dressy but comfortable FLAT shoes for a wedding: embellished or pointed ballet flats, dressy flat sandals, d'Orsay flats, cushioned loafers. Wrong: heels, pumps, wedges or platforms (the shopper is escaping them), sneakers, wedding dresses, men's shoes.",
+    "group": "complex_fashion",
+    "types": [
+      "footwear"
+    ],
+    "gender": "women",
+    "context_none_of": [
+      "pump",
+      "stiletto",
+      "wedge",
+      "platform",
+      "high heel",
+      "kitten heel",
+      "block heel",
+      "heeled"
+    ]
+  },
+  {
+    "query": "plain hoodie for my 13 yr old son, no logos or graphics, he says thats cringe",
+    "_context": "fashion-13: Solid-colour, plain hoodies in big-boy or small men's sizes. Wrong: graphic, printed, logo, team, cartoon or slogan hoodies (explicitly refused), girls' or women's hoodies, toddler sizes.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "men",
+    "context_any_of": [
+      "hoodie",
+      "hooded"
+    ],
+    "context_none_of": [
+      "graphic",
+      "print",
+      "printed",
+      "logo",
+      "funny",
+      "cartoon",
+      "anime",
+      "letter",
+      "novelty"
+    ]
+  },
+  {
+    "query": "winter hat that isnt wool, wool makes my head itch like crazy",
+    "_context": "fashion-14: Warm winter hats that are NOT wool: acrylic, fleece-lined, cotton or satin-lined beanies and knit hats. Wrong: wool, merino, cashmere or alpaca hats (the explicit negation), summer hats, scarves or gloves alone.",
+    "group": "complex_fashion",
+    "types": [
+      "headwear"
+    ],
+    "context_none_of": [
+      "wool",
+      "merino",
+      "cashmere",
+      "alpaca",
+      "mohair",
+      "angora",
+      "lambswool"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "beanie",
+        "winter hat",
+        "knit hat",
+        "skull cap"
+      ],
+      "title_none_of": [
+        "wool",
+        "merino",
+        "cashmere",
+        "alpaca",
+        "mohair",
+        "angora"
+      ],
+      "category_in": [
+        "Fashion"
+      ]
+    }
+  },
+  {
+    "query": "vegan lether boots for winter, no real leather",
+    "_context": "fashion-15: Boots made of faux / vegan / PU leather, warm enough for winter (ankle, combat, knee-high, lined). Wrong: genuine or full-grain leather boots (the negation), sandals, leather care products, jackets.",
+    "group": "complex_fashion",
+    "types": [
+      "footwear"
+    ],
+    "context_any_of": [
+      "faux leather",
+      "vegan leather",
+      "vegan",
+      "pu leather",
+      "synthetic",
+      "pu"
+    ],
+    "context_none_of": [
+      "genuine leather",
+      "real leather",
+      "full grain",
+      "cowhide",
+      "nubuck",
+      "calfskin"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "faux leather",
+        "vegan leather",
+        "pu leather",
+        "synthetic leather"
+      ],
+      "title_must_include": [
+        "boot"
+      ],
+      "category_in": [
+        "Fashion"
+      ]
+    }
+  },
+  {
+    "query": "100% cotton pajamas for my 3 year old, he has eczema and polyester makes him itch",
+    "_context": "fashion-16: Cotton (ideally 100% or organic cotton) pajama sets in toddler size 3T for a boy. Wrong: fleece, polyester or microfiber pajamas (the negation), adult pajamas, girls' nightgowns, baby sleep sacks.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "men",
+    "context_any_of": [
+      "cotton"
+    ],
+    "context_none_of": [
+      "polyester",
+      "fleece",
+      "microfiber",
+      "women",
+      "men"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "cotton"
+      ],
+      "title_any_of": [
+        "pajama",
+        "pjs",
+        "sleepwear",
+        "sleep set"
+      ],
+      "title_none_of": [
+        "polyester",
+        "fleece",
+        "microfiber"
+      ],
+      "category_in": [
+        "Kids"
+      ]
+    }
+  },
+  {
+    "query": "long sleeve sun shirt for fishing in florida, my husband burns so easy",
+    "_context": "fashion-17: Men's long-sleeve UPF / sun-protection fishing shirts or sun hoodies, light and quick-dry. Wrong: plain cotton tees with a fish print, women's sun shirts, fishing gear or sunscreen, heavy sweatshirts.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "men",
+    "context_any_of": [
+      "upf",
+      "sun protection",
+      "uv protection",
+      "spf",
+      "sun shirt",
+      "fishing"
+    ],
+    "context_none_of": [
+      "women",
+      "ladies",
+      "kids"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "upf",
+        "sun protection",
+        "uv protection"
+      ],
+      "title_must_include": [
+        "shirt"
+      ],
+      "category_in": [
+        "Men's Clothing"
+      ]
+    }
+  },
+  {
+    "query": "crossbody bag for 2 weeks in europe, im paranoid about pickpockets",
+    "_context": "fashion-18: Anti-theft crossbody or sling bags for travel: locking zippers, slash-proof straps, RFID pockets, hidden compartments. Wrong: open-top totes, clutches, luggage or suitcases, wallets only, generic crossbodies with no security feature leading.",
+    "group": "complex_fashion",
+    "types": [
+      "bag"
+    ],
+    "context_any_of": [
+      "anti theft",
+      "rfid",
+      "pickpocket",
+      "locking",
+      "lock",
+      "slash proof",
+      "theft",
+      "hidden"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "anti-theft",
+        "anti theft",
+        "pickpocket",
+        "rfid"
+      ],
+      "title_none_of": [
+        "wallet",
+        "card holder",
+        "passport"
+      ],
+      "category_in": [
+        "Fashion"
+      ]
+    }
+  },
+  {
+    "query": "earings for really sensitive ears, cheap ones make my ears itchy and turn them green",
+    "_context": "fashion-19: Earrings for metal-sensitive ears: hypoallergenic, nickel-free, titanium, surgical steel, sterling silver or solid gold studs and hoops. Wrong: costume / fashion earrings with no metal claim, nose or body piercing jewelry, ear cleaning products.",
+    "group": "complex_fashion",
+    "types": [
+      "jewelry"
+    ],
+    "context_any_of": [
+      "hypoallergenic",
+      "sensitive",
+      "nickel free",
+      "surgical steel",
+      "titanium",
+      "sterling",
+      "925",
+      "14k",
+      "solid gold",
+      "gold filled",
+      "platinum"
+    ],
+    "context_none_of": [
+      "nose",
+      "septum",
+      "belly",
+      "tragus",
+      "cartilage",
+      "helix"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "earring"
+      ],
+      "title_any_of": [
+        "hypoallergenic",
+        "sensitive ear",
+        "nickel free",
+        "nickel-free",
+        "surgical steel",
+        "titanium",
+        "sterling silver",
+        "925"
+      ],
+      "title_none_of": [
+        "nose",
+        "septum",
+        "belly",
+        "tragus",
+        "cartilage",
+        "helix"
+      ],
+      "category_in": [
+        "Fashion"
+      ]
+    }
+  },
+  {
+    "query": "eid outfit for women, modest + long sleeves, nothing see thru",
+    "_context": "fashion-20: Festive but modest women's outfits for Eid: abayas, kaftans, long-sleeve maxi dresses, salwar kameez or kurta sets, opaque fabrics. Wrong: sheer or mesh pieces, sleeveless or short dresses, beach kaftans and swim cover-ups, men's thobes.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "context_none_of": [
+      "sheer",
+      "see through",
+      "mesh",
+      "sleeveless",
+      "bikini",
+      "swim",
+      "cover up"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "abaya",
+        "kaftan",
+        "caftan",
+        "jalabiya",
+        "jilbab",
+        "kurta",
+        "kurti",
+        "salwar",
+        "modest"
+      ],
+      "title_none_of": [
+        "swim",
+        "bikini",
+        "cover up",
+        "beach",
+        "sheer",
+        "kids",
+        "girls",
+        "baby",
+        "toddler",
+        "hijab cap",
+        "underscarf",
+        "scarf"
+      ],
+      "category_in": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    }
+  },
+  {
+    "query": "something red for my husband to wear to lunar new year dinner at my in-laws, nothing flashy",
+    "_context": "fashion-21: (replaced 2026-11-02 by review: the women's version was a near-duplicate of heldout 'red dress for a christmas party that isn't too short') Smart, understated red men's clothing for a family Lunar New Year dinner: a red or burgundy dress shirt, button-down, mandarin-collar shirt, polo, henley or sweater. Wrong: Christmas / Santa wear, costumes, sequin or club wear, loud graphic or licensed tees, women's items, Lunar New Year decorations or food.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "men",
+    "context_any_of": [
+      "red",
+      "burgundy",
+      "crimson",
+      "wine"
+    ],
+    "context_none_of": [
+      "costume",
+      "santa",
+      "christmas",
+      "sequin",
+      "sexy",
+      "club"
+    ]
+  },
+  {
+    "query": "office halloween costume, nothing scary or sexy, under $40",
+    "_context": "fashion-22: Adult, work-appropriate Halloween costumes: funny, punny or character costumes, costume t-shirts, simple wearable pieces. Wrong: gory or scary costumes, 'sexy' costumes, kids' costumes, Halloween candy or decorations. Budget: about 200 adult costume rows list a price and 126 of them are $40 or less.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel",
+      "headwear",
+      "accessory"
+    ],
+    "vertical_in": [
+      "Fashion"
+    ],
+    "context_any_of": [
+      "costume",
+      "halloween",
+      "cosplay"
+    ],
+    "context_none_of": [
+      "sexy",
+      "zombie",
+      "skeleton",
+      "horror",
+      "bloody",
+      "scary",
+      "killer",
+      "demon",
+      "kids",
+      "kid",
+      "toddler",
+      "baby",
+      "child"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "costume"
+      ],
+      "title_none_of": [
+        "sexy",
+        "zombie",
+        "skeleton",
+        "horror",
+        "bloody",
+        "scary",
+        "killer",
+        "demon",
+        "kid",
+        "toddler",
+        "baby",
+        "child"
+      ],
+      "category_in": [
+        "Women's Clothing",
+        "Men's Clothing",
+        "Unisex Clothing"
+      ]
+    }
+  },
+  {
+    "query": "st paddys day bar crawl outfit, something green but not tacky",
+    "_context": "fashion-23: Adult green or subtly St Patrick's-themed clothes for a bar crawl: a green top, shamrock tee or sweatshirt, a green dress. Wrong: kids' or baby St Patrick's shirts, full leprechaun costumes (tacky), Irish whiskey or snacks, college 'Fighting Irish' team gear.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "context_any_of": [
+      "green",
+      "shamrock",
+      "st patrick",
+      "irish",
+      "clover"
+    ],
+    "context_none_of": [
+      "kids",
+      "toddler",
+      "baby",
+      "infant",
+      "youth",
+      "leprechaun",
+      "costume"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "st patrick",
+        "st. patrick",
+        "saint patrick",
+        "shamrock",
+        "irish"
+      ],
+      "title_none_of": [
+        "kids",
+        "toddler",
+        "baby",
+        "infant",
+        "youth",
+        "girls",
+        "boys",
+        "notre dame",
+        "fighting irish",
+        "leprechaun",
+        "costume"
+      ],
+      "category_in": [
+        "Women's Clothing",
+        "Men's Clothing",
+        "Unisex Clothing"
+      ]
+    }
+  },
+  {
+    "query": "bridesmaid dres in sage green for a rustic barn wedding, pockets would be a bonus",
+    "_context": "fashion-24: Adult bridesmaid dresses in sage / green tones (chiffon, A-line, maxi or midi), ideally with pockets. Being a bridesmaid is the ask, so bridesmaid dresses must NOT be treated as off-limits bridal wear. Wrong: bridal gowns, junior or flower-girl dresses, bridesmaid robes and gift boxes, non-green colours leading.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "context_any_of": [
+      "sage",
+      "green",
+      "mint",
+      "olive",
+      "eucalyptus",
+      "emerald"
+    ],
+    "context_none_of": [
+      "junior",
+      "flower girl",
+      "girls",
+      "kids",
+      "bridal gown"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "bridesmaid"
+      ],
+      "title_any_of": [
+        "sage",
+        "green",
+        "mint",
+        "olive",
+        "eucalyptus"
+      ],
+      "title_none_of": [
+        "junior",
+        "flower girl",
+        "robe",
+        "gift",
+        "proposal",
+        "girls"
+      ],
+      "category_in": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    }
+  },
+  {
+    "query": "mother of the groom dress for an evening wedding, im 60 and want elegant not frumpy",
+    "_context": "fashion-25: Elegant evening dresses for the groom's mother: mother-of-the-bride/groom gowns, lace or chiffon midi / long dresses with sleeves or a jacket. Wrong: bridal gowns, bodycon / club / mini dresses, juniors' prom dresses, dowdy house dresses.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "context_none_of": [
+      "bridal gown",
+      "wedding gown",
+      "sexy",
+      "bodycon",
+      "club",
+      "mini",
+      "flower girl",
+      "junior"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "mother of the bride",
+        "mother of the groom",
+        "mother of bride",
+        "mother of groom"
+      ],
+      "category_in": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    }
+  },
+  {
+    "query": "ring bearer outfit for my 6 yr old nephew, its a beach wedding so not a full tux",
+    "_context": "fashion-26: Light, semi-formal boys' outfits for a beach wedding: linen or cotton shirt and shorts / trousers, vest or suspender sets, bow tie, in size 6. Wrong: full wool tuxedos (the negation), girls' dresses, baby rompers, adult men's suits.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "men",
+    "context_none_of": [
+      "girl",
+      "women",
+      "tuxedo",
+      "wool",
+      "infant",
+      "newborn"
+    ]
+  },
+  {
+    "query": "maternity swimsuit for our babymoon in cabo",
+    "_context": "fashion-27: GAP (only ~7 maternity swimwear titles). The few maternity swimsuits / tankinis should lead; after them, women's tankinis, one-pieces or cover-ups that can fit a bump are acceptable. Wrong: men's trunks, kids' or baby swimwear, pregnancy tests or tea, lingerie, a 'no results' page.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "vertical_in": [
+      "Fashion"
+    ],
+    "context_any_of": [
+      "maternity",
+      "pregnancy",
+      "pregnant",
+      "nursing",
+      "bump"
+    ],
+    "context_none_of": [
+      "men",
+      "boys",
+      "kids",
+      "baby"
+    ]
+  },
+  {
+    "query": "tall girl here (5'11), need maxi dresses that actually hit the floor, regular ones look like midis on me",
+    "_context": "fashion-28: GAP (only 4 women's dress titles say 'tall'). Those should lead; after them floor-length or extra-long women's maxi dresses are a sensible fallback (437 such titles). 'Tall girl' means an adult woman. Wrong: girls' or kids' dresses, petite or mini / midi dresses, men's big-and-tall wear, tall boots.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel"
+    ],
+    "gender": "women",
+    "vertical_in": [
+      "Fashion"
+    ],
+    "context_any_of": [
+      "tall",
+      "floor length",
+      "extra long",
+      "long maxi",
+      "ankle length",
+      "maxi"
+    ],
+    "context_none_of": [
+      "kids",
+      "girls",
+      "toddler",
+      "petite",
+      "mini",
+      "midi"
+    ]
+  },
+  {
+    "query": "keto snacks with no nuts, my daughter is allergic",
+    "_context": "grocery-01: Keto or low-carb snacks with no nut ingredient in the title (seed snacks, pork rinds, cheese crisps, keto snacks labelled nut-free / allergen-free) fill page 1. Wrong: almonds, nut mixes, nut butters, almond-flour or pecan keto bakes, plain sugary candy. A title label is the seller's claim; graders judge the title, not safety. [lane grocery, grocery-01; signals: dietary: keto; negation: no nuts; allergy; recipient: child]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "keto",
+      "low carb",
+      "net carb",
+      "zero carb"
+    ],
+    "context_none_of": [
+      "almond",
+      "cashew",
+      "pecan",
+      "walnut",
+      "macadamia",
+      "pistachio",
+      "hazelnut",
+      "peanut butter",
+      "peanuts",
+      "mixed nuts",
+      "nut butter",
+      "trail mix",
+      "nut cluster",
+      "brazil nut",
+      "pine nut"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "keto"
+      ],
+      "title_any_of": [
+        "nut free",
+        "nut-free",
+        "peanut free",
+        "peanut-free",
+        "allergen free",
+        "allergen-free",
+        "allergy free",
+        "allergy-free",
+        "allergy friendly",
+        "allergy-friendly",
+        "top 8",
+        "top 9",
+        "top 14"
+      ],
+      "title_none_of": [
+        "almond",
+        "cashew",
+        "pecan",
+        "walnut",
+        "macadamia",
+        "pistachio",
+        "hazelnut",
+        "mixed nuts"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "vegan high protein snacks that arent protein bars",
+    "_context": "grocery-02: Plant-based protein snacks that are NOT bars: roasted chickpeas / edamame / fava beans, vegan jerky, protein puffs, crisps, seeds, nuts sold as protein snacks. Wrong: protein bars, protein powders and shakes, whey / collagen / egg-white products, meat jerky, pasta. [lane grocery, grocery-02; signals: dietary: vegan; dietary: high protein; negation: not bars; product form: snack]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "vegan",
+      "plant based"
+    ],
+    "context_none_of": [
+      "whey",
+      "casein",
+      "collagen",
+      "egg white",
+      "milk protein",
+      "protein bar",
+      "protein powder",
+      "protein shake"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "vegan",
+        "plant based",
+        "plant-based"
+      ],
+      "title_must_include": [
+        "protein"
+      ],
+      "title_none_of": [
+        "bar",
+        "powder",
+        "shake",
+        "whey",
+        "casein",
+        "collagen",
+        "pasta",
+        "spaghetti",
+        "noodle"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "gluten free cereal for my kids that isnt loaded with sugar",
+    "_context": "grocery-03: Gluten-free breakfast cereals or granola with low / no added sugar (labelled low sugar, no sugar added, zero sugar, unsweetened, or plain flakes / O's). Wrong: frosted or marshmallow cereals, cereal bars, regular (wheat) cereals, candy. [lane grocery, grocery-03; signals: dietary: gluten free; recipient: kids; negation: low sugar; meal: breakfast]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "gluten free"
+    ],
+    "context_none_of": [
+      "frosted",
+      "marshmallow",
+      "sugar coated",
+      "candy"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "gluten",
+        "cereal"
+      ],
+      "title_any_of": [
+        "low sugar",
+        "no sugar",
+        "no added sugar",
+        "sugar free",
+        "sugar-free",
+        "zero sugar",
+        "less sugar",
+        "reduced sugar",
+        "unsweetened",
+        "lightly sweetened",
+        "0g sugar",
+        "1g sugar",
+        "2g sugar"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "low sodium soups for my dad, hes cutting back on salt",
+    "_context": "grocery-04: Soups, broths, stocks and bouillon labelled low / reduced / no-salt-added sodium. Wrong: regular soups with no sodium claim, salt substitutes or seasonings, chips. Expectation is about the label only, no health claim. [lane grocery, grocery-04; signals: dietary: low sodium; recipient: parent; problem phrasing; informal (hes)]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "low sodium",
+      "reduced sodium",
+      "less sodium",
+      "lower sodium",
+      "no salt added",
+      "unsalted",
+      "sodium free",
+      "very low sodium",
+      "low salt"
+    ],
+    "context_none_of": [
+      "chili powder",
+      "salt substitute",
+      "chips"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "sodium"
+      ],
+      "title_any_of": [
+        "soup",
+        "broth",
+        "stock",
+        "bouillon",
+        "chowder",
+        "bisque"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "low fodmap stuff for my pantry, no garlic or onion",
+    "_context": "grocery-05: Products labelled low FODMAP or 'no onion / no garlic' (pasta sauces, seasonings, broths, crackers, snacks). Wrong: garlic or onion powders, regular sauces and seasonings with garlic or onion in the title. Label only; no health claim. [lane grocery, grocery-05; signals: dietary: low FODMAP; negation: no garlic, no onion; informal (stuff); setting: pantry staples]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "low fodmap",
+      "lowfodmap",
+      "fodmap",
+      "no onion",
+      "no garlic",
+      "garlic free",
+      "onion free",
+      "without garlic",
+      "without onion"
+    ],
+    "context_none_of": [
+      "garlic powder",
+      "onion powder",
+      "minced garlic",
+      "granulated garlic",
+      "dried onion",
+      "onion soup mix",
+      "garlic salt"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "fodmap"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "my 1st graders school is peanut free, what snacks can i send",
+    "_context": "grocery-06: Kid-friendly snacks labelled peanut-free / nut-free / top-8-allergen-free (fruit snacks, crackers, pretzels, granola bars, seed-butter snacks), single-serve packs a plus. Wrong: anything with peanuts or tree nuts in the title, adult protein snacks, non-snack staples. [lane grocery, grocery-06; signals: allergy rule: peanut free; recipient: 1st grader (age ~6); setting: school; conversational question]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "peanut free",
+      "nut free",
+      "allergen free",
+      "allergy friendly",
+      "top 8",
+      "top 9",
+      "top 14",
+      "kids",
+      "school"
+    ],
+    "context_none_of": [
+      "peanut butter",
+      "peanuts",
+      "almond",
+      "cashew",
+      "pecan",
+      "walnut",
+      "pistachio",
+      "hazelnut",
+      "mixed nuts"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "peanut free",
+        "peanut-free",
+        "nut free",
+        "nut-free",
+        "allergen free",
+        "allergen-free",
+        "allergy friendly",
+        "allergy-friendly",
+        "top 8",
+        "top 9",
+        "top 14"
+      ],
+      "title_none_of": [
+        "peanuts",
+        "almond",
+        "cashew",
+        "pecan",
+        "walnut",
+        "pistachio",
+        "hazelnut"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "veggie lasagna for 10 on sunday, my sister in law is gluten free so the noodles need to be gf too",
+    "_context": "grocery-07: (replaced 2026-11-02 by review: the old 'what do i need for a vegetarian lasagna' had 2 signals and the heldout tacos template) A meat-free lasagna for 10 with gluten-free noodles: a recipe bundle (or a flat page) of GF lasagna noodles, ricotta, mozzarella, parmesan, marinara / pasta sauce, spinach or other vegetables. THIN SLOT: only 9 Grocery titles pair lasagna with gluten free (measured; 5 are noodles or sheets, 4 ready meals or kits), so a wheat-noodle slot is the error to grade; a ready-made GF lasagna is a weaker answer. Wrong: any meat (beef, sausage, meat sauce, pepperoni), regular wheat lasagna noodles, non-food items.",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": [
+      "recipe",
+      null
+    ],
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_none_of": [
+      "beef",
+      "pork",
+      "sausage",
+      "pepperoni",
+      "chicken",
+      "meat sauce",
+      "bolognese",
+      "bacon",
+      "meatball"
+    ],
+    "component_good": "\\b(lasagn[ae]|ricotta|mozzarella|marinara|pasta sauce|tomato sauce|crushed tomato(es)?|spinach|parmesan|zucchini|mushrooms?|eggplant|basil|oregano|gluten[- ]free|gf)\\b",
+    "component_bad": "\\b(beef|pork|sausages?|pepperoni|chicken|meat sauce|bolognese|prosciutto|bacon|veal|meatballs?|ham)\\b"
+  },
+  {
+    "query": "halal gummies for the kids eid party, no pork gelatin",
+    "_context": "grocery-10: Gummies, marshmallows and chewy candy labelled halal, or gelatin-free / beef- or fish-gelatin / vegan gummies. Wrong: ordinary gummy bears with no halal or gelatin claim, anything naming pork, non-candy. [lane grocery, grocery-10; signals: cultural event: Eid; dietary: halal; negation: no pork gelatin; recipient: kids; occasion: party]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "halal",
+      "gelatin free",
+      "beef gelatin",
+      "fish gelatin",
+      "no gelatin",
+      "vegan",
+      "pectin"
+    ],
+    "context_none_of": [
+      "pork",
+      "bacon"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "halal"
+      ],
+      "title_any_of": [
+        "gumm",
+        "marshmallow",
+        "jelly",
+        "sour",
+        "candy",
+        "candies",
+        "chew",
+        "fruit snack",
+        "licorice",
+        "worms",
+        "bears"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "kosher for passover snacks and macaroons for the seder",
+    "_context": "grocery-11: Coconut macaroons, matzo, and snacks / desserts labelled Kosher for Passover. Wrong: ordinary breads, pretzels, bagels or crackers with no Passover label, French macarons (a different cookie) as the lead, non-food. [lane grocery, grocery-11; signals: cultural event: Passover seder; dietary: kosher for Passover; product named: macaroons]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "passover",
+      "kosher for passover",
+      "macaroon",
+      "matzo",
+      "matzah",
+      "matza",
+      "seder"
+    ],
+    "context_none_of": [
+      "pretzel",
+      "bagel",
+      "pita",
+      "macaron"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "passover",
+        "macaroon",
+        "matzo",
+        "matzah",
+        "matza"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "what to get for iftar this ramadan, dates and drinks to break the fast",
+    "_context": "grocery-12: Dates (medjool, ajwa, deglet nour, sukkari...) and iftar drinks (Rooh Afza / rose sharbat, Vimto, jallab, apricot drinks, laban). Wrong: Chinese red dates / jujubes, date-sweetened bars as the lead, sodas and energy drinks, non-food Ramadan decor. [lane grocery, grocery-12; signals: cultural event: Ramadan iftar; product named: dates; product named: drinks; conversational]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "dates",
+      "medjool",
+      "ajwa",
+      "deglet",
+      "sukkari",
+      "khalas",
+      "rooh afza",
+      "vimto",
+      "jallab",
+      "ramadan",
+      "iftar",
+      "laban",
+      "sharbat",
+      "apricot"
+    ],
+    "context_none_of": [
+      "jujube",
+      "red date",
+      "chinese date",
+      "energy drink"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "medjool",
+        "ajwa",
+        "deglet",
+        "sukkari",
+        "khalas",
+        "safawi",
+        "mabroom",
+        "barhi",
+        "rooh afza",
+        "roohafza",
+        "vimto",
+        "jallab",
+        "ramadan"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "lunar new year snacks to share w family",
+    "_context": "grocery-13: Traditional Lunar New Year tray snacks: White Rabbit candy, haw flakes, pineapple cakes, nian gao / new-year rice cake, sachima, melon seeds, candied lotus / winter melon / coconut, Korean yakgwa or tteok. Wrong: mooncakes (Mid-Autumn), generic American snacks, fortune cookies as the lead, decorations. [lane grocery, grocery-13; signals: cultural event: Lunar New Year; occasion: sharing with family; informal (w)]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "lunar new year",
+      "chinese new year",
+      "white rabbit",
+      "haw flake",
+      "watermelon seeds",
+      "pineapple cake",
+      "nian gao",
+      "new year cake",
+      "sachima",
+      "melon seeds",
+      "candied",
+      "tikoy",
+      "yakgwa",
+      "tteok"
+    ],
+    "context_none_of": [
+      "mooncake",
+      "moon cake"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "lunar new year",
+        "chinese new year",
+        "white rabbit",
+        "haw flake",
+        "pineapple cake",
+        "nian gao",
+        "sachima",
+        "melon seeds",
+        "tikoy",
+        "yakgwa"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "diwali sweets gift box to take to my office",
+    "_context": "grocery-14: Indian mithai and Diwali gift boxes: kaju katli, soan papdi, barfi, laddu, gulab jamun, halwa, Diwali sweet hampers. Wrong: western chocolate boxes as the lead, candles / diyas / decor, savoury-only snacks at the top. [lane grocery, grocery-14; signals: cultural event: Diwali; occasion: gift; recipient: coworkers; quantity: office]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "diwali",
+      "deepavali",
+      "mithai",
+      "soan papdi",
+      "kaju katli",
+      "barfi",
+      "burfi",
+      "ladoo",
+      "laddu",
+      "gulab jamun",
+      "rasgulla",
+      "halwa",
+      "peda",
+      "jalebi",
+      "chikki",
+      "mysore pak",
+      "rasmalai"
+    ],
+    "context_none_of": [
+      "candle",
+      "diya",
+      "rangoli",
+      "lantern"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "diwali",
+        "mithai",
+        "soan papdi",
+        "kaju katli",
+        "barfi",
+        "burfi",
+        "ladoo",
+        "laddu",
+        "gulab jamun",
+        "rasgulla",
+        "halwa",
+        "peda",
+        "jalebi",
+        "chikki",
+        "mysore pak"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "halloween candy for 100 trick or treaters, no chocolate cause it melts in florida",
+    "_context": "grocery-15: Bulk or variety packs of non-chocolate candy: lollipops, hard candy, gummies, taffy, sour candy, fruit chews, individually wrapped, fun size. Wrong: any chocolate, cocoa or fudge candy (Kit Kat, Reese's, M&M's, Hershey's), single small packs, non-candy. [lane grocery, grocery-15; signals: cultural event: Halloween; quantity: 100 kids; negation: no chocolate; weather / place: Florida heat; informal (cause)]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "halloween",
+      "bulk",
+      "variety",
+      "individually wrapped",
+      "fun size",
+      "assorted",
+      "assortment",
+      "party",
+      "pieces",
+      "count"
+    ],
+    "context_none_of": [
+      "chocolate",
+      "cocoa",
+      "fudge",
+      "truffle",
+      "kit kat",
+      "reese",
+      "snickers",
+      "twix",
+      "hershey",
+      "m&m",
+      "milky way"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "candy"
+      ],
+      "title_any_of": [
+        "bulk",
+        "variety",
+        "individually wrapped",
+        "fun size",
+        "assorted",
+        "halloween",
+        "party"
+      ],
+      "title_none_of": [
+        "chocolate",
+        "cocoa",
+        "fudge",
+        "truffle",
+        "kit kat",
+        "reese",
+        "snickers",
+        "twix",
+        "hershey",
+        "m&m"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "korean bbq night at home - need the marinade, gochujang and dipping sauce",
+    "_context": "grocery-16: Korean BBQ condiments: bulgogi / galbi marinades, gochujang, ssamjang or doenjang dipping paste, gochugaru, sesame oil; a recipe bundle of those or a flat page are both fine. Wrong: American BBQ sauces (hickory, Kansas City), buffalo sauce, ready meals. [lane grocery, grocery-16; signals: cuisine: Korean BBQ; occasion: dinner at home; list of 3 named components]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": [
+      null,
+      "recipe"
+    ],
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "gochujang",
+      "bulgogi",
+      "galbi",
+      "kalbi",
+      "korean bbq",
+      "korean barbecue",
+      "ssamjang",
+      "doenjang",
+      "gochugaru",
+      "korean",
+      "sesame oil"
+    ],
+    "context_none_of": [
+      "hickory",
+      "mesquite",
+      "kansas city",
+      "carolina",
+      "buffalo"
+    ],
+    "component_good": "\\b(gochujang|bulgogi|galbi|kalbi|ssamjang|doenjang|gochugaru|korean|sesame)\\b",
+    "component_bad": "\\b(hickory|mesquite|kansas city|carolina|buffalo|ranch)\\b",
+    "relevance": {
+      "title_any_of": [
+        "gochujang",
+        "bulgogi",
+        "galbi",
+        "kalbi",
+        "ssamjang",
+        "korean bbq",
+        "korean barbecue",
+        "doenjang",
+        "gochugaru"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "dairy free swap for parmesan",
+    "_context": "grocery-17: Dairy-free parmesan alternatives: nutritional yeast, vegan / plant-based grated parmesan. Wrong: real parmesan, pecorino or grana padano, other dairy cheese, non-cheese vegan items as the lead. [lane grocery, grocery-17; signals: substitute (swap for); dietary: dairy free; terse]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "nutritional yeast",
+      "vegan",
+      "dairy free",
+      "plant based",
+      "non dairy"
+    ],
+    "context_none_of": [
+      "parmigiano",
+      "grana padano",
+      "pecorino",
+      "romano"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "nutritional yeast",
+        "vegan parm",
+        "dairy free parm",
+        "dairy-free parm",
+        "plant based parm",
+        "plant-based parm",
+        "parmesan alternative",
+        "parmesan style",
+        "vegan grated",
+        "vegan shredded"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "egg replacer for baking cookies, my son cant have eggs",
+    "_context": "grocery-18: A flat page of egg replacers (powdered egg replacer, plant-based egg, flax 'egg replacement'), then egg-free baking or cookie mixes. Wrong: real eggs or egg products, eggless mayo, egg noodles, a cookie-ingredient bundle that still lists eggs. KNOWN COLLISION: 'baking cookies' hits the recipe fast path (app/translator.py:328-342), so a recipe bundle is accepted as well as a flat page; component_bad (real eggs, egg whites, powdered eggs) judges whether the bundle is egg-free. [lane grocery, grocery-18; signals: substitute: egg replacer; activity: baking; allergy / restriction; recipient: child]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": [
+      null,
+      "recipe"
+    ],
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "egg replacer",
+      "egg substitute",
+      "egg replacement",
+      "egg free",
+      "vegan egg",
+      "plant based egg",
+      "just egg",
+      "eggless",
+      "flax",
+      "flaxseed",
+      "flax seed",
+      "aquafaba"
+    ],
+    "context_none_of": [
+      "mayo",
+      "mayonnaise",
+      "egg noodle",
+      "egg white protein",
+      "powdered egg",
+      "dried egg"
+    ],
+    "component_good": "\\b(egg replac\\w*|egg substitut\\w*|egg[- ]free|vegan egg|plant[- ]based egg|flax(seed)?|aquafaba|chia)\\b",
+    "component_bad": "\\b(large eggs|whole eggs|fresh eggs|egg whites|egg yolks|powdered eggs?|dried eggs?|dehydrated eggs?|liquid eggs?|dozen eggs)\\b",
+    "relevance": {
+      "title_any_of": [
+        "egg replac",
+        "egg substitut",
+        "vegan egg",
+        "plant based egg",
+        "plant-based egg",
+        "just egg"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "vegan creamer that doesnt taste like coconut",
+    "_context": "grocery-19: Plant-based coffee creamers that are not coconut-based: oat, almond, soy, pea, macadamia, hemp creamers. Wrong: coconut creamers, dairy creamers or half-and-half, 'non-dairy' creamers that are not plant-based (e.g. Coffee mate), milk instead of creamer as the lead. [lane grocery, grocery-19; signals: dietary: vegan; negation: not coconut; taste preference; use: coffee]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "oat",
+      "almond",
+      "soy",
+      "pea",
+      "plant based",
+      "vegan",
+      "dairy free",
+      "cashew",
+      "macadamia",
+      "hemp",
+      "oatmilk",
+      "almondmilk"
+    ],
+    "context_none_of": [
+      "coconut",
+      "coffee mate",
+      "coffeemate",
+      "half and half",
+      "heavy cream",
+      "whole milk"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "creamer"
+      ],
+      "title_any_of": [
+        "vegan",
+        "plant based",
+        "plant-based",
+        "oat",
+        "almond",
+        "soy",
+        "pea protein",
+        "cashew",
+        "macadamia",
+        "hemp",
+        "dairy free",
+        "dairy-free"
+      ],
+      "title_none_of": [
+        "coconut",
+        "coffee mate",
+        "coffee-mate",
+        "coffeemate",
+        "international delight"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "coffee that does not upset my stomach",
+    "_context": "grocery-20: Coffees labelled low-acid / acid-free / low acidity (ground, whole bean, pods), possibly a labelled low-acid cold brew or chicory alternative. Wrong: ordinary coffee with no acidity claim as the lead, antacids or medicine, mugs, creamers. Label only; no claim that any product prevents symptoms. [lane grocery, grocery-20; signals: problem phrasing; negation; product: coffee]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "low acid",
+      "low acidity",
+      "acid free",
+      "less acidic",
+      "lower acid",
+      "reduced acid",
+      "stomach friendly"
+    ],
+    "context_none_of": [
+      "antacid",
+      "mug",
+      "creamer"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "coffee"
+      ],
+      "title_any_of": [
+        "low acid",
+        "low-acid",
+        "acid free",
+        "acid-free",
+        "low acidity",
+        "less acid",
+        "lower acid",
+        "reduced acid",
+        "stomach friendly",
+        "stomach-friendly"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "my kids wont drink plain water, need something less sugary than juice",
+    "_context": "grocery-21: Low- or zero-sugar ways to flavour water: water enhancers, flavoured / infused or sparkling water, sugar-free drink mixes, reduced-sugar kids' drinks. Wrong: soda, energy drinks, caffeinated or coffee drinks, full-sugar juice, protein shakes. [lane grocery, grocery-21; signals: problem phrasing; recipient: kids; negation: less sugar than juice; comparison]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "water enhancer",
+      "flavored water",
+      "flavoured water",
+      "infused water",
+      "sparkling water",
+      "sugar free drink mix",
+      "zero sugar drink mix",
+      "water flavoring"
+    ],
+    "context_none_of": [
+      "soda",
+      "cola",
+      "energy drink",
+      "coffee",
+      "protein",
+      "caffeine",
+      "sweet tea",
+      "cocktail mixer",
+      "coconut water",
+      "juice drink"
+    ]
+  },
+  {
+    "query": "my sourdough starter keeps dying what flour should i use",
+    "_context": "grocery-22: Flours suited to feeding a starter: unbleached bread flour, whole wheat, whole-grain rye, spelt, einkorn; a dried sourdough starter culture is also fine. Wrong: almond, coconut, cake, rice or gluten-free flours, yogurt or kefir starter cultures, baked sourdough bread, cake / pancake / brownie mixes, tortillas, crackers, yeast-free snacks. [lane grocery, grocery-22; signals: problem phrasing; activity: sourdough baking; question form]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "bread flour",
+      "rye flour",
+      "whole wheat flour",
+      "whole grain flour",
+      "whole grain rye",
+      "whole grain wheat flour",
+      "spelt flour",
+      "einkorn flour",
+      "unbleached flour",
+      "unbleached all purpose flour",
+      "unbleached bread flour",
+      "stone ground flour",
+      "stone ground whole wheat",
+      "high protein flour",
+      "dark rye",
+      "pumpernickel flour",
+      "sourdough starter"
+    ],
+    "context_none_of": [
+      "tortilla",
+      "cracker",
+      "pasta",
+      "cake mix",
+      "pancake",
+      "muffin",
+      "brownie",
+      "cookie",
+      "sourdough bread",
+      "pretzel",
+      "chips",
+      "almond flour",
+      "coconut flour",
+      "cake flour",
+      "rice flour",
+      "gluten free"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "bread flour",
+        "rye flour",
+        "whole wheat flour",
+        "whole grain flour",
+        "einkorn",
+        "spelt flour",
+        "sourdough starter",
+        "unbleached flour",
+        "stone ground flour",
+        "high protein flour"
+      ],
+      "title_none_of": [
+        "mix",
+        "tortilla",
+        "cracker",
+        "pasta",
+        "cookie",
+        "brownie",
+        "almond",
+        "coconut",
+        "cake flour",
+        "rice flour",
+        "gluten free",
+        "gluten-free"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "camping food that doesnt need a fridge for 4 days",
+    "_context": "grocery-23: Shelf-stable trip food: freeze-dried backpacking meals, MREs, ready-to-eat pouches, jerky and trail snacks, shelf-stable proteins. Wrong: frozen or refrigerated items, fresh produce, ice cream, camping equipment (stoves, coolers) as the lead. [lane grocery, grocery-23; signals: activity: camping; problem: no refrigeration; quantity / duration: 4 days; negation]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "freeze dried",
+      "backpacking",
+      "mre",
+      "ready to eat",
+      "shelf stable",
+      "camping",
+      "dehydrated",
+      "jerky",
+      "trail mix",
+      "no refrigeration",
+      "survival"
+    ],
+    "context_none_of": [
+      "frozen",
+      "refrigerated",
+      "ice cream",
+      "keep refrigerated"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "freeze dried",
+        "freeze-dried",
+        "backpacking",
+        " mre",
+        "ready to eat",
+        "ready-to-eat",
+        "shelf stable",
+        "shelf-stable",
+        "camping"
+      ],
+      "title_none_of": [
+        "frozen",
+        "refrigerated",
+        "ice cream"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "k cups under $20 that work in my keurig, medium roast",
+    "_context": "grocery-25: Keurig-compatible K-Cup pods of medium-roast coffee, ideally with a listed price under $20 (an unlisted price is neutral, as the reranker rubric treats it). Wrong: Nespresso / Vertuo / Tassimo capsules, bagged ground or whole-bean coffee, dark / French or light / blonde roasts as the lead, Keurig machines. [lane grocery, grocery-25; signals: compatibility: Keurig; budget: under $20; attribute: medium roast]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "k cup",
+      "kcup",
+      "keurig",
+      "single serve"
+    ],
+    "context_none_of": [
+      "nespresso",
+      "vertuo",
+      "tassimo",
+      "extra dark",
+      "french roast",
+      "espresso roast",
+      "light roast",
+      "blonde roast",
+      "whole bean"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "k-cup",
+        "k cup",
+        "kcup",
+        "keurig"
+      ],
+      "title_must_include": [
+        "medium"
+      ],
+      "title_none_of": [
+        "nespresso",
+        "vertuo",
+        "tassimo"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "chocolate covered pretzles for my sisters bridal shower, like 30 ppl",
+    "_context": "grocery-26: Chocolate- or yogurt-covered pretzels in bulk, gift or party packs (white-chocolate / pastel ones a plus). Wrong: plain pretzels, bridal clothing or decor (a Fashion bleed-through from 'bridal'), single small bags as the lead. [lane grocery, grocery-26; signals: typo: pretzles; occasion: bridal shower; quantity: ~30 people; informal (ppl, like)]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "chocolate covered pretzel",
+      "chocolate dipped pretzel",
+      "yogurt covered pretzel",
+      "chocolate pretzel",
+      "covered pretzel",
+      "dipped pretzel",
+      "coated pretzel",
+      "drizzled pretzel"
+    ],
+    "context_none_of": [
+      "dress",
+      "veil",
+      "gown",
+      "banner",
+      "decoration"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "pretzel"
+      ],
+      "title_any_of": [
+        "chocolate covered",
+        "chocolate dipped",
+        "yogurt covered",
+        "chocolate-covered",
+        "chocolate-dipped",
+        "yogurt-covered",
+        "fudge covered",
+        "white chocolate"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "seasonning for chiken wings that isnt spicy",
+    "_context": "grocery-27: Mild wing seasonings and sauces: lemon pepper, garlic parmesan, honey BBQ, teriyaki, mild / original wing sauces, BBQ rubs. Wrong: hot / buffalo / habanero / ghost-pepper / Nashville-hot products, plain hot sauce, raw chicken wings as the lead. [lane grocery, grocery-27; signals: typos: seasonning, chiken; negation: not spicy; dish: wings]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "wing",
+      "lemon pepper",
+      "garlic parmesan",
+      "bbq",
+      "barbecue",
+      "teriyaki",
+      "honey",
+      "mild",
+      "seasoning",
+      "rub"
+    ],
+    "context_none_of": [
+      "hot",
+      "spicy",
+      "buffalo",
+      "ghost pepper",
+      "habanero",
+      "nashville",
+      "cajun",
+      "inferno",
+      "reaper",
+      "scorpion",
+      "jalapeno",
+      "cayenne",
+      "chipotle",
+      "sriracha",
+      "xxx",
+      "blazin",
+      "extra hot"
+    ]
+  },
+  {
+    "query": "low carb tortilas for taco tuesday",
+    "_context": "grocery-28: Low-carb / keto tortillas and wraps (carb-balance, net-carb labelled), keto taco shells. Wrong: regular flour or corn tortillas with no carb claim, tortilla chips, taco seasoning or a taco recipe bundle. [lane grocery, grocery-28; signals: typo: tortilas; dietary: low carb; occasion: taco night]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "low carb",
+      "keto",
+      "net carb",
+      "carb balance",
+      "zero carb"
+    ],
+    "context_none_of": [
+      "tortilla chip",
+      "chips",
+      "taco seasoning"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "tortilla"
+      ],
+      "title_any_of": [
+        "low carb",
+        "low-carb",
+        "keto",
+        "net carb",
+        "zero carb",
+        "carb balance"
+      ],
+      "title_none_of": [
+        "chip"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "decaf pods for my nespresso vertuo",
+    "_context": "grocery-29: GAP query (deliberate thin / zero supply): tests graceful handling. GAP (1 Grocery title is a Vertuo-compatible decaf: a Vertuoline decaf sampler). Graceful page: that sampler, then other Vertuo / VertuoLine pods, or a weak-match signal. Wrong: OriginalLine capsules (several titles say 'NOT compatible with Vertuoline'), K-Cups, bagged coffee, Nespresso machines. [lane grocery, grocery-29; signals: compatibility: Nespresso Vertuo; dietary: decaf; terse] relevance needs 'decaf' (review): the set is the Vertuo decaf title(s) only, so P@4 <= 0.25 and P@12 <= 0.083 when it holds 1 title; read P@k as 'was the one real answer on page 1', never as a precision.",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "vertuo",
+      "vertuoline"
+    ],
+    "context_none_of": [
+      "originalline",
+      "original line",
+      "not compatible with vertuoline",
+      "k cup",
+      "keurig"
+    ],
+    "relevance": {
+      "title_any_of": [
+        "vertuo"
+      ],
+      "title_none_of": [
+        "originalline",
+        "original line",
+        "not compatible"
+      ],
+      "category_in": [
+        "grocery"
+      ],
+      "title_must_include": [
+        "decaf"
+      ]
+    }
+  },
+  {
+    "query": "something like nutella but without palm oil",
+    "_context": "grocery-30: GAP query (deliberate thin / zero supply): tests graceful handling. GAP (thin supply). Graceful page: chocolate-hazelnut spreads labelled palm-oil-free first, then other hazelnut spreads. Wrong: Nutella itself (it contains palm oil), chocolate wafers / cookies, non-spread items as the lead. [lane grocery, grocery-30; signals: substitute (something like <brand>); negation: no palm oil; brand named is itself the wrong answer]",
+    "group": "complex_grocery",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "palm oil free",
+      "no palm oil",
+      "without palm oil",
+      "palm free"
+    ],
+    "context_none_of": [
+      "nutella"
+    ],
+    "relevance": {
+      "title_must_include": [
+        "spread"
+      ],
+      "title_any_of": [
+        "palm oil free",
+        "palm oil-free",
+        "palm-oil free",
+        "no palm oil",
+        "without palm oil",
+        "palm-free",
+        "palm free"
+      ],
+      "category_in": [
+        "grocery"
+      ]
+    }
+  },
+  {
+    "query": "one charging stand for my iphone 15 and my galaxy watch",
+    "_context": "electronics-01: GAP (graceful handling). Correct page 1: Galaxy-Watch-compatible chargers / docks and multi-device wireless stands, with the page admitting there is no single stand for both (match_quality weak is right). Wrong: Apple Watch charging stands (an Apple Watch puck does not charge a Galaxy Watch), Galaxy Watch or iPhone devices themselves, plain USB cables. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "watch",
+    "context_any_of": [
+      "galaxy watch",
+      "samsung watch",
+      "galaxy gear",
+      "samsung gear"
+    ],
+    "context_none_of": [
+      "apple watch",
+      "iwatch"
+    ]
+  },
+  {
+    "query": "usb c hub for my macbook pro, need hdmi and an sd card slot for my camera pics",
+    "_context": "electronics-02: USB-C hubs or docks whose title lists BOTH HDMI and an SD/microSD reader lead page 1. Wrong: MacBooks (core_top12 should be 0), USB-C-to-HDMI cables with no card reader, standalone card readers (partial), cases and keyboard covers. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "laptop",
+    "context_any_of": [
+      "hub",
+      "dock",
+      "docking station",
+      "multiport adapter"
+    ],
+    "context_none_of": [
+      "case",
+      "sleeve",
+      "keyboard cover",
+      "screen protector"
+    ]
+  },
+  {
+    "query": "keybord that switches between my ipad, work laptop and phone",
+    "_context": "electronics-03: Multi-device Bluetooth keyboards (easy-switch / 3 channels) lead. Wrong: iPad keyboard CASES (they serve one device), laptops or tablets themselves (core_top12 0), keyboard covers / skins / keycaps. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "laptop",
+    "context_any_of": [
+      "keyboard"
+    ],
+    "context_none_of": [
+      "case",
+      "cover",
+      "skin",
+      "keycap"
+    ]
+  },
+  {
+    "query": "apple pencil alternative thats way cheaper for my ipad 9th gen",
+    "_context": "electronics-04: Third-party styluses / digital pencils (palm rejection, 2018+ iPad compatible) lead. Wrong: iPads (core_top12 0), screen protectors that merely mention the Apple Pencil, pencil cases, grips and replacement tips; an Apple Pencil at full price is off the ask. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "tablet",
+    "context_any_of": [
+      "stylus",
+      "pencil",
+      "stylus pen"
+    ],
+    "context_none_of": [
+      "screen protector",
+      "case",
+      "tip",
+      "nib",
+      "holder",
+      "grip"
+    ]
+  },
+  {
+    "query": "protective case for my daughter's 13 inch macbook air before she leaves for college, not a sleeve",
+    "_context": "electronics-05: Hard-shell / protective cases sized for the 13-inch MacBook Air lead. Wrong: MacBooks themselves (the family noun is in the query; core_top12 should be 0), sleeves (explicitly excluded), backpacks, cases for 15-inch or Pro models. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "laptop",
+    "context_any_of": [
+      "case",
+      "hard shell",
+      "shell"
+    ],
+    "context_none_of": [
+      "sleeve",
+      "backpack"
+    ],
+    "component_bad": "\\bsleeves?\\b"
+  },
+  {
+    "query": "replacement ear tips for airpods pro, the medium ones hurt my ears",
+    "_context": "electronics-06: Replacement silicone / memory-foam ear tips for AirPods Pro (small sizes or foam a plus) lead. Wrong: AirPods or other earbuds (core_top12 should be ~0), charging cases, case covers, cleaning kits. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "headphones",
+    "context_any_of": [
+      "ear tip",
+      "eartip",
+      "tip",
+      "foam tip"
+    ],
+    "context_none_of": [
+      "case cover",
+      "protective case",
+      "silicone case"
+    ]
+  },
+  {
+    "query": "comfy camera strap for my sony a7iii, my neck kills after shooting weddings",
+    "_context": "electronics-07: Padded neck / shoulder / sling straps or dual-camera harnesses for mirrorless or DSLR bodies lead. Wrong: cameras and lenses (core_top12 should be 0), watch straps, camera bags (partial at best). CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "camera",
+    "context_any_of": [
+      "strap",
+      "sling",
+      "harness"
+    ]
+  },
+  {
+    "query": "kids keep cracking our ipad screen, need something tougher",
+    "_context": "electronics-08: Shockproof / kids iPad cases with handles and tempered-glass protectors lead. A kid-proof tablet bundle is a defensible alternative; a bare iPad is wrong (core_top4 should be ~0). CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "tablet",
+    "context_any_of": [
+      "case",
+      "cover",
+      "screen protector",
+      "tempered glass",
+      "bumper"
+    ]
+  },
+  {
+    "query": "Lens for my canon rebel t7 to shoot birds at the feeder from the kitchen window",
+    "_context": "electronics-09: Telephoto / zoom lenses for Canon EF or EF-S (55-250, 75-300, 100-400, 150-600, mirror lenses) lead. Wrong: camera bodies or camera+lens kits (they own a T7: core_top4 should be ~0), caps, hoods, filters, cleaning pens, lenses for other mounts. 'kitchen' must not route to a recipe. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "camera",
+    "context_any_of": [
+      "lens",
+      "telephoto",
+      "zoom lens"
+    ],
+    "context_none_of": [
+      "lens cap",
+      "lens hood",
+      "lens pen",
+      "cleaning",
+      "filter",
+      "adapter"
+    ]
+  },
+  {
+    "query": "laptop for video editing under 1000 that doesn't run hot",
+    "_context": "electronics-10: Laptops with editing-grade specs (i7 / Ryzen 7, 16 GB+, a discrete GPU) lead, listed price <= $1000 first (core_top12 >= 0.9). Wrong: cooling pads (the 'run hot' words must not turn this into the overheating-fix query), sleeves, chargers. Most laptops list no price: only a LISTED price meets the budget (rubric rule). CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "laptop",
+    "context_none_of": [
+      "sleeve",
+      "case",
+      "bag",
+      "cooling pad",
+      "cooler",
+      "charger",
+      "skin",
+      "stand"
+    ],
+    "component_bad": "\\b(cooling pads?|coolers?|cooling stands?|laptop fans?)\\b"
+  },
+  {
+    "query": "tablet my 80 year old mom can use to facetime the grandkids, big screen nothing complicated",
+    "_context": "electronics-11: 10-inch-plus tablets (iPad, Fire HD 10, Galaxy Tab) lead (core_top12 >= 0.8). Wrong: cases, stands, styluses, kids tablets. device_role.requested_device reads None for this phrasing (the word after 'tablet' is 'my'), so main.py's device ordering does not act: the page rests on retrieval + rerank. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "tablet",
+    "context_none_of": [
+      "case",
+      "cover",
+      "stand",
+      "holder",
+      "screen protector",
+      "stylus",
+      "keyboard"
+    ],
+    "component_bad": "\\b(cases?|covers?|stands?|holders?|stylus|screen protectors?)\\b"
+  },
+  {
+    "query": "smartwatch with gps and calling for my 8 year old, no phone yet",
+    "_context": "electronics-12: Kids 4G GPS smartwatches with calling / SOS lead (core_top12 >= 0.9). Wrong: adult smartwatches, bands, chargers, phones. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "watch",
+    "context_any_of": [
+      "kid",
+      "kids",
+      "children",
+      "child",
+      "boy",
+      "girl"
+    ],
+    "context_none_of": [
+      "band",
+      "strap",
+      "charger",
+      "screen protector"
+    ],
+    "component_bad": "\\b(bands?|straps?|chargers?|screen protectors?)\\b"
+  },
+  {
+    "query": "dash cam for my uber that records the passengers too, has to survive phoenix summers",
+    "_context": "electronics-13: Dual / 3-channel dash cams with an interior (IR) camera lead; supercapacitor models are a plus for heat. Wrong: front-only dash cams (partial), backup cameras, mounts and hardwire kits, action or security cameras. Dash cams count as core 'camera' rows and the reader reads a camera ask (measured), so core_top12 cannot tell a dash cam from a DSLR: read context_fit and items_good. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "camera",
+    "context_any_of": [
+      "dash cam",
+      "dashcam",
+      "dash camera",
+      "dashboard camera",
+      "car camera",
+      "car dvr"
+    ],
+    "component_good": "\\b(dual|front and rear|cabin|inside|interior|infrared|3 channel|rideshare|uber|super ?capacitor)\\b"
+  },
+  {
+    "query": "waterproof action camera for snorkeling under 150, gopro is too pricey",
+    "_context": "electronics-14: Budget action cameras that are waterproof or ship with a dive housing lead (core_top12 >= 0.8). Wrong: GoPro accessories (housings, floating grips, mounts, batteries), dash cams; a full-price GoPro is off-budget. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "camera",
+    "context_none_of": [
+      "mount",
+      "housing",
+      "case",
+      "strap",
+      "floating",
+      "battery",
+      "charger",
+      "grip",
+      "selfie stick",
+      "filter"
+    ]
+  },
+  {
+    "query": "stocking stuffers under 25 for my teen son who's always glued to his phone",
+    "_context": "electronics-15: Small phone gadgets that fit a $25 stocking: power banks, wireless chargers, phone stands / grips, pop sockets, selfie sticks, budget earbuds. Wrong: phones (core_top12 must be 0), repair parts, model-specific cases (fit unknown), anything far over $25 by its listed price. 'stocking stuffers' is a gift word for device_role (_GIFT_RE) but names no family, so no device code should act. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "phone"
+  },
+  {
+    "query": "retirement gift for my dad, he still has all his old vinyl records",
+    "_context": "electronics-16: Turntables / record players (belt-drive, built-in speakers or Bluetooth out) lead; cleaning or storage pieces at most after them (the thing itself is the gift). Wrong: replacement needles, slipmats, CD players, vinyl-themed decor.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "context_any_of": [
+      "turntable",
+      "record player",
+      "vinyl player",
+      "phonograph"
+    ],
+    "context_none_of": [
+      "needle",
+      "stylus",
+      "cartridge",
+      "slipmat",
+      "cleaning",
+      "brush",
+      "sleeve"
+    ]
+  },
+  {
+    "query": "diwali gift for my brother in law who just got a big new tv, around 100",
+    "_context": "electronics-17: Things that make a new TV better, near $100: soundbars, streaming sticks, TV speakers, universal remotes. Wrong: another TV, festival decor or lights (a misread of 'diwali'), replacement remotes for one other brand, wall mounts (practical, not a gift).",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "context_any_of": [
+      "soundbar",
+      "sound bar",
+      "subwoofer",
+      "streaming",
+      "fire tv",
+      "roku",
+      "chromecast",
+      "speaker",
+      "universal remote"
+    ]
+  },
+  {
+    "query": "bday present for a 10 yr old who wants to be a youtuber",
+    "_context": "electronics-18: Kid-friendly or vlogging cameras, ring lights with phone holders, clip-on mics, tripods. A starter setup page is acceptable (inferred setups are an open owner question). Wrong: pro cinema gear, XLR studio kit, kids smartwatches, toy projectors.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "vertical_in": [
+      "electronics"
+    ],
+    "context_any_of": [
+      "camera",
+      "camcorder",
+      "vlog",
+      "vlogging",
+      "ring light",
+      "microphone",
+      "mic",
+      "tripod"
+    ]
+  },
+  {
+    "query": "streaming setup for a beginner under 300",
+    "_context": "electronics-19: A setup bundle (regex route 'setup'): webcam, USB microphone, light, maybe a capture card or headset, all at beginner prices. Wrong: mood items (blanket, candles, plants: SETUP_PROMPT's technical-goal rule), pro cinema cameras, fashion items.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": "setup",
+    "vertical_in": [
+      "electronics"
+    ],
+    "component_good": "\\b(webcams?|cameras?|microphones?|mics?|ring lights?|key lights?|lights?|capture cards?|headsets?|headphones|tripods?|boom arms?|mic arms?|green screens?)\\b",
+    "component_bad": "\\b(blankets?|throws?|candles?|plants?|mugs?|string lights|fairy lights|dress(es)?|earrings?|sandals?)\\b"
+  },
+  {
+    "query": "podcast setup for 2 people recording at the kitchen table",
+    "_context": "electronics-20: A setup bundle: two microphones or a 2-mic kit, an interface / mixer / recorder with two inputs, headphones, table stands. Wrong: kitchen items (the 'kitchen' trap; it must also not route to a recipe), mood items, a single mic only.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": "setup",
+    "vertical_in": [
+      "electronics"
+    ],
+    "component_good": "\\b(microphones?|mics?|audio interfaces?|interfaces?|mixers?|recorders?|headphones?|boom arms?|mic stands?|desk stands?|pop filters?|xlr|splitters?)\\b",
+    "component_bad": "\\b(blankets?|candles?|plants?|mugs?|cookware|pans?|kitchen (scale|knife|knives|utensils?)|dress(es)?)\\b"
+  },
+  {
+    "query": "home theater setup for a small apartment, landlord says no drilling",
+    "_context": "electronics-21: A setup bundle: compact soundbar, projector or streaming device, freestanding / portable screen, TV or floor stand. Wrong: wall or ceiling mounts and in-wall speakers (component_bad on intents and slot items should be 0).",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": "setup",
+    "vertical_in": [
+      "electronics"
+    ],
+    "component_good": "\\b(soundbars?|sound bars?|projectors?|projector screens?|tv stands?|floor stands?|streaming|subwoofers?|speakers?|bookshelf)\\b",
+    "component_bad": "\\b(wall mounts?|ceiling mounts?|wall brackets?|mounting brackets?|in[- ]wall|ceiling)\\b"
+  },
+  {
+    "query": "my voice sounds muffled and echoey on zoom calls",
+    "_context": "electronics-22: USB desktop microphones, headsets with a boom mic and conference speakerphones lead. Wrong: speakers, webcam covers, acoustic decor; webcams are partial (built-in mics rarely fix echo).",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "context_any_of": [
+      "microphone",
+      "mic",
+      "headset",
+      "speakerphone"
+    ]
+  },
+  {
+    "query": "old car has no bluetooth or aux, want to play spotify from my phone",
+    "_context": "electronics-23: Bluetooth FM transmitters lead (cassette adapters only if the car has a tape deck). Wrong: AUX Bluetooth receivers and AUX cables (the car has no AUX), Bluetooth speakers; new head units are partial (installation).",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "context_any_of": [
+      "fm transmitter",
+      "fm radio transmitter",
+      "cassette adapter",
+      "fm modulator"
+    ]
+  },
+  {
+    "query": "hunching over my laptop all day is wrecking my posture",
+    "_context": "electronics-24: Laptop stands and risers (adjustable height) lead; an external keyboard + mouse combo is a fair complement. Wrong: laptops (core_top12 should be 0), cooling pads that do not raise the screen (partial: this is not the overheating query), sleeves, chargers; posture braces sit outside Electronics. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "laptop",
+    "context_any_of": [
+      "laptop stand",
+      "stand",
+      "riser",
+      "laptop holder"
+    ],
+    "context_none_of": [
+      "sleeve",
+      "case",
+      "skin",
+      "charger"
+    ]
+  },
+  {
+    "query": "neighbours keep complaning when i game late at nite",
+    "_context": "electronics-25: Gaming headsets and wireless headphones lead (core_top12 >= 0.8). Wrong: speakers, soundbars, subwoofers (louder, the opposite need). CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "headphones",
+    "context_any_of": [
+      "headset",
+      "headphone",
+      "earbud"
+    ],
+    "context_none_of": [
+      "speaker",
+      "soundbar",
+      "subwoofer"
+    ]
+  },
+  {
+    "query": "backing up 20 yrs of family photos before my old laptop dies",
+    "_context": "electronics-26: External HDDs / SSDs in the 1-5 TB range, photo-backup drives, a NAS. Wrong: new laptops (core_top12 0), internal drive caddies, empty enclosures (partial), laptop batteries. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "laptop",
+    "context_any_of": [
+      "external hard drive",
+      "external drive",
+      "portable hard drive",
+      "portable ssd",
+      "external ssd",
+      "hard drive",
+      "ssd",
+      "nas",
+      "flash drive",
+      "usb drive"
+    ],
+    "context_none_of": [
+      "enclosure",
+      "caddy",
+      "case"
+    ]
+  },
+  {
+    "query": "lost the remote to my samsung smart tv, need one that just works",
+    "_context": "electronics-27: Replacement remotes for Samsung smart TVs (BN59 series) and universal remotes that cover Samsung lead. Wrong: Samsung TVs, remote covers / holders, remotes for other brands' TVs or for streaming sticks.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "context_any_of": [
+      "remote"
+    ],
+    "context_none_of": [
+      "remote cover",
+      "remote case",
+      "holder",
+      "silicone cover"
+    ]
+  },
+  {
+    "query": "somthing like bose qc45 but half the price",
+    "_context": "electronics-28: Over-ear active-noise-cancelling headphones from other brands at lower listed prices lead (core_top12 >= 0.8). Wrong: QC45 ear pads, cases and cables (replacement parts), office headsets; earbuds are partial; Bose itself at full price is off the ask. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "headphones",
+    "context_any_of": [
+      "noise cancelling",
+      "noise canceling",
+      "anc",
+      "noise cancellation"
+    ],
+    "context_none_of": [
+      "ear pad",
+      "earpad",
+      "cushion",
+      "replacement",
+      "case"
+    ]
+  },
+  {
+    "query": "airpods pro dupe that actually works with my android",
+    "_context": "electronics-29: True-wireless (ideally ANC) earbuds that work fully with Android (Galaxy Buds, Soundcore, Jabra, budget TWS) lead (core_top12 >= 0.8). Wrong: AirPods themselves, AirPods cases / tips / skins, wired earbuds. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "headphones",
+    "context_none_of": [
+      "case cover",
+      "protective case",
+      "silicone case",
+      "ear tip",
+      "eartip",
+      "skin",
+      "keychain",
+      "strap"
+    ]
+  },
+  {
+    "query": "foldable phone under 500 bucks",
+    "_context": "electronics-30: GAP (graceful handling): the catalog holds 0 foldable handsets (measured). A correct page admits it (match_quality weak) and may show regular phones; wrong: Z Fold / Flip cases, screen protectors or 'foldable' headphones presented as the device. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows. Gap row: core is not the pass bar.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "core": "phone",
+    "context_any_of": [
+      "fold",
+      "flip",
+      "foldable"
+    ],
+    "component_bad": "\\b(cases?|covers?|screen protectors?|holders?|stands?)\\b"
+  },
+  {
+    "query": "movie marathon w the kids this weekend, need popcorn n candy plus a streaming stick for the old tv downstairs",
+    "_context": "cross-01: Two departments in one ask: kid-friendly movie snacks (popcorn, candy) AND a streaming media player (Fire TV Stick, Roku, Chromecast) for an older TV. A good page 1 shows both. Wrong: only one of the two, remotes/cases/cables for sticks instead of a stick, projectors and screens (no wall or projector was asked for), clothing. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "vertical_in": [
+      "grocery",
+      "electronics"
+    ],
+    "component_good": "\\b(popcorn|candy|candies|gumm(y|ies)|chocolate|fire tv|roku|chromecast|streaming (stick|media player|device))\\b",
+    "component_bad": "\\b(projector screen|tripod|speaker mount|pajama)\\b"
+  },
+  {
+    "query": "11 hour flight with my 2 yr old next month, need stuff to keep her busy + snacks that wont make a mess",
+    "_context": "cross-02: Travel with a toddler, two needs: something to occupy a 2-year-old on a long flight (volume-limited kids' headphones, a kids' tablet or case) and low-mess toddler snacks (puffs, yogurt melts, pouches, crackers). Toddler-sized comfy clothes are a defensible extra. Wrong: adult headphones and travel pillows, luggage, adult snacks, anything not for a small child. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Electronics / Grocery; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "context_any_of": [
+      "kid",
+      "kids",
+      "toddler",
+      "baby",
+      "children",
+      "child",
+      "infant",
+      "little"
+    ],
+    "component_good": "\\b(headphones?|tablet|puffs|melts|pouch(es)?|toddler snacks?|fruit snacks?|crackers)\\b",
+    "component_bad": "\\b(neck pillow|luggage|suitcase|adult|wine|coffee)\\b"
+  },
+  {
+    "query": "hosting friendsgiving for like 12 ppl, need drinks for the non drinkers and a speaker so we can have music going",
+    "_context": "cross-03: Hosting a holiday meal: non-alcoholic drinks for guests who do not drink (sparkling cider or juice, NA wine or beer, mocktail mixers) AND a portable or Bluetooth speaker. The quantity (12 people) favours multipacks. Wrong: alcohol, turkey and roasting gear (not asked), apparel, speaker parts or mounts. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "vertical_in": [
+      "grocery",
+      "electronics"
+    ],
+    "component_good": "\\b(non[- ]?alcoholic|alcohol[- ]free|mocktails?|sparkling (apple )?(cider|juice)|juice|soda|lemonade|speakers?)\\b",
+    "component_bad": "\\b(turkey|roasting pan|baster|apron|costume)\\b"
+  },
+  {
+    "query": "mardi gras party at my place tuesday, need masks n beads for like 20 ppl and some new orleans snacks",
+    "_context": "cross-04: A regional-cultural party, hosted for a crowd. PASS BAR (review): masquerade / Mardi Gras / Venetian party masks (Fashion) AND New Orleans snacks (pralines, king cake or its mix, Cajun peanuts / snack mix: Grocery) on page 1. Party bead necklaces are a BONUS, not a requirement: only 5 Fashion titles pair beads with 'mardi gras' / 'carnival' (measured), the other bead necklaces are ordinary jewelry. A SECOND collision: 'masks' also means cloth / dust face masks and gaiters, typed accessory and plentiful in the catalog. Wrong: face masks and gaiters, horror Halloween masks, fine beaded jewelry, Cajun seasonings and fish-fry breading as the snack (cooking ingredients, not party food), electronics. Code note (run offline): product_type.requested_types reads {accessory} here; main.py acts on a type request only when >= 50% of the raw RERANK_INPUT_K head is Fashion (app/main.py:618-641), and then the snacks would rank as type mismatches after the masks: check that the snack half survives. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Fashion; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "vertical_in": [
+      "grocery",
+      "fashion"
+    ],
+    "context_none_of": [
+      "face mask",
+      "mouth mask",
+      "dust mask",
+      "neck gaiter",
+      "balaclava",
+      "filter",
+      "surgical",
+      "n95",
+      "kn95"
+    ],
+    "component_good": "\\b(mardi gras|masquerade|venetian|carnival|beads?|bead necklaces?|king cake|pralines?|beignets?|cajun|new orleans)\\b",
+    "component_bad": "\\b(face masks?|mouth masks?|dust masks?|neck gaiters?|balaclavas?|halloween|zombie|skull)\\b"
+  },
+  {
+    "query": "4th of july cookout at the park, need drinks a speaker that can handle being outside and something red white n blue to wear",
+    "_context": "cross-05: Three departments for one outdoor holiday: drinks for a crowd (Grocery), a rugged or waterproof outdoor Bluetooth speaker (Electronics) and patriotic red-white-blue clothing such as American-flag tees or shorts (Fashion). 'cookout' must not route to a recipe page. Wrong: one department only, grills and charcoal (not in the catalog and not asked), winter wear, other holidays' items. Code note (run offline): requested_types reads {apparel} ('to wear'); in a Fashion-majority head main.py would order the drinks and speakers as type mismatches after the clothing (app/main.py:618-641): a cross-department risk to watch. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Electronics / Fashion; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "component_good": "\\b(american flag|patriotic|usa|4th of july|stars and stripes|speakers?|waterproof|lemonade|soda|sparkling|juice|drinks?)\\b",
+    "component_bad": "\\b(grill brush|charcoal|christmas|halloween|wool|fleece|parka)\\b"
+  },
+  {
+    "query": "first valentines with my gf, thinking chocolate plus a little piece of jewelry, nothing over the top, like 50 bucks total",
+    "_context": "cross-06: Seasonal gift with a persona, a budget and a negation: Valentine's chocolates or truffles (Grocery) AND a small, understated piece of women's jewelry (a dainty necklace, studs, a simple bracelet: Fashion), together around $50 (only a LISTED price can violate it). 'nothing over the top' rules out engagement rings, carat-weight diamond pieces and solid gold, and lingerie ('14K Gold Plated' or 'Diamond Cut' dainty chains are the ~$50 answer, so 14k / 18k / diamond are NOT misfit words). Wrong: men's jewelry, a single department, expensive fine jewelry. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Fashion; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "gender": "women",
+    "vertical_in": [
+      "grocery",
+      "fashion"
+    ],
+    "context_none_of": [
+      "engagement ring",
+      "wedding band",
+      "solid gold",
+      "men",
+      "mens",
+      "carat",
+      "ctw"
+    ],
+    "component_good": "\\b(chocolates?|truffles?|valentines?|heart|necklace|pendant|earrings?|bracelet|dainty|minimalist)\\b",
+    "component_bad": "\\b(engagement|wedding band|lingerie|men'?s|cufflinks?)\\b"
+  },
+  {
+    "query": "14 hr flight to tokyo next week, i want to actually sleep and not have my ankles swell up",
+    "_context": "cross-07: A long-haul flight with two problems and no product named: sleeping on the plane (eye/sleep mask, noise-cancelling headphones or earplugs, a travel pillow) and ankle swelling (compression socks, the strongest supply: ~139 Fashion titles). Wrong: Japanese-themed products (the destination is not the need), plug adapters and luggage, ordinary socks without compression. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Fashion / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "context_any_of": [
+      "compression",
+      "sleep mask",
+      "eye mask",
+      "noise cancelling",
+      "noise canceling",
+      "noise reduction",
+      "travel pillow",
+      "neck pillow",
+      "earplug",
+      "ear plug"
+    ],
+    "component_bad": "\\b(japanese|japan|kimono|power adapter|plug adapter|luggage tag)\\b"
+  },
+  {
+    "query": "starting a remote job monday and the company only sent a laptop. tiny apartment, about $300 for whatever i need to actually work from home",
+    "_context": "cross-08: Home office for a new remote hire who ALREADY HAS the laptop (a device already owned is not a device ask): what completes a small work-from-home desk on ~$300 total. Expect a compact or portable monitor, a laptop stand, a wireless keyboard-and-mouse combo, a headset or webcam, perhaps a USB-C hub. Wrong: laptops themselves (owned), gaming gear, TV mounts and projectors, grocery; items far over budget when a price is LISTED (rubric: only a listed price satisfies or violates a budget). Code note (run offline): device_role.requested_device reads None here, so no device page is forced; a 'setup' bundle is an acceptable route.",
+    "group": "complex_electronics",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "vertical_not": [
+      "grocery"
+    ],
+    "component_good": "\\b(monitors?|portable monitor|laptop stand|keyboard|mouse|combo|headsets?|webcams?|docking station|usb[- ]?c hub)\\b",
+    "component_bad": "\\b(laptops? (computer|pc)|notebook pc|chromebook|gaming|tv mount|projector|security camera|dash ?cam)\\b"
+  },
+  {
+    "query": "my dad just retired and wants to start walking every morning, hes 68 and his knees bug him, and he'd love to listen to audiobooks while he walks. what should i get him",
+    "_context": "cross-09: A long, rambling gift ask for an older man: cushioned walking shoes or sneakers that are kind to sore knees (men's), and something to hear audiobooks on the move (wireless or open-ear / bone-conduction headphones, earbuds, an MP3 player). Wrong: women's shoes, gaming headsets, knee-brace-only pages, grocery, audiobook CDs. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Fashion / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "gender": "men",
+    "vertical_not": [
+      "grocery"
+    ],
+    "component_good": "\\b(walking shoes?|sneakers?|cushion(ed|ing)?|arch support|earbuds?|headphones?|bone conduction|open[- ]ear|mp3)\\b",
+    "component_bad": "\\b(women'?s|ladies|heels?|gaming|kids)\\b"
+  },
+  {
+    "query": "ok so my brother is moving from florida to minneapolis in january for a new job, he has literally never owned a winter coat lol, what does he need",
+    "_context": "cross-10: A long, informal relocation ask: a man moving from a hot climate to a very cold one in mid-winter. Expect a warm insulated winter coat first, then snow boots, thermal base layers, gloves and a beanie, all men's. Wrong: rain shells and light windbreakers as the coat, summer wear, women's items, electronics.",
+    "group": "complex_fashion",
+    "types": [
+      "apparel",
+      "footwear",
+      "headwear",
+      "accessory"
+    ],
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "gender": "men",
+    "vertical_in": [
+      "fashion"
+    ],
+    "context_none_of": [
+      "shorts",
+      "sandal",
+      "flip flop",
+      "swimsuit",
+      "swim trunk",
+      "tank top",
+      "linen",
+      "sundress"
+    ],
+    "component_good": "\\b(parka|puffer|down|insulated|winter|snow|thermal|fleece|beanie|gloves?|wool)\\b"
+  },
+  {
+    "query": "first time tent camping in october and it gets cold at night - need a good lantern, warm base layers and hot cocoa for by the fire",
+    "_context": "cross-11: Three departments for one trip: a camp lantern (or headlamp / flashlight: Electronics), warm base layers for cold nights (thermals, fleece: Fashion) and hot cocoa mix (Grocery). Wrong: one department only, photo-studio 'lantern' softboxes, summer wear, iced drinks, power banks alone (not asked here). GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Electronics / Fashion / Grocery; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "component_good": "\\b(lanterns?|headlamps?|flashlights?|hot cocoa|hot chocolate|cocoa|thermal|base layer|fleece|long johns)\\b",
+    "component_bad": "\\b(swimsuit|bikini|sandals?|iced|cold brew|softbox)\\b"
+  },
+  {
+    "query": "lan party at my place sat, gonna need energy drinks snacks and a decent headset w a mic",
+    "_context": "cross-12: Gamer slang, two departments: energy drinks and snacks for a gaming get-together AND one gaming headset with a microphone. Not a PC build ('rig' and 'setup' are deliberately absent). Wrong: PC parts, monitors, chairs, headphones without a mic, apparel. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "vertical_in": [
+      "grocery",
+      "electronics"
+    ],
+    "component_good": "\\b(energy drinks?|chips|snacks?|jerky|headsets?|microphone|mic)\\b",
+    "component_bad": "\\b(gaming chair|monitor|graphics card|gpu|motherboard)\\b"
+  },
+  {
+    "query": "galaxy print clothes for my 8 yr old, shes obsessed with space",
+    "_context": "cross-14: Collision with Samsung Galaxy: most 'galaxy' Fashion titles are Galaxy Watch bands and phone accessories. The shopper wants girls' clothing (an 8-year-old, 'she') with galaxy or outer-space prints: tees, dresses, leggings, hoodies, pajamas. Wrong: Samsung accessories, adult women's sizes, boys' items, jewelry.",
+    "group": "complex_collision",
+    "types": [
+      "apparel"
+    ],
+    "bundle": null,
+    "gender": "women",
+    "vertical_in": [
+      "fashion"
+    ],
+    "context_none_of": [
+      "samsung",
+      "screen protector",
+      "phone case",
+      "watch band",
+      "smartwatch"
+    ],
+    "context_any_of": [
+      "galaxy",
+      "space",
+      "planet",
+      "astronaut",
+      "rocket",
+      "solar system",
+      "star",
+      "moon",
+      "cosmic",
+      "universe",
+      "nebula"
+    ]
+  },
+  {
+    "query": "something to watch the baby from the kitchen while she naps",
+    "_context": "cross-15: 'watch' is a VERB here, colliding with the watch device family (DEVICE_ROLE_RANKING) and with 'watch TV'. The shopper needs a baby monitor (video or audio) or an indoor camera usable as one. Wrong: wristwatches, smartwatches and bands, TVs and streaming devices, baby clothing. Code note (run offline): requested_types reads {accessory} (watches are typed accessory) and device_role.requested_device reads None; the type request acts only in a Fashion-majority head (app/main.py:618-641), which a baby-monitor pool should not be.",
+    "group": "complex_collision",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "electronics"
+    ],
+    "context_any_of": [
+      "baby monitor",
+      "monitor",
+      "camera",
+      "cam",
+      "nanny"
+    ],
+    "context_none_of": [
+      "watch band",
+      "smartwatch",
+      "smart watch",
+      "wristwatch",
+      "tv stick",
+      "projector"
+    ],
+    "component_bad": "\\b(smart ?watch|watch band|wristwatch|apple watch|fire tv|roku|television)\\b"
+  },
+  {
+    "query": "a case of sparkling water for the office fridge, nothing sweetened",
+    "_context": "cross-16: Collision ('case' = phone or carrying case), a quantity (a case = a multipack), a setting and a negation. Expect multipacks of unsweetened sparkling water or seltzer, plain or naturally flavoured with no sugar or sweetener (mineral waters, unsweetened seltzers). Wrong: phone or carrying cases, sweetened sparkling drinks (sugar, sucralose, juice-based), soda makers and CO2 cylinders, single bottles (weaker), reusable water bottles. 'Zero Sugar' / 'Sugar Free' seltzers are CORRECT: 'sugar' is deliberately not a misfit word; 'sweetened' is word-bounded, so it never matches 'Unsweetened'.",
+    "group": "complex_collision",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "sparkling water",
+      "sparkling mineral water",
+      "seltzer",
+      "mineral water",
+      "carbonated water",
+      "club soda",
+      "sparkling spring water"
+    ],
+    "context_none_of": [
+      "sweetened",
+      "syrup",
+      "sparkling ice",
+      "juice",
+      "energy",
+      "soda maker",
+      "co2",
+      "sodamix"
+    ],
+    "component_bad": "\\b(phone case|iphone|galaxy|case for|carrying case|sodastream|soda maker|water bottle)\\b"
+  },
+  {
+    "query": "electrolyte tablets or powder for a hot half marathon",
+    "_context": "cross-17: Collision with 'tablets' (the tablet device family) plus an activity and heat. Electrolyte powders and drink mixes lead, then hydration multipliers and sports drinks. No electrolyte TAB product exists: 0 Grocery titles pair 'electrolyte' with 'tablet(s)' / 'tab(s)' (review, measured), so no tab is expected. Wrong: any tablet computer, tablet case or stylus (the collision error), caffeinated energy drinks (weaker), running apparel.",
+    "group": "complex_collision",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "electrolyte",
+      "hydration",
+      "liquid iv",
+      "sports drink",
+      "drink mix",
+      "salt tab"
+    ],
+    "component_bad": "\\b(ipad|tablet case|galaxy tab|fire hd|stylus|kindle)\\b"
+  },
+  {
+    "query": "goodie bags for my sons 6th bday party, like 15 kids, individually wrapped stuff",
+    "_context": "cross-18: 'bags' collides with the bag product type (requested_types reads {bag}; main.py acts on it only in a Fashion-majority head) and with tea bags; plus an event, an age, a quantity and a packaging need. Expect individually wrapped candy, fruit snacks and treats in bulk or party-favor packs for ~15 young kids. Wrong: handbags, totes, backpacks, tea bags, cake toppers and decorations (not fillers), adult gift baskets.",
+    "group": "complex_collision",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_none_of": [
+      "handbag",
+      "tote",
+      "backpack",
+      "purse",
+      "crossbody",
+      "tea bag",
+      "wine",
+      "liquor"
+    ],
+    "component_good": "\\b(individually wrapped|party favors?|goodie bags?|fruit snacks?|gumm(y|ies)|lollipops?|candy|treats?|bulk)\\b",
+    "component_bad": "\\b(handbags?|totes?|backpacks?|purses?|crossbody|tea bags?|cake toppers?)\\b"
+  },
+  {
+    "query": "kindle for my husband, he reads in bed every night and keeps me up with the lamp",
+    "_context": "cross-19: DELIBERATE GAP. 'kindle' is the brand of an e-reader, but the catalog's 1,101 Electronics titles naming Kindle are mostly cases, chargers and screen protectors. The persona (reads in bed, the lamp keeps a partner awake) points to an e-reader with a built-in front light. PASS BAR (review): a Kindle Paperwhite, Oasis or other e-reader title in the top 4, or a weak-match banner. core is NOT the pass bar: device_role reads 'kindle' as the TABLET family; 6 real Kindle e-readers score core (Paperwhite x4, Oasis, Kindle 2022) next to 2 misreads (a treadmill book holder, a Kindle jacket) and 1 Android tablet, while 18 of 888 'Fire HD / Fire 7 / Fire tablet' titles do (measured, sidecar supply_detail; the review said 3 e-readers, from its 4-title sample), so a page of Fire tablets posts a high core_top12 and still misses the persona. Wrong: a page of cases / chargers / screen protectors; Fire tablets are a weaker answer; a book light is a defensible extra. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows. Gap row: core is not the pass bar.",
+    "group": "complex_collision",
+    "types": null,
+    "bundle": null,
+    "core": "tablet",
+    "vertical_in": [
+      "electronics"
+    ],
+    "context_any_of": [
+      "e reader",
+      "ereader",
+      "e ink",
+      "paperwhite",
+      "oasis",
+      "epaper",
+      "e paper"
+    ],
+    "component_bad": "\\b(case|cover|sleeve|screen protector|charger|cable|skin|decal|stand)\\b"
+  },
+  {
+    "query": "self care box for my sister, shes been super stressed 🧘‍♀️☕ something cozy n calming",
+    "_context": "cross-20: Emoji with a zero-width-joiner sequence (person in lotus position + hot beverage; the guard normalises Cf characters for detection only and raised no flag on it offline), a persona (sister), a problem (stress) and a mood (cozy, calming), no product named. Expect a gift-box mix across departments: fuzzy socks or slippers, a plush robe or loungewear (women's), calming herbal tea (chamomile, lavender), a sleep or eye mask. Wrong: caffeine and energy drinks, men's items, gaming, generic candy. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Fashion / Grocery; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "gender": "women",
+    "context_any_of": [
+      "fuzzy",
+      "fluffy",
+      "plush",
+      "cozy",
+      "sherpa",
+      "slipper",
+      "sock",
+      "robe",
+      "pajama",
+      "lounge",
+      "loungewear",
+      "blanket",
+      "tea",
+      "chamomile",
+      "lavender",
+      "eye mask",
+      "sleep mask",
+      "bath",
+      "spa",
+      "candle",
+      "massager",
+      "white noise"
+    ],
+    "component_good": "\\b(fuzzy|fluffy|plush|sherpa|slippers?|socks|robe|pajamas?|lounge\\w*|blanket|chamomile|lavender|herbal tea|sleep mask|eye mask|spa)\\b",
+    "component_bad": "\\b(energy drinks?|pre[- ]?workout|caffeine|coffee|gaming|men'?s|stress ball)\\b"
+  },
+  {
+    "query": "WIFE IS PREGNANT AND CRAVING SOUR CANDY 24/7 AND NOTHING FITS HER ANYMORE, HELP",
+    "_context": "cross-21: ALL CAPS, a persona and two unrelated needs in one message: sour candy (Grocery) AND maternity clothing that fits a growing bump (maternity leggings, dresses, tops: Fashion). 'pregnant' should read as maternity / women's (product_type's fit readers act only in a Fashion-majority pool). Wrong: pregnancy tests or vitamins, men's clothing, maternity photo-shoot gowns and costumes (weaker), sweet non-sour candy (weaker), a single department. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Fashion; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "gender": "women",
+    "vertical_in": [
+      "grocery",
+      "fashion"
+    ],
+    "context_none_of": [
+      "pregnancy test",
+      "ovulation",
+      "costume",
+      "photography",
+      "photo shoot",
+      "men",
+      "mens"
+    ],
+    "component_good": "\\b(sour|warheads|sour patch|maternity|pregnancy|over the belly|nursing|bump)\\b",
+    "component_bad": "\\b(pregnancy tests?|ovulation|prenatal vitamins?|men'?s|costume|photo(graphy)? (dress|gown))\\b"
+  },
+  {
+    "query": "my nefew turns 13 next wk, hes obsessed w basketbal and his xbox, what do i get him",
+    "_context": "cross-22: Heavy misspelling (nefew, basketbal) and texting shorthand (wk, w) on a teen birthday gift with two interests across two departments: basketball wear or shoes in youth / big-kid sizes (Fashion) AND Xbox-compatible accessories such as controllers, gaming headsets, charging docks (Electronics; the console is owned, so a console is a weaker answer). Wrong: women's or girls' items, toddler sizes, PlayStation- or Nintendo-ONLY accessories (multi-platform 'for Xbox One, PS4, PC' items work with his Xbox and are fine; component_bad no longer counts them), console repair parts, grocery. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Fashion / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "group": "complex_cross",
+    "types": null,
+    "bundle": [
+      null,
+      "setup"
+    ],
+    "gender": "men",
+    "vertical_not": [
+      "grocery"
+    ],
+    "component_good": "\\b(basketball|hoops?|jersey|controller|gaming|headset|xbox)\\b",
+    "component_bad": "\\b(women'?s|girls?'?|toddler|baby|replacement (parts?|shell|buttons?)|thumbstick caps?)\\b"
+  },
+  {
+    "query": "moon cakes for mid autum festval, the lotus seed kind, for my parents",
+    "_context": "cross-23: DELIBERATE GAP, misspelled (autum, festval): a cultural festival food with a flavour and a recipient. The catalog holds only ~16 real mooncake titles (a moon-cake regex also hits cake toppers). Graceful handling: the real mooncakes first, lotus-seed paste and gift boxes ideally, then a weak-match banner rather than filler. Wrong: cake toppers and decorations, Western cakes or cake mixes, Lunar New Year candy (another festival), a recipe page.",
+    "group": "complex_collision",
+    "types": null,
+    "bundle": null,
+    "vertical_in": [
+      "grocery"
+    ],
+    "context_any_of": [
+      "mooncake",
+      "moon cake",
+      "mid autumn"
+    ],
+    "context_none_of": [
+      "topper",
+      "cake topper",
+      "cake mix",
+      "birthday"
+    ],
+    "component_good": "\\b(lotus|mooncakes?|moon cakes?|mid[- ]autumn)\\b",
+    "component_bad": "\\b(cake toppers?|toppers?|cake mix|birthday|lunar new year|red envelope)\\b"
+  }
+]
