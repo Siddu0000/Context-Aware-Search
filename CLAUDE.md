@@ -33,6 +33,8 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
   accessory predicates; main.py's use of them is in test_ranking), `test_llm_memo.py`,
   `test_determinism.py` (two cold passes, a fresh process with another PYTHONHASHSEED, single
   flight, memo restart), `test_databricks_bundle.py` (09's bundle, the 08 / 10 / 12 rows).
+  New 2026-11-02, same runner, fakes only: `test_score_complex_queries.py` (the complex query bank
+  loads through eval_page_types; its scorer's core / department splits) 4.
   2026-10-27 counts (pass/skip; every skip an opt-in gate: CAS_SLOW_TESTS, CAS_AUDIT_VARIANTS_PY,
   CAS_TRACE_JSON): guard 44/1, product_type 46/1, routing 22, ranking 72/1, eval_page_types 7,
   api_filters 44, search_text 17/2, ui 74, llm_memo 32, determinism 18, databricks_bundle 53,
@@ -954,6 +956,12 @@ reranker disagree.
   Open work: persist); method, numbers and the query ids: .claude/rules/eval.md "Electronics
   battery", "QE A/B" and "Determinism check". This round's grader labels must NOT sit next to the
   Oct 20 blind numbers (other graders: m03 BEFORE page-1 strict 0.46 there, 0.58 here).
+- The COMPLEX QUERY BANK (2026-11-02, the Nov 2 meeting's "queries to test" for the Databricks
+  stress test): `data/complex_queries.json` (107 queries, eval_page_types format, 8 deliberate
+  gap rows) + `data/complex_queries_meta.json` (expectations, `core_target`, `dept_min`, supply
+  counts measured on the enriched catalog); run with `10_page_eval.run(mode="on",
+  queries="data/complex_queries.json")`, score with `eval/score_complex_queries.py`. Not yet run
+  against any LLM. Details: .claude/rules/eval.md "Complex query bank". No load test exists.
 - `compare_embeddings.py`, `compare_search_text.py` — slower; rebuild embeddings per variant.
 - Outputs land in `eval_results/*.csv`. Metric to lead with: P@10 and MRR (NOT R@10 — see below).
 

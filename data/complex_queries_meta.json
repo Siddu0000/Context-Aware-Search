@@ -1,0 +1,2798 @@
+[
+  {
+    "id": "fashion-01",
+    "query": "long sleeve dress for my cousins outdoor wedding in october, it gets cold at night",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "occasion: wedding guest",
+      "season: october / fall",
+      "weather: cold evening",
+      "persona: cousin's wedding (a guest, not the bride)",
+      "attribute: long sleeves"
+    ],
+    "expect": "Correct page 1: women's long- or 3/4-sleeve cocktail / formal / maxi dresses a guest would wear to an autumn evening wedding. Wrong: bridal gowns (the shopper is a guest; a long-sleeve mother-of-the-bride dress is defensible), sleeveless or strapless dresses, non-dress items, men's wear.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 451,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bdress(es)?\\b))(?=.*?(?:\\blong[ -]sleeves?|\\b3/4[ -]sleeves?))(?=.*?(?:\\bwedding guest|\\bcocktail|\\bformal|\\bevening|\\bparty|\\bwedding))(?!.*?(?:bridal gown|bridesmaid|wedding dress|wedding gown|flower girl|nightgown|dress shirt|sleeveless|\\bkids?\\b|girls?\\b|toddler|baby))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-02",
+    "query": "grad party fit for a guy, its gonna be like 90 degrees out",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "occasion: graduation party",
+      "weather: hot (90F)",
+      "gender: men",
+      "slang: 'fit' = outfit",
+      "informal grammar"
+    ],
+    "expect": "Correct page 1: men's short-sleeve / linen / camp-collar shirts, polos, light chinos or shorts. Wrong: warm layers (wool, fleece, hoodies), athletic 'fitness' gear from misreading 'fit', women's clothing, accessories only.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 291,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Men's Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bshort[ -]sleeves?|\\blinen\\b|\\bcuban collar|\\bcamp collar|\\bhawaiian))(?=.*?(?:\\bbutton[ -]?(down|up)|\\bdress shirts?|\\bcasual shirts?|\\bpolo))(?!.*?(?:\\bswim|underwear|pajama|sleep|compression|costume|\\bkids?\\b|boys?\\b|toddler))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-03",
+    "query": "prom dress with sleeves thats modest, nothing strapless or super low cut",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "event: prom",
+      "attribute: sleeves",
+      "style: modest",
+      "negation: not strapless, not low cut"
+    ],
+    "expect": "Correct page 1: women's formal or prom dresses with sleeves and a modest neckline. Wrong: strapless, off-shoulder, spaghetti-strap, plunge or backless styles (the negation), bridal gowns, men's prom wear, shoes or jewelry.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 310,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bprom\\b|\\bformal\\b|\\bevening\\b|\\bball gown|\\bhomecoming))(?=.*?(?:\\blong sleeves?|\\b3/4 sleeves?|\\bshort sleeves?|\\bcap sleeves?|\\bhalf sleeves?|\\bwith sleeves))(?=.*?(?:\\bdress(es)?\\b|\\bgowns?\\b))(?!.*?(?:sleeveless|strapless|off[ -]the[ -]shoulder|spaghetti|bridal|wedding dress|flower girl|nightgown|dress shirt))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-04",
+    "query": "sparkly outfit for my 14 yo daughter's first taylor swift concert",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "persona: daughter",
+      "age: 14 (teen / big-girl sizes)",
+      "event: concert",
+      "style: sparkly",
+      "slang: 'yo' = year old"
+    ],
+    "expect": "Correct page 1: girls' or juniors' sequin / glitter / metallic tops, skirts, dresses, jackets (sizes 7-16). Wrong: baby / toddler sizes, adult club wear, costumes, non-apparel (shoes, bags, earrings) leading the page. 'taylor swift' is an occasion signal only: no licensed merch is expected (see supply_detail).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 65,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Kids"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bsequins?\\b|\\bsparkl|\\bglitter|\\bmetallic|\\brhinestone|\\bshiny))(?=.*?(?:\\btops?\\b|\\bdress(es)?\\b|\\bskirts?\\b|\\bjackets?\\b|\\bbodysuit|\\bshorts\\b|\\bblazer|\\bcami|\\bleggings|\\bshirt|\\btee\\b|\\bt-shirt))(?!.*?(?:shoe|sandal|heel|boot|\\bbag|purse|clutch|earring|necklace|bracelet|\\bhat\\b|headband|mask|costume|\\bbaby|toddler|infant|newborn|\\b(0|3|6|12|18)[ -]?(m|months)\\b|tutu))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-05",
+    "query": "mothers day gift for my mom, she gardens every weekend and always gets sunburned",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "occasion: Mother's Day",
+      "persona: mom",
+      "activity: gardening",
+      "problem: sunburn"
+    ],
+    "expect": "Correct page 1: women's wide-brim / UPF sun hats, UPF long-sleeve tops, gardening gloves or clogs. Wrong: jewelry and handbags (generic 'gift for mom' that ignores the context), men's or kids' items, Grocery rows that merely say 'garden'.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 272,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bgarden(ing)? (clogs?|shoes?|boots?|hats?|gloves?|aprons?)|\\bsun hats?\\b|\\bwide brim))(?!.*?(?:\\bkids?\\b|toddler|baby|boys?\\b|girls?\\b|\\bmen'?s\\b))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-06",
+    "query": "fathers day present for my husband who golfs every saturday",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "occasion: Father's Day",
+      "persona: husband",
+      "activity: golf",
+      "frequency: every week"
+    ],
+    "expect": "Correct page 1: men's golf polos, golf shoes, golf gloves / caps / pullovers (golf gadgets acceptable). Wrong: non-golf generic gifts, women's golf wear, golf-themed novelty socks or mugs dominating.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 310,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Men's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bgolf\\b))(?!.*?(?:women|ladies|girls?\\b|\\bkids?\\b|boys?\\b|youth|toddler|sweat liner|disposable|ball marker))",
+    "relevance_rows": 319
+  },
+  {
+    "id": "fashion-07",
+    "query": "snow pants for my 5 yr old, he comes home soaked from recess evry day",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "age: 5",
+      "persona: son",
+      "weather: snow",
+      "problem: gets soaked",
+      "typo: 'evry'",
+      "abbreviation: 'yr'"
+    ],
+    "expect": "Correct page 1: kids' waterproof snow pants, snow bibs, snowsuits in sizes 4-6. Wrong: baby / infant buntings, adult men's or women's ski pants, non-waterproof pants, footwear only.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 31,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Kids"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bsnow ?(pants|suit|bib)|\\bski (pants|bib)|\\bsnowsuit|\\bbib snow))",
+    "relevance_rows": 32
+  },
+  {
+    "id": "fashion-08",
+    "query": "light up sneakers for my 6 year old daughter, under $30",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "age: 6",
+      "persona: daughter",
+      "feature: light-up",
+      "budget: under $30"
+    ],
+    "expect": "Correct page 1: girls' or unisex kids' LED light-up sneakers. Budget: 0 of the light-up kids' rows list a price (measured), so a correct page neither drops them nor labels them 'under $30'. Wrong: adult shoes, Electronics LED products, non-light-up sneakers leading.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 223,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Kids"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\blight[ -]?up\\b|\\bled\\b))(?=.*?(?:\\bshoes?\\b|\\bsneakers?\\b))",
+    "relevance_rows": 225
+  },
+  {
+    "id": "fashion-09",
+    "query": "flower girl dress for a 4 year old but not white, the bride is the only one in white",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "role: flower girl",
+      "age: 4",
+      "negation: not white",
+      "occasion: wedding"
+    ],
+    "expect": "Correct page 1: girls' flower-girl or party dresses (size 4) in blush, champagne, pastel or floral colours. Wrong: dresses whose title says white, ivory or off-white (negation ignored; in bridal colour terms ivory is a white), adult gowns, accessories (baskets, crowns, shoes) leading.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 100,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Kids"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bflower girls?\\b))(?=.*?(?:\\bdress))(?!.*?(?:\\bwhite\\b|\\bivory\\b|\\boff[- ]white\\b|shoes?\\b|headband|basket|crown|wreath|veil|\\bwand\\b|petals))",
+    "relevance_rows": 111
+  },
+  {
+    "id": "fashion-10",
+    "query": "plus size swimsuit with tummy control, no bikinis please",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "fit: plus size",
+      "problem: tummy control",
+      "negation: no bikinis",
+      "activity: swimming"
+    ],
+    "expect": "Correct page 1: women's plus-size one-pieces, tankinis, swimdresses, ideally labelled tummy-control / slimming. Wrong: bikinis (the negation), non-plus swimwear, men's or kids' swimwear.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 31,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bplus\\b))(?=.*?(?:\\bswim|\\bbathing suit|\\btankini|\\bone[ -]piece))(?=.*?(?:\\btummy control|\\bslimming))(?!.*?(?:bikini))",
+    "relevance_rows": 27
+  },
+  {
+    "id": "fashion-11",
+    "query": "wireless bra that actually supports a 38DD, underwires dig into me",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "fit: 38DD / full bust",
+      "negation: no underwire",
+      "problem: underwire pain"
+    ],
+    "expect": "Correct page 1: wire-free / wireless full-coverage or minimizer bras in DD-range sizes. Wrong: underwire bras, padded push-ups for small cups, any Electronics row matched on 'wireless'.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 67,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bwire[- ]?free|\\bwireless|\\bno wire|\\bnon[- ]wire))(?=.*?(?:\\bbras?\\b))(?=.*?(?:\\bplus\\b|\\bfull (figure|coverage)|\\bbig busted|\\blarge bust|\\bminimizer|\\bdd\\b|\\bheavy))",
+    "relevance_rows": 384
+  },
+  {
+    "id": "fashion-12",
+    "query": "comfy flats i can wear to a weding, my feet are killing me in heels after like an hour",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "occasion: wedding",
+      "problem: foot pain in heels",
+      "negation: no heels",
+      "typo: 'weding'",
+      "comfort"
+    ],
+    "expect": "Correct page 1: women's dressy flats (ballet, pointed, rhinestone, satin), dressy flat sandals, comfortable loafers. Wrong: any heel / pump / wedge / platform, athletic sneakers, bridal gowns read from 'wedding', insoles or heel grips as the main answer.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 69,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bflats?\\b|\\bflat (sandals?|shoes?|slides?|mules?)|\\bloafers?\\b|\\bmary janes?\\b|\\bd'?orsay|\\bballet (flats?|shoes?)))(?=.*?(?:\\bpointed|\\bballet|\\brhinestone|\\bembellish|\\bsparkl|\\bglitter|\\bsatin|\\bdress(y)?\\b|\\bwedding|\\bpearl|\\bjewel|\\bmetallic|\\bvelvet|\\bd'?orsay|\\bcrystal|\\bbridal|\\bparty|\\bevening|\\bbow\\b|\\bcomfort|\\bcushion|\\bfoldable))(?!.*?(?:\\bheels?\\b|pumps?\\b|stiletto|wedges?\\b|platform|flatform|\\bkids?\\b|girls?\\b|toddler|little kid|big kid|\\bmen'?s\\b|\\bmens\\b|flat front|flat iron|flat cap|flat top|flat back|shoe ?(clip|bag|horn)|sunglass|\\bpants\\b|earring|necklace|brim|insole|socks?\\b|\\bring\\b|piercing|nose|slipper|wallet|\\bbag\\b|clutch|purse|dress pants|dress socks|boots?\\b|booties|flip ?flops?|shoelaces?))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-13",
+    "query": "plain hoodie for my 13 yr old son, no logos or graphics, he says thats cringe",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "persona: son",
+      "age: 13",
+      "negation: no logos / graphics",
+      "slang: 'cringe'",
+      "style: plain"
+    ],
+    "expect": "Correct page 1: plain / solid pullover or zip hoodies, boys' 12-16 or men's XS-S. Wrong: printed, graphic, logo, licensed-character or slogan hoodies (the negation), women's or toddler items.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 605,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Kids",
+        "Men's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bhoodie|\\bhooded sweatshirt|\\bhooded pullover|\\bpullover hood))(?!.*?(?:print|graphic|logo|letter|funny|anime|cartoon|tie[ -]?dye|camo|novelty|3d\\b|pattern|heated|costume|cosplay|team|ncaa|nfl|nba|mlb|disney|marvel|star wars|pokemon|minecraft|fortnite|dinosaur|shark|unicorn|girls?\\b|women|ladies|baby|toddler|infant))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-14",
+    "query": "winter hat that isnt wool, wool makes my head itch like crazy",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "season: winter",
+      "negation: not wool (material)",
+      "problem: itchy scalp"
+    ],
+    "expect": "Correct page 1: acrylic / fleece / cotton / satin-lined beanies and winter hats. Wrong: hats whose title names wool, merino, cashmere, alpaca, mohair or angora; sun hats; non-headwear. Caveat: titles that do not name a fibre may still be wool (supply counts titles, not fibre content).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 746,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bbeanie|\\bwinter hat|\\bknit hat|\\bskull ?cap))(?!.*?(?:\\bwool\\b|merino|cashmere|alpaca|mohair|angora))",
+    "relevance_rows": 737
+  },
+  {
+    "id": "fashion-15",
+    "query": "vegan lether boots for winter, no real leather",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "material: vegan / faux leather",
+      "negation: no real leather",
+      "season: winter",
+      "typo: 'lether'"
+    ],
+    "expect": "Correct page 1: faux / vegan / PU-leather boots and booties, ideally lined. Wrong: genuine leather, full-grain, cowhide or nubuck boots; non-boot footwear; faux-leather jackets or bags.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 37,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bfaux leather|\\bvegan leather|\\bpu leather|\\bsynthetic leather))(?=.*?(?:\\bboots?\\b|\\bbooties\\b))",
+    "relevance_rows": 36
+  },
+  {
+    "id": "fashion-16",
+    "query": "100% cotton pajamas for my 3 year old, he has eczema and polyester makes him itch",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "material: 100% cotton",
+      "negation: no polyester",
+      "age: 3",
+      "persona: son",
+      "problem: eczema"
+    ],
+    "expect": "Correct page 1: toddler boys' or unisex 100% / organic cotton pajama sets (3T). Wrong: polyester, fleece or microfiber sleepwear; adult pajamas; girls' nightgowns; infant swaddles.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 67,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Kids"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bcotton\\b))(?=.*?(?:\\bpajamas?|\\bpj'?s?\\b|\\bsleepwear|\\bsleep ?(set|suit)|\\bsleeper))(?!.*?(?:girls?\\b|polyester|fleece|microfiber))",
+    "relevance_rows": 129
+  },
+  {
+    "id": "fashion-17",
+    "query": "long sleeve sun shirt for fishing in florida, my husband burns so easy",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "activity: fishing",
+      "weather / place: Florida sun",
+      "persona: husband",
+      "problem: sunburn",
+      "attribute: long sleeve"
+    ],
+    "expect": "Correct page 1: men's long-sleeve UPF 50+ fishing / sun shirts and sun hoodies. Wrong: fishing-themed graphic tees with no sun protection, women's or kids' shirts, non-apparel (rods, lures, sunscreen).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 98,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Men's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bupf\\b|\\bsun protection|\\bspf\\b|\\buv protection|\\bfishing\\b))(?=.*?(?:\\bshirts?\\b|\\bhoodie|\\btee\\b|\\bt-shirt))(?!.*?(?:women|ladies|\\bkids?\\b|girls?\\b|boys?\\b|youth|toddler|baby|arm sleeve|neck gaiter|\\bhat\\b|\\bcap\\b))",
+    "relevance_rows": 67
+  },
+  {
+    "id": "fashion-18",
+    "query": "crossbody bag for 2 weeks in europe, im paranoid about pickpockets",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "activity: travel",
+      "quantity / duration: 2 weeks",
+      "place: Europe",
+      "problem: theft / pickpockets"
+    ],
+    "expect": "Correct page 1: anti-theft / RFID / locking-zipper crossbody, sling or shoulder bags. Wrong: open totes, evening clutches, suitcases, card wallets, money belts only, Electronics travel adapters.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 29,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\banti[ -]?theft|\\brfid|\\bpickpocket|\\blocking zipper|\\bslash ?proof|\\bhidden (pocket|zipper)))(?=.*?(?:\\bcross ?body|\\bsling\\b|\\bshoulder bag|\\bbelt bag|\\bfanny|\\btravel bag|\\bmessenger|\\bhandbag|\\btote|\\bbackpack|\\bpurse))(?!.*?(?:wallet|card holder|clutch wallet|passport (holder|cover)))",
+    "relevance_rows": 36
+  },
+  {
+    "id": "fashion-19",
+    "query": "earings for really sensitive ears, cheap ones make my ears itchy and turn them green",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "problem: metal allergy",
+      "material: hypoallergenic metal implied",
+      "negation: not cheap base metal",
+      "typo: 'earings'"
+    ],
+    "expect": "Correct page 1: hypoallergenic / nickel-free / titanium / surgical-steel / sterling / solid-gold earrings. Wrong: unlabeled alloy fashion earrings, nose rings or body-piercing jewelry, non-jewelry.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 288,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bhypoallergenic|\\bsensitive ears|\\bnickel[ -]free|\\bsurgical steel|\\btitanium))(?=.*?(?:\\bearrings?\\b))(?!.*?(?:\\bnose\\b|septum|belly|tragus|helix|cartilage|piercing kit|labret|lip ring))",
+    "relevance_rows": 1013
+  },
+  {
+    "id": "fashion-20",
+    "query": "eid outfit for women, modest + long sleeves, nothing see thru",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "cultural event: Eid",
+      "gender: women",
+      "style: modest",
+      "attribute: long sleeves",
+      "negation: not sheer",
+      "slang: 'thru'"
+    ],
+    "expect": "Correct page 1: abayas, long-sleeve kaftans / maxi dresses, salwar kameez, kurta sets. Wrong: sheer / see-through / mesh items (the negation), sleeveless or mini dresses, swim cover-ups, men's wear, hijab under-caps only.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 69,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\babaya|\\bkaftan|\\bcaftan|\\bjalabiya|\\bjilbab|\\bmodest|\\bkurta|\\bkurti|\\bsalwar|\\bmuslim|\\bislamic|\\bhijab))(?=.*?(?:\\blong[ -]sleeves?|\\bfull sleeves?|\\babaya|\\bjilbab|\\bjalabiya|\\bkurta|\\bkurti|\\bsalwar))(?!.*?(?:swim|bikini|bathing|cover[ -]?up|beach|sheer|see[ -]through|mesh|\\bkids?\\b|girls?\\b|baby|toddler|\\bmen'?s\\b|\\bmens\\b|scarf|hijab cap|inner hijab|under ?scarf|pin\\b))",
+    "relevance_rows": 159
+  },
+  {
+    "id": "fashion-21",
+    "query": "something red for my husband to wear to lunar new year dinner at my in-laws, nothing flashy",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "cultural event: Lunar New Year",
+      "colour: red",
+      "persona: husband (men's)",
+      "occasion: family dinner at the in-laws",
+      "negation: nothing flashy"
+    ],
+    "expect": "Correct page 1: men's red / burgundy dress shirts, button-downs, mandarin-collar shirts, polos, henleys or sweaters, smart and plain. Wrong: Christmas / Santa wear, costumes, sequin or club wear, loud graphic or licensed tees, women's clothing, non-apparel.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 109,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Men's Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*\\b(red|burgundy|crimson|wine)\\b)(?=.*\\b(dress shirts?|button[- ]?(down|up)|polos?|mandarin collar|band collar|henley|oxford|tang suit|sweaters?|cardigan|blazer|shirts?)\\b)(?!.*(costume|cosplay|santa|christmas|xmas|halloween|sequin|t-?shirts?\\b|\\btees?\\b|graphic|funny|\\bkids?\\b|boys?\\b|toddler|pajama|sleep|swim|underwear|jersey|socks?\\b|\\btie\\b|sexy|club|compression|\\bgym\\b|stringer|\\btank|workout|\\bmlb\\b|\\bnfl\\b|\\bnba\\b|ferrari))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-22",
+    "query": "office halloween costume, nothing scary or sexy, under $40",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "event: Halloween",
+      "setting: office",
+      "negation: not scary, not sexy",
+      "budget: under $40"
+    ],
+    "expect": "Correct page 1: adult non-scary, non-sexy costumes (funny / character / costume tees) with listed prices <= $40 preferred. Wrong: zombie, skeleton, horror or bloody costumes; 'sexy' costumes; kids' costumes; Grocery candy (442 Grocery titles say halloween/costume) or Electronics decorations.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 1224,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Women's Clothing",
+        "Men's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bcostume|\\bhalloween))(?!.*?(?:\\bkids?\\b|toddler|baby|boys?\\b|girls?\\b|child|\\bpet\\b|\\bdog|\\bcat\\b|sexy|zombie|skeleton|horror|bloody|scary|killer|clown|demon|devil|\\bmask))",
+    "relevance_rows": 1131
+  },
+  {
+    "id": "fashion-23",
+    "query": "st paddys day bar crawl outfit, something green but not tacky",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "event: St Patrick's Day",
+      "activity: bar crawl",
+      "colour: green",
+      "negation: not tacky",
+      "slang: 'st paddys'"
+    ],
+    "expect": "Correct page 1: adult green tops, tees, sweatshirts or dresses, subtle shamrock prints. Wrong: kids' sizes, leprechaun costumes and novelty hats dominating (the 'not tacky' negation), non-apparel, Notre Dame team merch.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 51,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bst\\.? ?patrick|\\bsaint patrick|\\bshamrock|\\bpatty'?s day|\\birish\\b|\\bclover))(?=.*?(?:\\bshirt|\\btee\\b|\\bt-shirt|\\bhoodie|\\bsweatshirt|\\bhat\\b|\\bsocks|\\bleggings|\\bdress|\\btop\\b|\\btank|\\bsuspenders|\\bbow ?tie|\\bheadband|\\bbeanie|\\bcap\\b))(?!.*?(?:\\bkids?\\b|toddler|baby|infant|youth|girls?\\b|boys?\\b|notre dame|fighting irish|leprechaun|costume|\\bcats?\\b|dog))",
+    "relevance_rows": 129
+  },
+  {
+    "id": "fashion-24",
+    "query": "bridesmaid dres in sage green for a rustic barn wedding, pockets would be a bonus",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "role: bridesmaid (bridal party, not a guest)",
+      "colour: sage green",
+      "venue: rustic barn",
+      "feature: pockets (soft)",
+      "typo: 'dres'"
+    ],
+    "expect": "Correct page 1: women's bridesmaid dresses in sage / mint / green / olive, pockets a plus. Wrong: bridesmaid dresses capped as 'bridal wear' (the guest rule must not fire), wedding gowns, junior bridesmaid / flower girl dresses, robes and proposal gifts, wrong colours dominating.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 22,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bbridesmaids?\\b))(?=.*?(?:\\bsage\\b|\\bgreen\\b|\\bmint\\b|\\bolive\\b|\\beucalyptus|\\bemerald|\\bhunter|\\bdusty sage))(?!.*?(?:junior|flower girl|robe|gift|proposal|box|sash|card|tumbler|pajama|necklace|earring|bracelet|jewelry|hanger|\\bbag|tote|socks|t-shirt|\\bshirt|tank|\\bcup|\\bhat|\\bgirls?\\b|\\bkids?\\b))",
+    "relevance_rows": 25
+  },
+  {
+    "id": "fashion-25",
+    "query": "mother of the groom dress for an evening wedding, im 60 and want elegant not frumpy",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "persona: mother of the groom",
+      "age: 60",
+      "occasion: evening wedding",
+      "negation: not frumpy",
+      "style: elegant"
+    ],
+    "expect": "Correct page 1: mother-of-the-bride/groom dresses, lace or chiffon evening dresses, dress-and-jacket sets. Wrong: bridal gowns, short club or bodycon dresses, flower girl or junior dresses, men's wear. Watch: the code reads this as a wedding GUEST ask (is_wedding_guest_ask True), so the guest [occasion] constraint caps bridesmaid dresses; 5 of the 101 mother-of-the-bride/groom titles also say 'Bridesmaid' and could be capped wrongly.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 101,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\bmother of the (bride|groom)|\\bmother of (bride|groom)))",
+    "relevance_rows": 99
+  },
+  {
+    "id": "fashion-26",
+    "query": "ring bearer outfit for my 6 yr old nephew, its a beach wedding so not a full tux",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "role: ring bearer",
+      "age: 6",
+      "persona: nephew",
+      "venue: beach",
+      "negation: not a full tuxedo"
+    ],
+    "expect": "Correct page 1: boys' (size 5-7) linen / cotton shirt-and-shorts or vest-and-trousers sets, suspender and bow-tie outfits. Wrong: full tuxedos or wool suits, girls' dresses, infant sizes, adult men's suits.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 73,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Kids"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\btuxedo|\\bsuits?\\b|\\bring bearer|\\bvest set|\\bformal (set|outfit)|\\bgentleman|\\bwedding outfit|\\bdress shirt|\\bsuspenders?\\b|\\bbow ?tie))(?!.*?(?:\\bgirls?\\b|swim|snow|\\bbody ?suit|sweat|jump ?suit|track|costume|space ?suit|\\bbaby\\b|infant|newborn|\\b(0|3|6|9|12|18|24)[ -]?(m|months?)\\b|socks|karate|martial))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-27",
+    "query": "maternity swimsuit for our babymoon in cabo",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "fit: maternity",
+      "slang: 'babymoon'",
+      "activity: beach holiday",
+      "place: Cabo"
+    ],
+    "expect": "Correct page 1: the handful of maternity one-pieces / tankinis first, then women's tankinis, swimdresses or cover-ups. Wrong: men's or kids' swimwear, Grocery / Electronics pregnancy products (16 Grocery and 7 Electronics titles say pregnancy/maternity), maternity underwear presented as swimwear.",
+    "gap": true,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 7,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bmaternity|\\bpregnan))(?=.*?(?:\\bswim|\\bbathing suit|\\btankini|\\bmonokini|\\bone piece))(?!.*?(?:panties|underwear|briefs))",
+    "relevance_rows": null
+  },
+  {
+    "id": "fashion-28",
+    "query": "tall girl here (5'11), need maxi dresses that actually hit the floor, regular ones look like midis on me",
+    "lane": "fashion",
+    "group": "complex_fashion",
+    "vertical": "Fashion",
+    "signals": [
+      "fit: tall (5'11)",
+      "slang: 'tall girl' = an adult woman",
+      "problem: regular lengths too short",
+      "style: floor-length maxi",
+      "negation: not midi length"
+    ],
+    "expect": "Correct page 1: the few tall-length women's dresses first, then floor-length / extra-long adult maxi dresses. Wrong: kids' or girls' dresses (the code reads this query's audience as 'kids' from 'girl'), petite, mini or midi lengths, men's big & tall items, knee-high 'tall' boots.",
+    "gap": true,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 4,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Fashion",
+      "categ_lvl2_name": [
+        "Women's Clothing",
+        "Unisex Clothing"
+      ]
+    },
+    "supply_regex": "^(?=.*?(?:\\btall\\b))(?=.*?(?:\\bdress(es)?\\b|\\bmaxi\\b|\\bgowns?\\b))(?!.*?(?:big (and|&) tall|\\bmen'?s\\b|\\bmens\\b|tall boots?|tall socks|knee[ -]?high|over the knee|dress pants|dress socks|boots?\\b|pants\\b|leggings))",
+    "relevance_rows": null
+  },
+  {
+    "id": "grocery-01",
+    "query": "keto snacks with no nuts, my daughter is allergic",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "dietary: keto",
+      "negation: no nuts",
+      "allergy",
+      "recipient: child"
+    ],
+    "expect": "Keto or low-carb snacks with no nut ingredient in the title (seed snacks, pork rinds, cheese crisps, keto snacks labelled nut-free / allergen-free) fill page 1. Wrong: almonds, nut mixes, nut butters, almond-flour or pecan keto bakes, plain sugary candy. A title label is the seller's claim; graders judge the title, not safety.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 592,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\b(keto|low[- ]carb)\\b))(?=.*?(?:\\b(snacks?|chips|crisps|puffs|jerky|pork rinds|chicharrones|bites|bars?|cookies|candy|candies|gumm(y|ies)|popcorn|crackers|seeds|pretzels|brittle|cups|meat sticks?|cheese crisps|lollipops?)\\b))(?!.*?(?:\\b(almonds?|cashews?|pecans?|walnuts?|macadamias?|pistachios?|hazelnuts?|mixed nuts|nut butter|nut clusters?|trail mix|peanuts|brazil nuts?|pine nuts?|peanut butter(?![- ]free))\\b))",
+    "relevance_rows": 33
+  },
+  {
+    "id": "grocery-02",
+    "query": "vegan high protein snacks that arent protein bars",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "dietary: vegan",
+      "dietary: high protein",
+      "negation: not bars",
+      "product form: snack"
+    ],
+    "expect": "Plant-based protein snacks that are NOT bars: roasted chickpeas / edamame / fava beans, vegan jerky, protein puffs, crisps, seeds, nuts sold as protein snacks. Wrong: protein bars, protein powders and shakes, whey / collagen / egg-white products, meat jerky, pasta.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 165,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\b(vegan|plant[- ]based)\\b))(?=.*?(?:\\bprotein\\b))(?=.*?(?:\\b(bites|chips|crisps|snacks?|puffs|jerky|cookies?|balls|crackers|clusters|pretzels|puffed|roasted|seeds|edamame|chickpeas|crunch|popcorn|nuts)\\b))(?!.*?(?:\\b(protein )?bars?\\b|whey|casein|collagen|powder|shake|egg white|pasta|spaghetti|noodles?|fettuccine))",
+    "relevance_rows": 323
+  },
+  {
+    "id": "grocery-03",
+    "query": "gluten free cereal for my kids that isnt loaded with sugar",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "dietary: gluten free",
+      "recipient: kids",
+      "negation: low sugar",
+      "meal: breakfast"
+    ],
+    "expect": "Gluten-free breakfast cereals or granola with low / no added sugar (labelled low sugar, no sugar added, zero sugar, unsweetened, or plain flakes / O's). Wrong: frosted or marshmallow cereals, cereal bars, regular (wheat) cereals, candy.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 38,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bgluten[- ]free\\b))(?=.*?(?:\\b(cereal|granola|o's|flakes|puffs)\\b))(?=.*?(?:low sugar|no (added )?sugar|sugar[- ]free|less sugar|reduced sugar|lightly sweetened|unsweetened|zero sugar|\\b[0-5] ?g (of )?sugar|sugar added))(?!.*?(?:\\b(bars?|bites|clusters|trail mix|cookies?)\\b))",
+    "relevance_rows": 28
+  },
+  {
+    "id": "grocery-04",
+    "query": "low sodium soups for my dad, hes cutting back on salt",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "dietary: low sodium",
+      "recipient: parent",
+      "problem phrasing",
+      "informal (hes)"
+    ],
+    "expect": "Soups, broths, stocks and bouillon labelled low / reduced / no-salt-added sodium. Wrong: regular soups with no sodium claim, salt substitutes or seasonings, chips. Expectation is about the label only, no health claim.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 77,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:(low|reduced|less|lower|no added|no|very low|25% less|50% less) sodium|no salt added|unsalted|lower salt|less salt))(?=.*?(?:\\b(soups?|broth|stock|bouillon|ramen|noodle soup|chowder|bisque)\\b))(?!.*?(?:\\bchili powder\\b))",
+    "relevance_rows": 76
+  },
+  {
+    "id": "grocery-05",
+    "query": "low fodmap stuff for my pantry, no garlic or onion",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "dietary: low FODMAP",
+      "negation: no garlic, no onion",
+      "informal (stuff)",
+      "setting: pantry staples"
+    ],
+    "expect": "Products labelled low FODMAP or 'no onion / no garlic' (pasta sauces, seasonings, broths, crackers, snacks). Wrong: garlic or onion powders, regular sauces and seasonings with garlic or onion in the title. Label only; no health claim.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 37,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:fodmap|\\bno onion\\b|\\bno garlic\\b|\\bonion[- ]free|\\bgarlic[- ]free|\\bwithout (onion|garlic)\\b))",
+    "relevance_rows": 32
+  },
+  {
+    "id": "grocery-06",
+    "query": "my 1st graders school is peanut free, what snacks can i send",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "allergy rule: peanut free",
+      "recipient: 1st grader (age ~6)",
+      "setting: school",
+      "conversational question"
+    ],
+    "expect": "Kid-friendly snacks labelled peanut-free / nut-free / top-8-allergen-free (fruit snacks, crackers, pretzels, granola bars, seed-butter snacks), single-serve packs a plus. Wrong: anything with peanuts or tree nuts in the title, adult protein snacks, non-snack staples.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 204,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\b((tree[- ])?nut|peanut)[- ]free\\b|allergen[- ]free|allergy[- ](free|friendly)|top \\d+ (food )?allergen))(?=.*?(?:\\b(snacks?|bars?|crackers|cookies|fruit snacks?|chips|pretzels|puffs|bites|granola|pouch(es)?|cups|grahams|crisps|gummies)\\b))(?!.*?(?:\\bpeanuts\\b|almonds?|cashews?|pecans?|walnuts?|pistachios?|hazelnuts?|mixed nuts|peanut butter(?![- ]free)))",
+    "relevance_rows": 450
+  },
+  {
+    "id": "grocery-07",
+    "query": "veggie lasagna for 10 on sunday, my sister in law is gluten free so the noodles need to be gf too",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "dietary: vegetarian ('veggie')",
+      "dietary: gluten free (one guest)",
+      "quantity: 10 people",
+      "occasion: sunday dinner",
+      "persona: sister-in-law",
+      "informal (gf)"
+    ],
+    "expect": "A meat-free lasagna for 10: GF lasagna noodles or sheets, ricotta, mozzarella, parmesan, marinara / pasta sauce, vegetables (bundle or flat). The GF-noodle slot is thin (9 titles, 5 noodles / sheets): a regular wheat-noodle slot is the error to grade. Wrong: any meat slot, wheat noodles, non-food items.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 518,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:(?=.*\\blasagn[ae]\\b)(?=.*gluten[- ]free)|\\b(ricotta|mozzarella|parmesan|parmigiano)\\b(?!.*\\b(sticks?|crackers?|crisps?|chips?|bread|pizza|bites|snacks?)\\b)|\\b(marinara|pasta sauce|tomato basil sauce|spaghetti sauce)\\b))(?!.*?(?:\\b(beef|pork|sausages?|pepperoni|chicken|meat|meat sauce|bolognese|prosciutto|bacon|veal|meatballs?|ham|turkey)\\b))",
+    "relevance_rows": null
+  },
+  {
+    "id": "grocery-10",
+    "query": "halal gummies for the kids eid party, no pork gelatin",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "cultural event: Eid",
+      "dietary: halal",
+      "negation: no pork gelatin",
+      "recipient: kids",
+      "occasion: party"
+    ],
+    "expect": "Gummies, marshmallows and chewy candy labelled halal, or gelatin-free / beef- or fish-gelatin / vegan gummies. Wrong: ordinary gummy bears with no halal or gelatin claim, anything naming pork, non-candy.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 53,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bhalal\\b|gelatin[- ]free|no gelatin|without gelatin|beef gelatin|fish gelatin|vegan gumm|pectin[- ]based))(?=.*?(?:gumm|marshmallow|jelly beans|sour (belts|worms|strips|bricks|ropes|candy)|candy|candies|fruit snacks?|chews|licorice))(?!.*?(?:\\bjam\\b|preserves|pectin free))",
+    "relevance_rows": 34
+  },
+  {
+    "id": "grocery-11",
+    "query": "kosher for passover snacks and macaroons for the seder",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "cultural event: Passover seder",
+      "dietary: kosher for Passover",
+      "product named: macaroons"
+    ],
+    "expect": "Coconut macaroons, matzo, and snacks / desserts labelled Kosher for Passover. Wrong: ordinary breads, pretzels, bagels or crackers with no Passover label, French macarons (a different cookie) as the lead, non-food.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 226,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\b(passover|macaroons?|matzo|matzah|matza|seder)\\b))",
+    "relevance_rows": 232
+  },
+  {
+    "id": "grocery-12",
+    "query": "what to get for iftar this ramadan, dates and drinks to break the fast",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "cultural event: Ramadan iftar",
+      "product named: dates",
+      "product named: drinks",
+      "conversational"
+    ],
+    "expect": "Dates (medjool, ajwa, deglet nour, sukkari...) and iftar drinks (Rooh Afza / rose sharbat, Vimto, jallab, apricot drinks, laban). Wrong: Chinese red dates / jujubes, date-sweetened bars as the lead, sodas and energy drinks, non-food Ramadan decor.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 135,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\b(medjool|deglet|ajwa|khudri|sukkari|safawi|mabroom|barhi|zahidi|khalas|dates)\\b|rooh ?afza|vimto|jallab|qamar al[- ]?din))(?!.*?(?:jujube|red dates|chinese date|best by|expiration|date sweetened|sweetened with dates|with dates))",
+    "relevance_rows": 87
+  },
+  {
+    "id": "grocery-13",
+    "query": "lunar new year snacks to share w family",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "cultural event: Lunar New Year",
+      "occasion: sharing with family",
+      "informal (w)"
+    ],
+    "expect": "Traditional Lunar New Year tray snacks: White Rabbit candy, haw flakes, pineapple cakes, nian gao / new-year rice cake, sachima, melon seeds, candied lotus / winter melon / coconut, Korean yakgwa or tteok. Wrong: mooncakes (Mid-Autumn), generic American snacks, fortune cookies as the lead, decorations.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 26,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:lunar new year|chinese new year|spring festival|white rabbit|haw flakes?|pineapple (cakes?|tarts?|pastr)|nian gao|new year cake|sachima|melon seeds|watermelon seeds|tikoy|yakgwa|candied (lotus|winter melon|coconut|kumquat)|egg rolls? (cookie|wafer)))(?!.*?(?:moon ?cake|topper|decorations?|couplets?|banners?))",
+    "relevance_rows": 33
+  },
+  {
+    "id": "grocery-14",
+    "query": "diwali sweets gift box to take to my office",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "cultural event: Diwali",
+      "occasion: gift",
+      "recipient: coworkers",
+      "quantity: office"
+    ],
+    "expect": "Indian mithai and Diwali gift boxes: kaju katli, soan papdi, barfi, laddu, gulab jamun, halwa, Diwali sweet hampers. Wrong: western chocolate boxes as the lead, candles / diyas / decor, savoury-only snacks at the top.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 41,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\b(diwali|deepavali|mithai|soan papdi|son papdi|kaju katli|barfi|burfi|ladoo|laddu|laddoo|gulab jamun|rasgulla|halwa|peda|jalebi|rasmalai|chikki|gajak|mysore pak)\\b))",
+    "relevance_rows": 53
+  },
+  {
+    "id": "grocery-15",
+    "query": "halloween candy for 100 trick or treaters, no chocolate cause it melts in florida",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "cultural event: Halloween",
+      "quantity: 100 kids",
+      "negation: no chocolate",
+      "weather / place: Florida heat",
+      "informal (cause)"
+    ],
+    "expect": "Bulk or variety packs of non-chocolate candy: lollipops, hard candy, gummies, taffy, sour candy, fruit chews, individually wrapped, fun size. Wrong: any chocolate, cocoa or fudge candy (Kit Kat, Reese's, M&M's, Hershey's), single small packs, non-candy.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 2213,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\b(candy|candies|lollipops?|gumm(y|ies)|hard candy|taffy|suckers|jelly beans|licorice|sour|fruit snacks?|tootsie|skittles|starburst|nerds|dum dums)\\b))(?=.*?(?:bulk|variety|\\b(\\d{2,4})[- ]?(count|ct|pieces|pcs|pack)\\b|individually wrapped|halloween|party|fun size))(?!.*?(?:chocolate))",
+    "relevance_rows": 1515
+  },
+  {
+    "id": "grocery-16",
+    "query": "korean bbq night at home - need the marinade, gochujang and dipping sauce",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "cuisine: Korean BBQ",
+      "occasion: dinner at home",
+      "list of 3 named components"
+    ],
+    "expect": "Korean BBQ condiments: bulgogi / galbi marinades, gochujang, ssamjang or doenjang dipping paste, gochugaru, sesame oil; a recipe bundle of those or a flat page are both fine. Wrong: American BBQ sauces (hickory, Kansas City), buffalo sauce, ready meals.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 95,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:gochujang|bulgogi|ssamjang|galbi|kalbi|korean bbq|korean barbecue|doenjang|gochugaru|korean (marinade|sauce|chili paste)))",
+    "relevance_rows": 92
+  },
+  {
+    "id": "grocery-17",
+    "query": "dairy free swap for parmesan",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "substitute (swap for)",
+      "dietary: dairy free",
+      "terse"
+    ],
+    "expect": "Dairy-free parmesan alternatives: nutritional yeast, vegan / plant-based grated parmesan. Wrong: real parmesan, pecorino or grana padano, other dairy cheese, non-cheese vegan items as the lead.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 40,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:nutritional yeast|vegan parm|dairy[- ]free parm|plant[- ]based parm|parmesan (style |alternative)|non[- ]dairy parm|vegan.*(grated|shredded|parmesan)|\\b(parmesan|parm)\\b.*(vegan|dairy[- ]free|plant[- ]based)))",
+    "relevance_rows": 36
+  },
+  {
+    "id": "grocery-18",
+    "query": "egg replacer for baking cookies, my son cant have eggs",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "substitute: egg replacer",
+      "activity: baking",
+      "allergy / restriction",
+      "recipient: child"
+    ],
+    "expect": "A flat page of egg replacers (powdered egg replacer, plant-based egg, flax 'egg replacement'), then egg-free baking or cookie mixes. Wrong: real eggs or egg products, eggless mayo, egg noodles, a cookie-ingredient bundle that still lists eggs. KNOWN COLLISION: 'baking cookies' hits the recipe fast path (app/translator.py:328-342), so a recipe bundle is accepted as well as a flat page; component_bad (real eggs, egg whites, powdered eggs) judges whether the bundle is egg-free.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 31,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:egg replac|egg substitut|vegan eggs?\\b|plant[- ]based eggs?\\b|just egg\\b|aquafaba|egg alternative|(ground|milled) (golden )?flax ?seeds?|flax ?seed meal|flax meal|(egg[- ]free|eggless).*\\b(mix|dough|baking)\\b|\\b(mix|dough|baking)\\b.*(egg[- ]free|eggless)))(?!.*?(?:mayo|mayonnaise|noodle|pasta|dressing|protein bar|sprinkles|\\bmeals?\\b|tofu|eggplant|^(?!.*\\b(mix|dough|baking)\\b).*\\bcookies\\b|with (milled|ground) flax|flax seed and soy))",
+    "relevance_rows": 15
+  },
+  {
+    "id": "grocery-19",
+    "query": "vegan creamer that doesnt taste like coconut",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "dietary: vegan",
+      "negation: not coconut",
+      "taste preference",
+      "use: coffee"
+    ],
+    "expect": "Plant-based coffee creamers that are not coconut-based: oat, almond, soy, pea, macadamia, hemp creamers. Wrong: coconut creamers, dairy creamers or half-and-half, 'non-dairy' creamers that are not plant-based (e.g. Coffee mate), milk instead of creamer as the lead.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 40,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\b(vegan|plant[- ]based|oat|almond|soy|pea|cashew|macadamia|hemp|dairy[- ]free)\\b))(?=.*?(?:\\bcreamer\\b))(?!.*?(?:coconut|coffee[- ]mate|coffeemate|international delight|half (and|&) half))",
+    "relevance_rows": 44
+  },
+  {
+    "id": "grocery-20",
+    "query": "coffee that does not upset my stomach",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "problem phrasing",
+      "negation",
+      "product: coffee"
+    ],
+    "expect": "Coffees labelled low-acid / acid-free / low acidity (ground, whole bean, pods), possibly a labelled low-acid cold brew or chicory alternative. Wrong: ordinary coffee with no acidity claim as the lead, antacids or medicine, mugs, creamers. Label only; no claim that any product prevents symptoms.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 92,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:low[- ]acid|acid[- ]free|less acid|lower acid|reduced acid|stomach[- ]friendly|gentle on (the )?stomach))(?=.*?(?:\\bcoffee\\b))",
+    "relevance_rows": 92
+  },
+  {
+    "id": "grocery-21",
+    "query": "my kids wont drink plain water, need something less sugary than juice",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "problem phrasing",
+      "recipient: kids",
+      "negation: less sugar than juice",
+      "comparison"
+    ],
+    "expect": "Low- or zero-sugar ways to flavour water: water enhancers, flavoured / infused or sparkling water, sugar-free drink mixes, reduced-sugar kids' drinks. Wrong: coconut water, juice drinks, soda, energy drinks, caffeinated or coffee drinks, full-sugar juice, protein shakes.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 128,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:water enhancer|flavored water|drink mix|electrolyte|juice box|kids drink|sparkling water|liquid water|water flavou?ring|water drops|infused water|fruit water|kids water|watermelon water))(?=.*?(?:sugar[- ]free|no sugar|zero sugar|low sugar|less sugar|reduced sugar|unsweetened|no added sugar|0g sugar|lightly sweetened|zero calorie|low calorie|less than))(?!.*?(?:coconut water|juice drink|coffee|protein|mocha|latte|cappuccino|creamer|meal replacement|keto shake|caffein|cocoa|chocolate|\\bcola\\b|cocktail))",
+    "relevance_rows": null
+  },
+  {
+    "id": "grocery-22",
+    "query": "my sourdough starter keeps dying what flour should i use",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "problem phrasing",
+      "activity: sourdough baking",
+      "question form"
+    ],
+    "expect": "Flours suited to feeding a starter: unbleached bread flour, whole wheat, whole-grain rye, spelt, einkorn; a dried sourdough starter culture is also fine. Wrong: almond, coconut, cake, rice or gluten-free flours (they cannot feed a wheat / rye starter), yogurt or kefir starter cultures, baked sourdough bread, cake / pancake / brownie mixes, tortillas, crackers, yeast-free snacks.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 125,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:(bread|rye|whole wheat|whole[- ]grain|spelt|einkorn|unbleached|high[- ]protein|stone[- ]ground|artisan|00|wheat) flour|sourdough starter|starter culture|dark rye|pumpernickel flour))(?!.*?(?:almond|coconut|cake flour|rice flour|gluten[- ]free|cassava|tapioca|chickpea|tortilla|wrap|cracker|pasta|noodle|cookies|cake mix|pancake|muffin|pretzel|chips|bread mix|pizza crust|brownie))",
+    "relevance_rows": 87
+  },
+  {
+    "id": "grocery-23",
+    "query": "camping food that doesnt need a fridge for 4 days",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "activity: camping",
+      "problem: no refrigeration",
+      "quantity / duration: 4 days",
+      "negation"
+    ],
+    "expect": "Shelf-stable trip food: freeze-dried backpacking meals, MREs, ready-to-eat pouches, jerky and trail snacks, shelf-stable proteins. Wrong: frozen or refrigerated items, fresh produce, ice cream, camping equipment (stoves, coolers) as the lead.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 185,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:freeze[- ]dried|backpacking|\\bmres?\\b|ready to eat|ready[- ]to[- ]eat|shelf[- ]stable|camping|no refrigeration|survival|emergency food))(?=.*?(?:\\b(meals?|entrees?|dinners?|breakfasts?|chili|stroganoff|pasta|rice|curry|beef|chicken|stew|soup|kit|bucket|pouch)\\b))",
+    "relevance_rows": 653
+  },
+  {
+    "id": "grocery-25",
+    "query": "k cups under $20 that work in my keurig, medium roast",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "compatibility: Keurig",
+      "budget: under $20",
+      "attribute: medium roast"
+    ],
+    "expect": "Keurig-compatible K-Cup pods of medium-roast coffee, ideally with a listed price under $20 (an unlisted price is neutral, as the reranker rubric treats it). Wrong: Nespresso / Vertuo / Tassimo capsules, bagged ground or whole-bean coffee, dark / French or light / blonde roasts as the lead, Keurig machines.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 165,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:k[- ]?cups?|keurig|single[- ]serve (coffee )?pods?|compatible with keurig))(?=.*?(?:\\bmedium\\b))",
+    "relevance_rows": 158
+  },
+  {
+    "id": "grocery-26",
+    "query": "chocolate covered pretzles for my sisters bridal shower, like 30 ppl",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "typo: pretzles",
+      "occasion: bridal shower",
+      "quantity: ~30 people",
+      "informal (ppl, like)"
+    ],
+    "expect": "Chocolate- or yogurt-covered pretzels in bulk, gift or party packs (white-chocolate / pastel ones a plus). Wrong: plain pretzels, bridal clothing or decor (a Fashion bleed-through from 'bridal'), single small bags as the lead.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 72,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:(chocolate|yogurt|white chocolate|fudge|caramel)[- ](covered|dipped|coated|drizzled) pretzels?|pretzels? (dipped|covered) in|chocolate pretzels?))",
+    "relevance_rows": 74
+  },
+  {
+    "id": "grocery-27",
+    "query": "seasonning for chiken wings that isnt spicy",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "typos: seasonning, chiken",
+      "negation: not spicy",
+      "dish: wings"
+    ],
+    "expect": "Mild wing seasonings and sauces: lemon pepper, garlic parmesan, honey BBQ, teriyaki, mild / original wing sauces, BBQ rubs. Wrong: hot / buffalo / habanero / ghost-pepper / Nashville-hot products, plain hot sauce, raw chicken wings as the lead.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 34,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bwings?\\b))(?=.*?(?:\\b(seasoning|rub|sauce|marinade|spice|breading)\\b))(?!.*?(?:\\b(hot|spicy|buffalo|ghost|habanero|nashville|cajun|fire|inferno|reaper|scorpion|jalape|medium|cayenne|chipotle|sriracha|chili|chile|xxx|blazin|atomic|insane|heat|3 mile island)))",
+    "relevance_rows": null
+  },
+  {
+    "id": "grocery-28",
+    "query": "low carb tortilas for taco tuesday",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "typo: tortilas",
+      "dietary: low carb",
+      "occasion: taco night"
+    ],
+    "expect": "Low-carb / keto tortillas and wraps (carb-balance, net-carb labelled), keto taco shells. Wrong: regular flour or corn tortillas with no carb claim, tortilla chips, taco seasoning or a taco recipe bundle.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 38,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\b(low[- ]carb|keto|carb balance|net carbs?|zero carb|carb smart)\\b))(?=.*?(?:\\btortillas?\\b|\\bwraps?\\b|taco shells?))(?!.*?(?:chips?|individually wrapped|wrapped|gift wrap))",
+    "relevance_rows": 28
+  },
+  {
+    "id": "grocery-29",
+    "query": "decaf pods for my nespresso vertuo",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "compatibility: Nespresso Vertuo",
+      "dietary: decaf",
+      "terse"
+    ],
+    "expect": "GAP (1 Grocery title is a Vertuo-compatible decaf: a Vertuoline decaf sampler). Graceful page: that sampler, then other Vertuo / VertuoLine pods, or a weak-match signal. Wrong: OriginalLine capsules (several titles say 'NOT compatible with Vertuoline'), K-Cups, bagged coffee, Nespresso machines. P@k ceiling: see _context (the relevance set is the Vertuo decaf title(s) only).",
+    "gap": true,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 1,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:\\bvertuo))(?=.*?(?:decaf|decaffeinated))(?!.*?(?:not compatible|originalline|original line))",
+    "relevance_rows": 1
+  },
+  {
+    "id": "grocery-30",
+    "query": "something like nutella but without palm oil",
+    "lane": "grocery",
+    "group": "complex_grocery",
+    "vertical": "Grocery",
+    "signals": [
+      "substitute (something like <brand>)",
+      "negation: no palm oil",
+      "brand named is itself the wrong answer"
+    ],
+    "expect": "GAP (thin supply). Graceful page: chocolate-hazelnut spreads labelled palm-oil-free first, then other hazelnut spreads. Wrong: Nutella itself (it contains palm oil), chocolate wafers / cookies, non-spread items as the lead.",
+    "gap": true,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 9,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Grocery",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*?(?:hazelnut|chocolate spread|cocoa spread|nutella|choco spread|gianduja))(?=.*?(?:palm oil[- ]free|no palm oil|without palm oil|palm[- ]free|free of palm oil|no palm))",
+    "relevance_rows": 14
+  },
+  {
+    "id": "electronics-01",
+    "query": "one charging stand for my iphone 15 and my galaxy watch",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "compatibility: Apple phone + Samsung watch in one charger",
+      "quantity: one stand, two devices"
+    ],
+    "expect": "GAP (graceful handling). Correct page 1: Galaxy-Watch-compatible chargers / docks and multi-device wireless stands, with the page admitting there is no single stand for both (match_quality weak is right). Wrong: Apple Watch charging stands (an Apple Watch puck does not charge a Galaxy Watch), Galaxy Watch or iPhone devices themselves, plain USB cables. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": true,
+    "core": "watch",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 0,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*\\b(charg\\w+|dock|stand|station)\\b)(?=.*\\b(galaxy watch|samsung watch|gear s\\d|galaxy gear)\\b)(?=.*\\b(iphone|multi[- ]?device|2 in 1|3 in 1|phone)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-02",
+    "query": "usb c hub for my macbook pro, need hdmi and an sd card slot for my camera pics",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "compatibility: MacBook Pro / USB-C",
+      "two required features: HDMI + SD reader",
+      "use: camera photos"
+    ],
+    "expect": "USB-C hubs or docks whose title lists BOTH HDMI and an SD/microSD reader lead page 1. Wrong: MacBooks (core_top12 should be 0), USB-C-to-HDMI cables with no card reader, standalone card readers (partial), cases and keyboard covers. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "laptop",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 159,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*\\b(hub|dock|docking station|adapter)\\b)(?=.*\\b(usb[- ]?c|type[- ]?c|thunderbolt)\\b)(?=.*\\bhdmi\\b)(?=.*\\b(sd|micro ?sd|tf|card reader)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-03",
+    "query": "keybord that switches between my ipad, work laptop and phone",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "typo",
+      "compatibility: iPad + laptop + phone",
+      "quantity: three devices"
+    ],
+    "expect": "Multi-device Bluetooth keyboards (easy-switch / 3 channels) lead. Wrong: iPad keyboard CASES (they serve one device), laptops or tablets themselves (core_top12 0), keyboard covers / skins / keycaps. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "laptop",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 29,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(case|cover|skin|protector|keycaps?|laptop|notebook|desktop|gaming pc|inspiron|aspire|tower|ideapad|thinkpad|chromebook|ram|rom|quad[- ]core|octa[- ]core|processor)\\b)(?=.*\\bkeyboard\\b)(?=.*\\b(bluetooth|wireless)\\b)(?:(?=.*\\b(multi[- ]?devices?|3 devices?|switch between|easy[- ]switch|up to 3|multiple devices|3[- ]?channel)\\b)|(?=.*\\b(ipad|tablet)\\b)(?=.*\\b(iphone|android|smartphone|phone)\\b)(?=.*\\b(mac|windows|pc|computer)\\b))",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-04",
+    "query": "apple pencil alternative thats way cheaper for my ipad 9th gen",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "alternative / comparison",
+      "budget: cheaper than the brand item",
+      "compatibility: iPad 9th gen"
+    ],
+    "expect": "Third-party styluses / digital pencils (palm rejection, 2018+ iPad compatible) lead. Wrong: iPads (core_top12 0), screen protectors that merely mention the Apple Pencil, pencil cases, grips and replacement tips; an Apple Pencil at full price is off the ask. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "tablet",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 29,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(screen protector|case|holder|grip|tips?|nibs?|sleeve|cap|cover|skin|charger|adapter|pouch|paper ?like|film|glass)\\b)(?=.*\\b(stylus|active pencil|digital pencil|ipad pencil|pencil for ipad)\\b)(?=.*\\bipad\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-05",
+    "query": "protective case for my daughter's 13 inch macbook air before she leaves for college, not a sleeve",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "persona: daughter",
+      "occasion: leaving for college",
+      "compatibility: 13-inch MacBook Air",
+      "negation: not a sleeve"
+    ],
+    "expect": "Hard-shell / protective cases sized for the 13-inch MacBook Air lead. Wrong: MacBooks themselves (the family noun is in the query; core_top12 should be 0), sleeves (explicitly excluded), backpacks, cases for 15-inch or Pro models. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "laptop",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 290,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(sleeve|backpack|screen protector|webcam cover|charger|adapter|hub)\\b)(?=.*\\b(case|hard shell|shell|cover)\\b)(?=.*\\bmacbook air\\b)(?=.*\\b13)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-06",
+    "query": "replacement ear tips for airpods pro, the medium ones hurt my ears",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "compatibility: AirPods Pro",
+      "problem: discomfort",
+      "implied size: smaller or foam tips"
+    ],
+    "expect": "Replacement silicone / memory-foam ear tips for AirPods Pro (small sizes or foam a plus) lead. Wrong: AirPods or other earbuds (core_top12 should be ~0), charging cases, case covers, cleaning kits. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "headphones",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 36,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*\\b(ear ?tips?|eartips|silicone tips?|foam tips?|ear gels?)\\b)(?=.*\\bairpods?\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-07",
+    "query": "comfy camera strap for my sony a7iii, my neck kills after shooting weddings",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "compatibility: Sony a7 III",
+      "problem: neck pain",
+      "persona: wedding photographer",
+      "slang"
+    ],
+    "expect": "Padded neck / shoulder / sling straps or dual-camera harnesses for mirrorless or DSLR bodies lead. Wrong: cameras and lenses (core_top12 should be 0), watch straps, camera bags (partial at best). CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "camera",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 286,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(watch|phone|guitar|bag|backpack)\\b)(?=.*\\b(strap|harness|sling)\\b)(?=.*\\b(camera|sony|dslr|mirrorless)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-08",
+    "query": "kids keep cracking our ipad screen, need something tougher",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "persona: kids",
+      "problem: cracked screens",
+      "implied: rugged protection"
+    ],
+    "expect": "Shockproof / kids iPad cases with handles and tempered-glass protectors lead. A kid-proof tablet bundle is a defensible alternative; a bare iPad is wrong (core_top4 should be ~0). CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "tablet",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 830,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*\\b(case|cover|screen protector|tempered glass)\\b)(?=.*\\bipad\\b)(?=.*\\b(kids?|shockproof|shock proof|rugged|heavy duty|drop|defender|tough|armor|bumper)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-09",
+    "query": "Lens for my canon rebel t7 to shoot birds at the feeder from the kitchen window",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "compatibility: Canon EF / EF-S mount",
+      "activity: birding",
+      "implied: telephoto reach"
+    ],
+    "expect": "Telephoto / zoom lenses for Canon EF or EF-S (55-250, 75-300, 100-400, 150-600, mirror lenses) lead. Wrong: camera bodies or camera+lens kits (they own a T7: core_top4 should be ~0), caps, hoods, filters, cleaning pens, lenses for other mounts. 'kitchen' must not route to a recipe. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "camera",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 75,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(cap|hood|filter|cleaning|pouch|case|bag|mount adapter|adapter|cover|protector|caps|ring)\\b)(?=.*\\blens\\b)(?=.*\\b(canon|ef|ef-s|eos|rebel)\\b)(?=.*\\b(telephoto|zoom|[1-6]00mm|70-300|75-300|55-250|100-400|150-600|70-200|mirror lens)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-10",
+    "query": "laptop for video editing under 1000 that doesn't run hot",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "use: video editing",
+      "budget: under $1000",
+      "negation / problem: must not overheat"
+    ],
+    "expect": "Laptops with editing-grade specs (i7 / Ryzen 7, 16 GB+, a discrete GPU) lead, listed price <= $1000 first (core_top12 >= 0.9). Wrong: cooling pads (the 'run hot' words must not turn this into the overheating-fix query), sleeves, chargers. Most laptops list no price: only a LISTED price meets the budget (rubric rule). CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "gap": false,
+    "core": "laptop",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 1905,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?=.*\\b(laptop|notebook|macbook|chromebook)\\b)(?=.*\\b(i7|i9|ryzen ?[79]|rtx|gtx|16 ?gb|32 ?gb|64 ?gb|creator|oled|4k|m1|m2|studio|workstation)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-11",
+    "query": "tablet my 80 year old mom can use to facetime the grandkids, big screen nothing complicated",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "age: 80",
+      "persona: mother / grandmother",
+      "use: video calls",
+      "negation: nothing complicated",
+      "size: big screen"
+    ],
+    "expect": "10-inch-plus tablets (iPad, Fire HD 10, Galaxy Tab) lead (core_top12 >= 0.8). Wrong: cases, stands, styluses, kids tablets. device_role.requested_device reads None for this phrasing (the word after 'tablet' is 'my'), so main.py's device ordering does not act: the page rests on retrieval + rerank. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "gap": false,
+    "core": "tablet",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 450,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "(\\btablets?\\b|\\bipad\\b|\\bfire (hd )?(7|8|10)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-12",
+    "query": "smartwatch with gps and calling for my 8 year old, no phone yet",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "age: 8",
+      "persona: parent buying for a child",
+      "features: GPS + calling",
+      "negation: no phone yet"
+    ],
+    "expect": "Kids 4G GPS smartwatches with calling / SOS lead (core_top12 >= 0.9). Wrong: adult smartwatches, bands, chargers, phones. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "gap": false,
+    "core": "watch",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 59,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(band|bands|strap|charger|case|protector|cable)\\b)(?=.*\\b(kids?|children'?s?|child|boys?|girls?)\\b)(?=.*\\b(smart ?watch|smartwatches|gps watch|watch phone|phone watch|gps tracker watch)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-13",
+    "query": "dash cam for my uber that records the passengers too, has to survive phoenix summers",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "persona / occupation: rideshare driver",
+      "feature: cabin camera",
+      "weather: extreme heat"
+    ],
+    "expect": "Dual / 3-channel dash cams with an interior (IR) camera lead; supercapacitor models are a plus for heat. Wrong: front-only dash cams (partial), backup cameras, mounts and hardwire kits, action or security cameras. Dash cams count as core 'camera' rows and the reader reads a camera ask (measured), so core_top12 cannot tell a dash cam from a DSLR: read context_fit and items_good. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "gap": false,
+    "core": "camera",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 83,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(mount|hardwire kit|cable|card|suction|adapter|charger)\\b)(?=.*\\b(dash ?cam|dashboard camera|car camera|car dvr)\\b)(?=.*\\b(cabin|inside|interior|front and rear|front & rear|dual|uber|lyft|rideshare|in[- ]car|3 channel|three channel|infrared|ir night)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-14",
+    "query": "waterproof action camera for snorkeling under 150, gopro is too pricey",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "activity: snorkeling",
+      "weather / water: waterproof",
+      "budget: under $150",
+      "comparison: cheaper than GoPro"
+    ],
+    "expect": "Budget action cameras that are waterproof or ship with a dive housing lead (core_top12 >= 0.8). Wrong: GoPro accessories (housings, floating grips, mounts, batteries), dash cams; a full-price GoPro is off-budget. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "gap": false,
+    "core": "camera",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 100,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(mount|case|housing|strap|batter(y|ies)|charger|filter|floating|grip|stick|bag|accessor(y|ies)|kit for|cable|adapter|protector|tether|clip|selfie|lens cap|for gopro|stabilizer|frame|tripod|dome|monopod|remote|suction|lens|card)\\b)(?=.*\\b(action cam(era)?|gopro|go pro|sports camera|underwater camera|waterproof camera|sports cam|dv camera)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-15",
+    "query": "stocking stuffers under 25 for my teen son who's always glued to his phone",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "event: Christmas stocking stuffers",
+      "budget: under $25 each",
+      "age / persona: teenage son, heavy phone user",
+      "quantity: several small gifts",
+      "slang"
+    ],
+    "expect": "Small phone gadgets that fit a $25 stocking: power banks, wireless chargers, phone stands / grips, pop sockets, selfie sticks, budget earbuds. Wrong: phones (core_top12 must be 0), repair parts, model-specific cases (fit unknown), anything far over $25 by its listed price. 'stocking stuffers' is a gift word for device_role (_GIFT_RE) but names no family, so no device code should act. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "phone",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 449,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(gopro|receiver|double din|kit for|camera accessories|garmin|laptop|for macbook)\\b).*\\b(power bank|portable charger|wireless charger|phone stand|phone holder|pop ?socket|phone grip|charging stand|selfie stick)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-16",
+    "query": "retirement gift for my dad, he still has all his old vinyl records",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "occasion: retirement",
+      "persona: dad",
+      "inferred need: something to play vinyl on"
+    ],
+    "expect": "Turntables / record players (belt-drive, built-in speakers or Bluetooth out) lead; cleaning or storage pieces at most after them (the thing itself is the gift). Wrong: replacement needles, slipmats, CD players, vinyl-themed decor.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 86,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(mat|slipmat|needle|stylus|cartridge|dust cover|cleaning|brush|replacement|record cleaner|holder|shelf|storage|sleeves?|weight|clamp|stabilizer|motor|belt for|platter|spindle|adapter|cable|isolation)\\b)(?=.*\\b(turntable|record player|vinyl player|phonograph)\\b)(?=.*\\b(speakers?|bluetooth|3[- ]speed|belt[- ]drive|direct[- ]drive|vinyl|stereo|usb)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-17",
+    "query": "diwali gift for my brother in law who just got a big new tv, around 100",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "cultural event: Diwali",
+      "persona: brother-in-law",
+      "compatibility: complements a new TV",
+      "budget: around $100"
+    ],
+    "expect": "Things that make a new TV better, near $100: soundbars, streaming sticks, TV speakers, universal remotes. Wrong: another TV, festival decor or lights (a misread of 'diwali'), replacement remotes for one other brand, wall mounts (practical, not a gift).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 131,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(mount|bracket|remote|cable|cover|shelf|adapter|wall|stand|hanger|replacement|case|skin|holder|power supply|charger|class|smart tv|led tv|hd tv|antenna|computer|pc|laptop|projector|android tv|uhd|2160p|1080p|720p)\\b).*\\b(sound ?bar|soundbar|fire tv stick|roku|chromecast|streaming (stick|device|media player)|apple tv)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-18",
+    "query": "bday present for a 10 yr old who wants to be a youtuber",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "occasion: birthday",
+      "age: 10",
+      "persona: aspiring YouTuber",
+      "slang / abbreviations"
+    ],
+    "expect": "Kid-friendly or vlogging cameras, ring lights with phone holders, clip-on mics, tripods. A starter setup page is acceptable (inferred setups are an open owner question). Wrong: pro cinema gear, XLR studio kit, kids smartwatches, toy projectors.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 45,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(case|bag|strap|card|lens cap|smart ?watch|tablet|headphones?|cover|sticker|microscope|projector|binocular|telescope|monitor|walkie)\\b)(?=.*\\b(kids?|children'?s?|child|boys?|girls?|teens?)\\b)(?=.*\\b(camera|camcorder|vlog\\w*)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-19",
+    "query": "streaming setup for a beginner under 300",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "explicit setup",
+      "persona: beginner",
+      "budget: $300 total"
+    ],
+    "expect": "A setup bundle (regex route 'setup'): webcam, USB microphone, light, maybe a capture card or headset, all at beginner prices. Wrong: mood items (blanket, candles, plants: SETUP_PROMPT's technical-goal rule), pro cinema cameras, fashion items.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 515,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(laptop|notebook|chromebook|desktop|tablet|all[- ]in[- ]one|computer,|cover|covers|privacy|blocker|slide|mount only|replacement|bulb|vhs|vcr|converter|security|cctv|baby|dash|backup camera)\\b).*\\b(webcam|web cam|usb microphone|condenser microphone|usb mic|streaming microphone|capture card|game capture|ring light|key light|led video light)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-20",
+    "query": "podcast setup for 2 people recording at the kitchen table",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "explicit setup",
+      "quantity: two people",
+      "place: kitchen table (desk stands, not cookware)"
+    ],
+    "expect": "A setup bundle: two microphones or a 2-mic kit, an interface / mixer / recorder with two inputs, headphones, table stands. Wrong: kitchen items (the 'kitchen' trap; it must also not route to a recipe), mood items, a single mic only.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 74,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(headsets?|headphones?|earbuds?|earphones?|speakers?|speakerphone|webcam|arm|stand|cable|windscreen|windshield|foam|filter|adapter|replacement|cover|clip only|shock ?mount|preamp|board|karaoke|camcorder|car|stereo|radio|connectors?|transmitter|din|capture|dock|docking|ip camera|poe|security|camera|kvm|switch|hdmi|hub)\\b)(?=.*\\b(microphones?|mics?)\\b)(?=.*\\b(podcast\\w*|recording|studio|condenser|dynamic|usb|xlr|lavalier|lapel|interview|broadcast|vocal|cardioid)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-21",
+    "query": "home theater setup for a small apartment, landlord says no drilling",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "explicit setup",
+      "space: small apartment",
+      "negation: no drilling",
+      "persona: renter"
+    ],
+    "expect": "A setup bundle: compact soundbar, projector or streaming device, freestanding / portable screen, TV or floor stand. Wrong: wall or ceiling mounts and in-wall speakers (component_bad on intents and slot items should be 0).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 491,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(mount|bracket|ceiling|bag|case|cover|remote|replacement|lamp|bulb|filter|lens|cable|cord|power|adapter|star|galaxy|night light|toy|hanger|shelf|computer|pc|laptop|desktop|usb powered|monitor speaker|holiday|christmas|halloween|slides)\\b).*\\b(projector|projector screen|sound ?bar|soundbar)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-22",
+    "query": "my voice sounds muffled and echoey on zoom calls",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "problem phrasing, no product named",
+      "use: video calls"
+    ],
+    "expect": "USB desktop microphones, headsets with a boom mic and conference speakerphones lead. Wrong: speakers, webcam covers, acoustic decor; webcams are partial (built-in mics rarely fix echo).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 218,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(arm|windscreen|foam|cover|cable|adapter|replacement|pop filter|shock ?mount|stand only|walkie|radio|earpiece|rj9|landline|deskphone|motorola|two[- ]way|trucker|switch)\\b)(?=.*\\b(usb microphone|condenser microphone|usb mic|podcast microphone|conference microphone|computer microphone|desktop microphone|speakerphone|headset with (mic|microphone)|usb headset)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-23",
+    "query": "old car has no bluetooth or aux, want to play spotify from my phone",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "problem phrasing",
+      "negation: no Bluetooth AND no AUX port",
+      "compatibility: phone to an old car"
+    ],
+    "expect": "Bluetooth FM transmitters lead (cassette adapters only if the car has a tape deck). Wrong: AUX Bluetooth receivers and AUX cables (the car has no AUX), Bluetooth speakers; new head units are partial (installation).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 83,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "\\b(fm transmitter|fm radio transmitter|cassette adapter|cassette tape adapter|fm modulator)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-24",
+    "query": "hunching over my laptop all day is wrecking my posture",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "problem phrasing: posture / back pain",
+      "duration: all day",
+      "implied fix: raise the screen"
+    ],
+    "expect": "Laptop stands and risers (adjustable height) lead; an external keyboard + mouse combo is a fair complement. Wrong: laptops (core_top12 should be 0), cooling pads that do not raise the screen (partial: this is not the overheating query), sleeves, chargers; posture braces sit outside Electronics. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "laptop",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 335,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(phone stand|monitor arm|cooling pad|cooler|fan)\\b)(?=.*\\b(laptop stand|laptop riser|laptop holder|notebook stand|laptop mount|laptop desk stand|laptop elevator|stand for laptop)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-25",
+    "query": "neighbours keep complaning when i game late at nite",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "problem phrasing",
+      "typos",
+      "inferred need: private audio",
+      "time: late night"
+    ],
+    "expect": "Gaming headsets and wireless headphones lead (core_top12 >= 0.8). Wrong: speakers, soundbars, subwoofers (louder, the opposite need). CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "gap": false,
+    "core": "headphones",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 340,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(stand|hanger|holder|cable|ear ?pads?|cushions?|replacement|adapter|mic only|case|bag)\\b)(?=.*\\b(headset|headphones?)\\b)(?=.*\\b(gaming|gamer|ps4|ps5|xbox|pc|7\\.1|surround)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-26",
+    "query": "backing up 20 yrs of family photos before my old laptop dies",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "problem phrasing",
+      "quantity: 20 years of photos (capacity)",
+      "persona: family",
+      "urgency"
+    ],
+    "expect": "External HDDs / SSDs in the 1-5 TB range, photo-backup drives, a NAS. Wrong: new laptops (core_top12 0), internal drive caddies, empty enclosures (partial), laptop batteries. CORE TARGET 0 (sidecar core_target): the page should NOT be the device; report this row's core4 / core12 apart from the device asks.",
+    "gap": false,
+    "core": "laptop",
+    "core_target": "0",
+    "dept_min": null,
+    "supply_rows": 421,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(case|enclosure|bag|pouch|cable|sleeve|caddy|docking station|dock|adapter|power supply|charger|for xbox|for ps4)\\b).*\\b(external (hard drive|hdd|ssd|drive)|portable (hard drive|hdd|ssd|external)|backup drive|external storage|my passport|nas)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-27",
+    "query": "lost the remote to my samsung smart tv, need one that just works",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "problem phrasing",
+      "compatibility: Samsung smart TV",
+      "informal"
+    ],
+    "expect": "Replacement remotes for Samsung smart TVs (BN59 series) and universal remotes that cover Samsung lead. Wrong: Samsung TVs, remote covers / holders, remotes for other brands' TVs or for streaming sticks.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 162,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(case|cover|holder|sleeve|skin)\\b)(?=.*\\bremote\\b)(?=.*\\bsamsung\\b)(?=.*\\b(tv|television)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-28",
+    "query": "somthing like bose qc45 but half the price",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "comparison: a named model",
+      "budget: relative (half the price)",
+      "typo"
+    ],
+    "expect": "Over-ear active-noise-cancelling headphones from other brands at lower listed prices lead (core_top12 >= 0.8). Wrong: QC45 ear pads, cases and cables (replacement parts), office headsets; earbuds are partial; Bose itself at full price is off the ask. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "gap": false,
+    "core": "headphones",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 216,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(ear ?pads?|cushions?|case|replacement|cable|stand|hanger|earbuds?|in[- ]ear)\\b)(?=.*\\b(noise cancell?ing|anc)\\b)(?=.*\\b(headphones?|headset|over[- ]ear)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-29",
+    "query": "airpods pro dupe that actually works with my android",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "comparison: a 'dupe' of a named product",
+      "compatibility: Android",
+      "slang"
+    ],
+    "expect": "True-wireless (ideally ANC) earbuds that work fully with Android (Galaxy Buds, Soundcore, Jabra, budget TWS) lead (core_top12 >= 0.8). Wrong: AirPods themselves, AirPods cases / tips / skins, wired earbuds. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows.",
+    "gap": false,
+    "core": "headphones",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 195,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(case cover|silicone case|protective case|ear ?tips?|skin|strap|keychain|replacement|charger only|cable)\\b)(?=.*\\b(earbuds?|earphones?|in[- ]ear|true wireless|tws)\\b)(?=.*\\b(android|samsung|universal)\\b)(?=.*\\b(wireless|bluetooth)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "electronics-30",
+    "query": "foldable phone under 500 bucks",
+    "lane": "electronics",
+    "group": "complex_electronics",
+    "vertical": "Electronics",
+    "signals": [
+      "device + feature: foldable",
+      "budget: under $500",
+      "slang"
+    ],
+    "expect": "GAP (graceful handling): the catalog holds 0 foldable handsets (measured). A correct page admits it (match_quality weak) and may show regular phones; wrong: Z Fold / Flip cases, screen protectors or 'foldable' headphones presented as the device. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows. Gap row: core is not the pass bar.",
+    "gap": true,
+    "core": "phone",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 0,
+    "supply_scope": {
+      "bsns_vrtcl_name": "Electronics",
+      "categ_lvl2_name": "any"
+    },
+    "supply_regex": "^(?!.*\\b(case|cover|protector|film|holder|stand|charger|cable|skin|hinge|strap|lanyard|wallet|keyboard|mount|tripod|light|selfie|grip|bag|pouch|sleeve|clip|glass|earbuds?|headphones?|earphones?|headset|adapter|battery|stylus|pen)\\b)(?=.*\\b(galaxy z (fold|flip)|z fold|z flip|razr|foldable (phone|smartphone)|flip phone)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-01",
+    "query": "movie marathon w the kids this weekend, need popcorn n candy plus a streaming stick for the old tv downstairs",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "grocery+electronics",
+    "signals": [
+      "event",
+      "audience: kids",
+      "two departments",
+      "compatibility: old tv",
+      "informal (w, n)"
+    ],
+    "expect": "Popcorn / candy packs and streaming sticks (Fire TV, Roku, Chromecast) both on page 1. Wrong: one department only, stick accessories (remotes, cases), projectors, apparel. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Grocery",
+        "Electronics"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 6978,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[grocery] \\b(popcorn|candy|candies)\\b ; [electronics] \\b(fire tv stick|roku (streaming )?stick|roku express|chromecast|streaming (stick|media player|device)|apple tv 4k|fire tv cube)\\b  NOT \\b(remote|case|cover|cable|mount|holder|adapter|replacement|skin|silicone)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-02",
+    "query": "11 hour flight with my 2 yr old next month, need stuff to keep her busy + snacks that wont make a mess",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "electronics+grocery",
+    "signals": [
+      "travel",
+      "duration: 11 hours",
+      "age: 2 years",
+      "problem: keep busy",
+      "constraint: no mess",
+      "informal (yr, +)"
+    ],
+    "expect": "Kids' volume-limited headphones / kids' tablet items AND toddler snacks (puffs, melts, pouches) on page 1. Wrong: adult travel gear, adult snacks, luggage. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Electronics / Grocery; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Electronics",
+        "Grocery"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 320,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[electronics] \\b(kids|toddler|children)\\b.*\\bheadphones?\\b|\\bheadphones?\\b.*\\b(kids|toddler|children)\\b ; [grocery] \\b(toddler|baby|kids)\\b.*\\b(snacks?|puffs|pouch|pouches|crackers|melts)\\b|\\b(snacks?|puffs|pouch|pouches|melts)\\b.*\\b(toddler|baby)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-03",
+    "query": "hosting friendsgiving for like 12 ppl, need drinks for the non drinkers and a speaker so we can have music going",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "grocery+electronics",
+    "signals": [
+      "event: friendsgiving",
+      "quantity: 12 people",
+      "negation: non drinkers",
+      "two departments",
+      "informal (ppl)"
+    ],
+    "expect": "Non-alcoholic drinks (sparkling cider/juice, NA beer/wine, mocktail mixers) and Bluetooth speakers on page 1. Wrong: alcohol, cooking/turkey gear, apparel, speaker parts. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Grocery",
+        "Electronics"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 1308,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[grocery] \\b(non[- ]?alcoholic|mocktails?|alcohol[- ]free|sparkling (apple )?cider|sparkling juice|zero proof)\\b ; [electronics] \\b(bluetooth|wireless|portable)\\b.*\\bspeakers?\\b  NOT \\b(mount|stand|case|cable|replacement|bracket|grill|cover)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-04",
+    "query": "mardi gras party at my place tuesday, need masks n beads for like 20 ppl and some new orleans snacks",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "grocery+fashion",
+    "signals": [
+      "regional event: mardi gras",
+      "hosting",
+      "quantity: 20 people",
+      "collision: masks (face masks)",
+      "two departments",
+      "informal (n, ppl)"
+    ],
+    "expect": "Party masks (masquerade / Mardi Gras / Venetian) AND pralines / king cake / Cajun snacks on page 1; party beads are a bonus only. Wrong: face masks and gaiters, horror masks, fine beaded jewelry, seasonings and breading mixes, electronics. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Fashion; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Grocery",
+        "Fashion"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 233,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[fashion] (?=.*\\b(mardi gras|masquerade|venetian|carnival)\\b)(?=.*\\bmasks?\\b)  NOT \\b(face masks?|mouth|dust|filter|gaiter|balaclava|surgical|n95|kn95|horror|purge|killer|zombie|skull|scary)\\b ; [grocery] \\b(king cake|mardi gras|praline|pralines|beignets?|new orleans|cajun (chips|peanuts|trail|snack|mix|crackers|popcorn))\\b  NOT \\b(seasoning|rub|spice|sauce|marinade|fish fry|breading|jambalaya|gumbo|etouffee|roast coffee|coffee|rice mix)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-05",
+    "query": "4th of july cookout at the park, need drinks a speaker that can handle being outside and something red white n blue to wear",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "grocery+electronics+fashion",
+    "signals": [
+      "holiday: 4th of july",
+      "outdoor",
+      "three departments",
+      "durability: outdoors",
+      "informal (n)"
+    ],
+    "expect": "Drinks, an outdoor/waterproof speaker and patriotic apparel all represented on page 1 (or as bundle slots). Wrong: a recipe page, grilling tools, winter clothing, a single department. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Electronics / Fashion; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Grocery",
+        "Electronics",
+        "Fashion"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 2298,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[fashion] \\b(american flag|patriotic|4th of july|fourth of july|independence day|usa flag|stars and stripes)\\b ; [electronics] (?=.*\\bspeakers?\\b)(?=.*\\b(waterproof|outdoor|rugged|ipx\\d|shockproof)\\b)  NOT \\b(mount|stand|case|cable|replacement|bracket|grill|cover)\\b ; [grocery] \\b(lemonade|soda|sparkling water|seltzer|juice drinks?|iced tea|sports drink|punch)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-06",
+    "query": "first valentines with my gf, thinking chocolate plus a little piece of jewelry, nothing over the top, like 50 bucks total",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "grocery+fashion",
+    "signals": [
+      "occasion: valentine's day",
+      "persona: new girlfriend",
+      "budget: $50 total",
+      "negation: nothing over the top",
+      "two departments",
+      "informal (gf, bucks)"
+    ],
+    "expect": "Valentine's chocolates AND dainty women's jewelry on page 1, modestly priced. Wrong: engagement rings, carat-weight (ctw) diamond or solid-gold jewelry (14K-plated and 'diamond cut' chains are fine), lingerie, men's items, one department only. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Fashion; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Grocery",
+        "Fashion"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 1503,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[grocery] (?=.*\\b(valentines?|valentine.s)\\b)(?=.*\\b(chocolates?|truffles?|candy|candies)\\b) ; [fashion] (?=.*\\b(necklace|earrings?|bracelet)\\b)(?=.*\\b(dainty|minimalist|delicate|simple|heart)\\b)  NOT \\b(men|mens|men.s|engagement|carat|ctw)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-07",
+    "query": "14 hr flight to tokyo next week, i want to actually sleep and not have my ankles swell up",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "fashion+electronics",
+    "signals": [
+      "travel",
+      "duration: 14 hours",
+      "problem: sleep",
+      "problem: swelling",
+      "no product named"
+    ],
+    "expect": "Compression socks and sleep aids (eye masks, noise-cancelling headphones, travel pillows). Wrong: Japan-themed items, plug adapters, luggage, plain socks. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Fashion / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Fashion",
+        "Electronics"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 555,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[fashion] \\bcompression (socks?|stockings?)\\b ; [electronics] (?=.*\\bnoise[- ]cancel+ing\\b)(?=.*\\b(headphones?|earbuds?)\\b)  NOT \\b(case|cover|replacement|tips|cushion|pads?|charger|cable|stand|holder)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-08",
+    "query": "starting a remote job monday and the company only sent a laptop. tiny apartment, about $300 for whatever i need to actually work from home",
+    "lane": "cross",
+    "group": "complex_electronics",
+    "vertical": "electronics",
+    "signals": [
+      "persona: new remote hire",
+      "ownership: laptop already owned",
+      "constraint: tiny apartment",
+      "budget: $300 total",
+      "no product named"
+    ],
+    "expect": "Compact monitor, laptop stand, keyboard + mouse, headset/webcam, hub. Wrong: laptops (already owned), gaming gear, projectors, grocery, items far over budget.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 1661,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[electronics] \\b(portable monitor|monitor)\\b  NOT \\b(baby|heart rate|blood pressure|mount|arm|stand|cable|riser|screen protector|privacy|filter|tire|pressure|battery|power)\\b ; [electronics] \\blaptop stands?\\b ; [electronics] \\bkeyboard (and|&) mouse\\b|\\bkeyboard mouse combo\\b|\\bmouse (and|&) keyboard\\b  NOT \\b(gaming)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-09",
+    "query": "my dad just retired and wants to start walking every morning, hes 68 and his knees bug him, and he'd love to listen to audiobooks while he walks. what should i get him",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "fashion+electronics",
+    "signals": [
+      "persona: retired dad",
+      "age: 68",
+      "activity: walking",
+      "problem: knees",
+      "two departments",
+      "long conversational"
+    ],
+    "expect": "Men's cushioned walking shoes AND wireless / open-ear headphones or earbuds. Wrong: women's shoes, gaming headsets, grocery. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Fashion / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Fashion",
+        "Electronics"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 1091,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[fashion] (?=.*(\\b(walking|running|athletic|tennis|training) shoes?\\b|\\bsneakers?\\b))(?=.*\\b(men|mens|men.s)\\b) ; [electronics] \\b(wireless|bluetooth|bone conduction|open[- ]ear)\\b.*\\b(earbuds?|headphones?)\\b  NOT \\b(case|cover|replacement|tips|cushion|pads?|charger|cable|stand|holder|hook|strap)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-10",
+    "query": "ok so my brother is moving from florida to minneapolis in january for a new job, he has literally never owned a winter coat lol, what does he need",
+    "lane": "cross",
+    "group": "complex_fashion",
+    "vertical": "fashion",
+    "signals": [
+      "persona: brother",
+      "relocation",
+      "weather: minneapolis in january",
+      "first-time need",
+      "long conversational",
+      "informal (lol)"
+    ],
+    "expect": "Men's insulated winter coats first, then snow boots, thermals, gloves, beanies. Wrong: summer clothing, light shells, women's items.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 187,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[fashion] (?=.*\\b(winter|snow|down|puffer|parka|insulated)\\b[^,]{0,25}\\b(coats?|jackets?|parkas?)\\b)(?=.*\\b(men|mens|men.s)\\b) ; [fashion] (?=.*\\b(snow|winter)\\b[^,]{0,20}\\bboots?\\b)(?=.*\\b(men|mens|men.s)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-11",
+    "query": "first time tent camping in october and it gets cold at night - need a good lantern, warm base layers and hot cocoa for by the fire",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "electronics+fashion+grocery",
+    "signals": [
+      "activity: tent camping",
+      "season: october",
+      "weather: cold nights",
+      "first-time",
+      "three departments"
+    ],
+    "expect": "Camp lanterns/headlamps, thermal/fleece base layers and hot cocoa mixes. Wrong: studio softboxes, summer wear, a single department. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Electronics / Fashion / Grocery; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Electronics",
+        "Fashion",
+        "Grocery"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 2237,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[electronics] \\b(lantern|headlamp|head lamp|flashlights?)\\b  NOT \\b(softbox|car|daytime running)\\b ; [fashion] \\b(thermal|base layer|fleece)\\b ; [grocery] \\b(hot cocoa|hot chocolate|cocoa mix)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-12",
+    "query": "lan party at my place sat, gonna need energy drinks snacks and a decent headset w a mic",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "grocery+electronics",
+    "signals": [
+      "event: lan party",
+      "slang",
+      "two departments",
+      "feature: mic",
+      "informal (sat, w)"
+    ],
+    "expect": "Energy drinks / snacks AND gaming headsets with a mic. Wrong: PC components, monitors, mic-less headphones, apparel. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Grocery",
+        "Electronics"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 474,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[grocery] \\benergy drinks?\\b ; [electronics] \\bgaming headsets?\\b|\\bheadsets?\\b.*\\b(gaming|ps4|ps5|xbox)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-14",
+    "query": "galaxy print clothes for my 8 yr old, shes obsessed with space",
+    "lane": "cross",
+    "group": "complex_collision",
+    "vertical": "fashion",
+    "signals": [
+      "collision: galaxy (samsung)",
+      "age: 8",
+      "persona: daughter",
+      "interest: space",
+      "informal (yr, shes)"
+    ],
+    "expect": "Girls' galaxy/space-print apparel. Wrong: Samsung Galaxy bands/cases/screen protectors, adult women's sizes, boys' items.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 70,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[fashion] (?=.*\\b(galaxy|space|planets?|astronaut|rocket|outer space|solar system)\\b)(?=.*\\b(girls?|girl.s|kids?|toddler|youth|children)\\b)  NOT \\b(samsung|gear|watch band|strap|phone|case|screen|charger|backpack|bookbag)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-15",
+    "query": "something to watch the baby from the kitchen while she naps",
+    "lane": "cross",
+    "group": "complex_collision",
+    "vertical": "electronics",
+    "signals": [
+      "collision: watch (verb)",
+      "persona: baby",
+      "problem: monitor from another room",
+      "no product named"
+    ],
+    "expect": "Baby monitors / indoor nanny cameras. Wrong: watches, smartwatches, bands, TVs/streaming sticks, baby clothes.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 99,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[electronics] \\bbaby monitors?\\b|\\bvideo monitor\\b.*\\bbaby\\b|\\bnanny cam",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-16",
+    "query": "a case of sparkling water for the office fridge, nothing sweetened",
+    "lane": "cross",
+    "group": "complex_collision",
+    "vertical": "grocery",
+    "signals": [
+      "collision: case",
+      "quantity: a case",
+      "setting: office",
+      "negation: nothing sweetened"
+    ],
+    "expect": "Multipacks of unsweetened sparkling / mineral water or seltzer. Wrong: phone or carrying cases, sweetened sparkling drinks, soda makers, water bottles. Zero-sugar / sugar-free seltzers are correct; soda-maker syrups (Sodamix) are wrong.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 234,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[grocery] \\b(sparkling (mineral |spring )?water|seltzer|carbonated (mineral |spring )?water|mineral water|club soda)\\b  NOT \\b(sparkling ice|sweetened|cane sugar|real sugar|syrup|caffeine|caffeinated|energy|juice|bologna|vitamin|electrolytes?|maker|machine|co2|cartridge|stevia|sodamix)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-17",
+    "query": "electrolyte tablets or powder for a hot half marathon",
+    "lane": "cross",
+    "group": "complex_collision",
+    "vertical": "grocery",
+    "signals": [
+      "collision: tablets",
+      "activity: half marathon",
+      "weather: hot",
+      "alternatives: tablets or powder"
+    ],
+    "expect": "Electrolyte powders and drink mixes lead (no tab product exists in the catalog). Wrong: any tablet computer, tablet case or stylus (the collision error), apparel.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 173,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[grocery] \\belectrolytes?\\b|\\bhydration (multiplier|mix|powder|drink)|\\bliquid i\\.?v\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-18",
+    "query": "goodie bags for my sons 6th bday party, like 15 kids, individually wrapped stuff",
+    "lane": "cross",
+    "group": "complex_collision",
+    "vertical": "grocery",
+    "signals": [
+      "collision: bags",
+      "event: 6th birthday",
+      "quantity: 15 kids",
+      "packaging: individually wrapped",
+      "informal (bday, stuff)"
+    ],
+    "expect": "Individually wrapped kid-friendly candy / fruit snacks / party-favor packs in bulk. Wrong: handbags, totes, backpacks, tea bags, cake toppers.",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 806,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[grocery] (?=.*\\bindividually[- ]wrapped\\b)(?=.*\\b(candy|candies|gumm(y|ies)|lollipops?|chocolates?|snacks?|treats?|fruit snacks?|cookies|chips)\\b)",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-19",
+    "query": "kindle for my husband, he reads in bed every night and keeps me up with the lamp",
+    "lane": "cross",
+    "group": "complex_collision",
+    "vertical": "electronics",
+    "signals": [
+      "collision: kindle (brand vs accessories)",
+      "persona: husband",
+      "problem: reading in bed",
+      "problem: lamp keeps partner awake (implies a backlit e-reader)"
+    ],
+    "expect": "A Paperwhite, Oasis or other e-reader title in the top 4, or a weak-match banner. core is not the pass bar (Fire tablets score core too). Wrong: a page dominated by Kindle cases, chargers, screen protectors. CORE TARGET >=0.8 (sidecar core_target): the device itself should fill the page; report apart from the accessory / owner-need rows. Gap row: core is not the pass bar.",
+    "gap": true,
+    "core": "tablet",
+    "core_target": ">=0.8",
+    "dept_min": null,
+    "supply_rows": 15,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[electronics] \\be-?readers?\\b|\\be ink\\b|\\bkindle\\b.*\\b(paperwhite|oasis|voyage)\\b|\\b(paperwhite|kindle oasis)\\b  NOT \\b(case|cover|sleeve|screen protector|charger|cable|skin|stand|holder|light|stylus|bag|protector|decal|adapter|sticker|pouch|grip|strap|replacement|battery|digitizer|beanbag|cleaner)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-20",
+    "query": "self care box for my sister, shes been super stressed 🧘‍♀️☕ something cozy n calming",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "fashion+grocery",
+    "signals": [
+      "emoji (zwj sequence)",
+      "persona: sister",
+      "problem: stress",
+      "mood: cozy, calming",
+      "gift box",
+      "no product named",
+      "informal (n, shes)"
+    ],
+    "expect": "Fuzzy socks/slippers, plush robes or loungewear, calming herbal tea, sleep masks. Wrong: caffeine/energy drinks, men's items, gaming, generic candy. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Fashion / Grocery; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Fashion",
+        "Grocery"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 1560,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[fashion] \\b(fuzzy|fluffy|sherpa|plush|cozy)\\b.*\\b(socks|slippers|robe|blanket|lounge\\w*|pajamas?)\\b|\\b(socks|slippers|robe)\\b.*\\b(fuzzy|fluffy|plush|cozy)\\b ; [grocery] \\b(chamomile|lavender|herbal|sleepytime|calming|relax(ing|ation)?|stress)\\b.*\\btea\\b|\\btea\\b.*\\b(chamomile|lavender|calming|relax\\w*|stress)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-21",
+    "query": "WIFE IS PREGNANT AND CRAVING SOUR CANDY 24/7 AND NOTHING FITS HER ANYMORE, HELP",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "grocery+fashion",
+    "signals": [
+      "all caps",
+      "persona: pregnant wife",
+      "craving: sour",
+      "problem: nothing fits",
+      "two departments",
+      "urgency (HELP)"
+    ],
+    "expect": "Sour candy AND everyday maternity clothes (leggings, dresses, tops) on page 1. Wrong: pregnancy tests/vitamins, men's items, photo-shoot gowns, one department only. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Grocery / Fashion; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Grocery",
+        "Fashion"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 659,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[grocery] (?=.*\\bsour\\b)(?=.*\\b(candy|candies|gumm(y|ies)|belts?|straws|patch kids|warheads|skittles|worms|bites|chews?)\\b)  NOT \\b(sour cream|sourdough|sour cherry juice)\\b ; [fashion] \\bmaternity\\b  NOT \\b(costume|swimsuit|bikini|swimwear|tankini|photo|photography|pillow|belt|support band|bra)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-22",
+    "query": "my nefew turns 13 next wk, hes obsessed w basketbal and his xbox, what do i get him",
+    "lane": "cross",
+    "group": "complex_cross",
+    "vertical": "fashion+electronics",
+    "signals": [
+      "misspelling",
+      "texting shorthand",
+      "persona: nephew",
+      "age: 13",
+      "interest: basketball",
+      "compatibility: xbox",
+      "two departments",
+      "occasion: birthday"
+    ],
+    "expect": "Youth basketball apparel/shoes AND Xbox-compatible controllers / headsets / docks. Wrong: girls'/women's items, toddler sizes, PlayStation- or Switch-only accessories, repair parts, grocery. GRADER RULE (dept_min): at least 3 of the 12 cards from EACH of Fashion / Electronics; on a setup bundle at least 1 slot per department. vertical_top12 cannot check this (it scores each row alone).",
+    "gap": false,
+    "core": null,
+    "core_target": null,
+    "dept_min": {
+      "departments": [
+        "Fashion",
+        "Electronics"
+      ],
+      "flat_min_cards_each": 3,
+      "bundle_min_slots_each": 1,
+      "check": "post-hoc from the eval CSV's types_page (a Fashion type or 'unknown' = Fashion; 'electronics' / 'grocery' = that vertical): eval/score_complex_queries.py; vertical_top12 cannot see it (eval/eval_page_types.py:344-347 scores each row alone)",
+      "label": "inference (review's rule)"
+    },
+    "supply_rows": 181,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[fashion] (?=.*\\bbasketball\\b)(?=.*\\b(boys?|boy.s|kids?|youth|big kid|teen)\\b)  NOT \\b(charms?|headbands?|sweatbands?)\\b ; [electronics] (?=.*\\bxbox\\b)(?=.*\\b(controller|gamepad|headset|charging (station|dock)|charger|battery pack|grips?)\\b)  NOT \\b(replacement|repair|parts?|thumbstick caps?|shell|button set|ribbon)\\b",
+    "relevance_rows": null
+  },
+  {
+    "id": "cross-23",
+    "query": "moon cakes for mid autum festval, the lotus seed kind, for my parents",
+    "lane": "cross",
+    "group": "complex_collision",
+    "vertical": "grocery",
+    "signals": [
+      "misspelling",
+      "cultural event: mid-autumn festival",
+      "flavour: lotus seed",
+      "persona: parents"
+    ],
+    "expect": "The handful of real mooncakes (lotus seed, gift boxes) first; a weak-match banner is acceptable. Wrong: cake toppers, Western cakes or mixes, Lunar New Year candy, a recipe page.",
+    "gap": true,
+    "core": null,
+    "core_target": null,
+    "dept_min": null,
+    "supply_rows": 16,
+    "supply_scope": "each component within its bsns_vrtcl_name; supply_rows = sum",
+    "supply_regex": "[grocery] \\bmoon ?cakes?\\b  NOT \\b(toppers?|decorations?)\\b",
+    "relevance_rows": null
+  }
+]

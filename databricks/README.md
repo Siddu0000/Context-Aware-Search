@@ -244,6 +244,12 @@ exec(open("databricks/10_page_eval.py").read()); run(mode="both")
 # Determinism (2026-10-27): memo ON in a scratch folder, run 1 ~63 calls, runs 2-3 none
 exec(open("databricks/12_determinism.py").read()); verdicts = run()
 
+# Stress queries (2026-11-02): the 107-query complex bank, one arm (~214 calls, ~0.36-0.55M
+# tokens, ~20 min, all ESTIMATES), then its per-group report (eval/score_complex_queries.py)
+exec(open("databricks/10_page_eval.py").read())
+csv_path, rows = run(mode="on", queries="data/complex_queries.json")
+from eval import score_complex_queries as scq; print(scq.render(scq.score(rows)))
+
 # The same 04 x3 -- the after runs carry MLflow param prompts_sha, pre-2026-10-14 runs don't
 os.environ["EVAL_QUERIES_JSON"] = "data/eval_queries_context.json"
 for _ in range(3):

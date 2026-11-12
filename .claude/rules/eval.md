@@ -532,3 +532,38 @@ diversity. Needs grocery rows loaded in products.csv.
 `eval/stress_test.py` + `data/stress_queries.json`. Edge/nonsense/injection/
 unicode queries. Measures GRACEFUL HANDLING (no crashes; injection strings
 treated as inert text), not precision. A healthy run reports 0 hard errors.
+
+## Complex query bank (2026-11-02): the Databricks stress-test set
+- **What.** `data/complex_queries.json`: 107 shopper-style queries in eval_page_types' own format
+  (typos, slang, budgets, negations, occasions, personas, problem phrasings, 2-5 signals each):
+  groups `complex_fashion` 29, `complex_grocery` 27, `complex_electronics` 31, `complex_cross`
+  13 (the only rows spanning 2-3 departments), `complex_collision` 7 (brand / noun collisions:
+  "watch the baby", "galaxy print", "electrolyte tablets"...). 8 deliberate gap rows (2 per
+  lane: fashion-27/28, grocery-29/30, electronics-01/30, cross-19/23) test graceful handling,
+  judged by `match_weak` and their `_context`, not by shares. 41 rows carry `relevance`
+  (served-page P@4 / P@12). Each `_context` opens with the row's id and states the pass bar.
+- **Meta.** `data/complex_queries_meta.json`, same order: id, lane, signals, `expect`, `gap`,
+  `core_target` ('0' on 12 accessory / owner-need rows where the device itself is WRONG, '>=0.8'
+  on 10 device asks), `dept_min` (13 multi-department rows: >= 3 of the first 12 cards per named
+  department on a flat page, >= 1 slot on a bundle), and `supply_rows` / `supply_regex`: the
+  matching titles in data/products_enriched.csv, MEASURED 2026-11-02 with pandas (every non-gap
+  row >= 20). The expectations are INFERENCE (written by agents, reviewed by an adversarial
+  pass, not by merchandisers); nothing in the bank has been run against any LLM yet.
+- **Run.** `databricks/10_page_eval.py`: `run(mode="on", queries="data/complex_queries.json")`
+  (databricks/README.md, run order), then `eval/score_complex_queries.py` on its rows or CSV:
+  per-group means, core split by `core_target` (eval_page_types' single mean mixes the two
+  directions), the `dept_min` check from `types_page` (vertical_top12 scores each card alone, so
+  a one-department page passes it), validity (degraded, partial, misrouted, memo hits must be 0).
+  Locally: `python -m eval.eval_page_types --mode on --queries data/complex_queries.json`, then
+  `python -m eval.score_complex_queries <csv>`. Read validity first, as everywhere.
+- **Cost (ESTIMATES).** 2 LLM calls per query run: mode "on" 214 calls, ~0.36-0.55M tokens (per
+  query 3.4K on Databricks Qwen3-Next with 2026-09 prompts to 5.1K on qwen3.8-27b, Oct 30), ~20
+  min at ~10 s per query on Databricks; mode "both" 214-321 calls. Repeatability subset:
+  `12_determinism.run(queries=[...], runs=3)` with a LIST of query strings (a str is one query).
+- **Known traps.** grocery-18 ("egg replacer for baking cookies") is routed to `recipe` by the
+  regex fast path (it accepts recipe or flat); cross-04 reads `requested_types` {accessory}, so
+  its snack half may score as type mismatches; dash-cam rows count as core cameras on the camera
+  asks; Kids rows score gender-neutral in eval_page_types, so wrong_gender sees adult rows only.
+  `tests/test_score_complex_queries.py` pins the bank's loadability and the scorer.
+- **Not a load test.** There is NO concurrency or load test in the repo (eval/ and databricks/
+  hold none); every latency here is sequential, one request at a time.
