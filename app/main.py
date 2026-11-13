@@ -126,6 +126,10 @@ def effective_config() -> dict:
         "search_backend": backend,
         "embedding_model": (cfg.VS_EMBEDDING_MODEL if backend == "databricks"
                             else cfg.EMBEDDING_MODEL),
+        # The route the query embeddings take: a Unity Gateway model service, or None
+        # (the pay-per-token endpoint embedding_model names, or the local model)
+        "embedding_service": ((cfg.VS_EMBEDDING_SERVICE or None) if backend == "databricks"
+                              else None),
         "translator_mode": cfg.TRANSLATOR_MODE,
         "query_guard": cfg.QUERY_GUARD_ENABLED,
         "max_intents": cfg.MAX_INTENTS,

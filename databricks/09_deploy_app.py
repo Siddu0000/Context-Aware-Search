@@ -155,6 +155,16 @@ def _check_bundle():
             # the App's local disk (lost on restart) or a volume it cannot write
             "LLM_MEMO_DIR": APP_MEMO_DIR}
     wrong = {k: (env.get(k), v) for k, v in want.items() if env.get(k) != v}
+    # The ROUTE too (Unity Gateway, 2026-11-13): absent from app.yaml = the pay-per-token
+    # route, which must then be what this notebook tested
+    if (env.get("VS_EMBEDDING_SERVICE") or "") != cfg.VS_EMBEDDING_SERVICE:
+        wrong["VS_EMBEDDING_SERVICE"] = (env.get("VS_EMBEDDING_SERVICE"), cfg.VS_EMBEDDING_SERVICE)
+    from urllib.parse import urlparse
+
+    tested = "/" + (urlparse(cfg.OPENAI_BASE_URL or "").path.strip("/") or "serving-endpoints")
+    shipped = "/" + (env.get("OPENAI_BASE_PATH") or "serving-endpoints").strip().strip("/")
+    if shipped != tested:
+        wrong["OPENAI_BASE_PATH"] = (env.get("OPENAI_BASE_PATH"), tested)
     if _memo_on(env) is None:
         # Spelled out, never left to the code default: app.yaml is the App's whole config
         wrong["LLM_MEMO"] = (env.get("LLM_MEMO"), "true")
@@ -310,8 +320,31 @@ def _is_endpoint_refusal(e):
     from databricks.sdk.errors import PermissionDenied
 
     msg = str(e).lower()
-    return (isinstance(e, PermissionDenied) or "permission" in msg) and (
-        "endpoint" in msg or "serving" in msg)
+    return (isinstance(e, PermissionDenied) or "permission" in msg) and any(
+        w in msg for w in ("endpoint", "serving", "model service", "model_service", "system.ai"))
+
+
+def _model_resource(A, key, name):
+    """The App resource that lets it call `name`, or None (then the start-up checks say).
+
+    A Unity Gateway model service (a three-part name, "system.ai.gte-large-en") is a
+    UC securable with "Can execute"; anything else a serving endpoint with "Can query".
+    MODEL_SERVICE arrived in databricks-sdk 0.151.0 (Public Preview): an older SDK gets
+    no resource, and the App relies on EXECUTE its service principal already holds
+    (account users hold it on system.ai by default).
+    """
+    if name.count(".") != 2:
+        return A.AppResource(name=f"{key}-endpoint", serving_endpoint=A.AppResourceServingEndpoint(
+            name=name,
+            permission=A.AppResourceServingEndpointServingEndpointPermission.CAN_QUERY))
+    kind = getattr(A.AppResourceUcSecurableUcSecurableType, "MODEL_SERVICE", None)
+    perm = getattr(A.AppResourceUcSecurableUcSecurablePermission, "EXECUTE", None)
+    if kind is None or perm is None:
+        print(f"this databricks-sdk has no MODEL_SERVICE app resource: {name} is not attached "
+              "(App > Edit > Resources > Model > Unity Gateway, Can execute)")
+        return None
+    return A.AppResource(name=f"{key}-model", uc_securable=A.AppResourceUcSecurable(
+        securable_full_name=name, securable_type=kind, permission=perm))
 
 
 def _is_memo_volume_refusal(e):
@@ -402,21 +435,19 @@ def app_create(compute_size="MEDIUM", force=False):
         print(f"{APP_NAME} already exists ({existing.url}); compute/app: {_state(existing)}\n"
               "resources unchanged here: run app_grant() (it also creates + grants the memo volume)")
         return existing
-    resources = [
-        A.AppResource(name="llm-endpoint", serving_endpoint=A.AppResourceServingEndpoint(
-            name=cfg.OPENAI_MODEL,
-            permission=A.AppResourceServingEndpointServingEndpointPermission.CAN_QUERY)),
-        A.AppResource(name="embedding-endpoint", serving_endpoint=A.AppResourceServingEndpoint(
-            name=cfg.VS_EMBEDDING_MODEL,
-            permission=A.AppResourceServingEndpointServingEndpointPermission.CAN_QUERY)),
+    models = [r for r in (_model_resource(A, "llm", cfg.OPENAI_MODEL),
+                          _model_resource(A, "embedding",
+                                          cfg.VS_EMBEDDING_SERVICE or cfg.VS_EMBEDDING_MODEL))
+              if r is not None]
+    resources = models + [
         A.AppResource(name="catalog-volume", uc_securable=A.AppResourceUcSecurable(
             securable_full_name=APP_VOLUME,
             securable_type=A.AppResourceUcSecurableUcSecurableType.VOLUME,
             permission=A.AppResourceUcSecurableUcSecurablePermission.READ_VOLUME)),
     ]
-    # APPENDED after the catalog volume: the endpoint fallback below drops the first
-    # two, so both volumes stay. A resource on a volume that does not exist would fail
-    # the whole create(), so the volume is made (or found) first.
+    # APPENDED after the catalog volume: the endpoint fallback below drops the model
+    # resources only, so both volumes stay. A resource on a volume that does not exist
+    # would fail the whole create(), so the volume is made (or found) first.
     memo = None
     if _memo_wanted():
         status, line = _memo_volume_ready()
@@ -431,8 +462,9 @@ def app_create(compute_size="MEDIUM", force=False):
     # each fires at most once, so the loop ends (at most three create() calls)
     drop_endpoints = drop_memo = False
     while True:
-        attempt = [r for i, r in enumerate(resources)
-                   if not (drop_endpoints and i < 2) and not (drop_memo and r is memo)]
+        attempt = [r for r in resources
+                   if not (drop_endpoints and any(r is m for m in models))
+                   and not (drop_memo and r is memo)]
         app = A.App(name=APP_NAME, compute_size=A.ComputeSize(compute_size), resources=attempt,
                     description="Context-Aware Search demo (internal; research-licensed catalog)")
         try:
@@ -447,8 +479,9 @@ def app_create(compute_size="MEDIUM", force=False):
                 drop_endpoints = True
                 print(f"create with endpoint resources refused ({type(e).__name__}: {str(e)[:200]})\n"
                       "retrying with the Volumes only; app_deploy()'s start-up checks show whether "
-                      "the App can still query the endpoints (if not: Edit > Resources in the App "
-                      "UI, Serving endpoint, Can query -- by someone with CAN MANAGE on it)")
+                      "the App can still call the models (if not: Edit > Resources in the App "
+                      "UI, Model > Unity Gateway, Can execute -- or, for a databricks-* "
+                      "endpoint, Serving endpoint, Can query by someone with CAN MANAGE on it)")
             elif memo is not None and not drop_memo and _is_memo_volume_refusal(e):
                 # The user adding a resource needs CAN MANAGE on it: a volume someone
                 # else created may refuse. app_grant() grants the same by SQL.

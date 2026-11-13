@@ -28,7 +28,8 @@ checks = []  # (name, ok, detail)
 
 cfg.SEARCH_BACKEND = "databricks"
 vector_search.set_spark(spark)
-print(f"index {cfg.VS_INDEX} | query mode {cfg.VS_QUERY_MODE} | embeddings {cfg.VS_EMBEDDING_MODEL}")
+print(f"index {cfg.VS_INDEX} | query mode {cfg.VS_QUERY_MODE} | embeddings "
+      f"{cfg.VS_EMBEDDING_SERVICE or cfg.VS_EMBEDDING_MODEL} (vectors: {cfg.VS_EMBEDDING_MODEL})")
 # query_type="hybrid" (keyword+vector RRF) also exists — re-run router evals first
 hits = search.search_products(["breathable cotton top for a humid day"], top_k=5)
 print(f"retrieval: {len(hits)} hits")
@@ -46,8 +47,10 @@ checks.append(("own text retrieves own product", ok,
                f"{[g[0][0] if g else None for g in got]} vs {probe.index.tolist()}"))
 
 llm = OpenAI(
-    api_key=os.environ["DATABRICKS_TOKEN"],
-    base_url=f"{os.environ['DATABRICKS_HOST']}/serving-endpoints",
+    api_key=os.environ.get("OPENAI_API_KEY") or os.environ["DATABRICKS_TOKEN"],
+    # Cell 2's route: <workspace URL>/ai-gateway/mlflow/v1 under Enforce Unity Gateway,
+    # else <host>/serving-endpoints
+    base_url=os.environ.get("OPENAI_BASE_URL") or f"{os.environ['DATABRICKS_HOST']}/serving-endpoints",
 )
 resp = llm.chat.completions.create(
     model=LLM_MODEL,

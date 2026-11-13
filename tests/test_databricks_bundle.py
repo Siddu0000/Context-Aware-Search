@@ -74,9 +74,17 @@ NB00 = ROOT / "databricks" / "00_preflight.py"
 BUNDLE = ROOT / "databricks" / "app_bundle"
 
 # The values Cell 2 (databricks/README.md) and app.yaml agree on
+# (Unity Gateway since 2026-11-13: model services on the gateway route; the vectors keep
+# their databricks-gte-large-en label)
 CELL2 = {"CAS_CATALOG": "dev", "CAS_SCHEMA": "cas", "VS_INDEX": "dev.cas.products_index",
          "VS_TABLE": "dev.cas.products", "VS_EMBEDDING_MODEL": "databricks-gte-large-en",
-         "OPENAI_MODEL": "databricks-qwen3-next-80b-a3b-instruct", "APP_NAME": "cas-app"}
+         "VS_EMBEDDING_SERVICE": "system.ai.gte-large-en",
+         "OPENAI_MODEL": "system.ai.qwen3-next-80b-a3b-instruct",
+         "OPENAI_BASE_URL": "https://adb-1.azuredatabricks.net/ai-gateway/mlflow/v1",
+         "APP_NAME": "cas-app"}
+# The pay-per-token shape before it: the documented revert, which must still ship
+LEGACY = {"VS_EMBEDDING_SERVICE": "", "OPENAI_MODEL": "databricks-qwen3-next-80b-a3b-instruct",
+          "OPENAI_BASE_URL": "https://adb-1.azuredatabricks.net/serving-endpoints"}
 MEMO_VOLUME = "dev.cas.app_state"
 MEMO_DIR = "/Volumes/dev/cas/app_state/llm_memo"
 SP = "sp-0000"
@@ -176,16 +184,20 @@ class _PermissionDenied(Exception):
     pass
 
 
-def _fake_sdk_modules(write_volume=True):
-    """sys.modules entries for the databricks.sdk names 09 and 00 import."""
+def _fake_sdk_modules(write_volume=True, model_service=True):
+    """sys.modules entries for the databricks.sdk names 09 and 00 import.
+
+    model_service=False is a databricks-sdk older than 0.151.0 (no MODEL_SERVICE)."""
     apps = types.ModuleType("databricks.sdk.service.apps")
     for name in ("App", "AppResource", "AppResourceServingEndpoint", "AppResourceUcSecurable",
                  "AppDeployment", "AppAccessControlRequest"):
         setattr(apps, name, type(name, (_Rec,), {}))
     apps.ComputeSize = lambda v: ("ComputeSize", v)
     apps.AppResourceServingEndpointServingEndpointPermission = SimpleNamespace(CAN_QUERY="CAN_QUERY")
-    apps.AppResourceUcSecurableUcSecurableType = SimpleNamespace(VOLUME="VOLUME")
-    perms = {"READ_VOLUME": "READ_VOLUME"}
+    kinds, perms = {"VOLUME": "VOLUME"}, {"READ_VOLUME": "READ_VOLUME"}
+    if model_service:
+        kinds["MODEL_SERVICE"], perms["EXECUTE"] = "MODEL_SERVICE", "EXECUTE"
+    apps.AppResourceUcSecurableUcSecurableType = SimpleNamespace(**kinds)
     if write_volume:
         perms["WRITE_VOLUME"] = "WRITE_VOLUME"
     apps.AppResourceUcSecurableUcSecurablePermission = SimpleNamespace(**perms)
@@ -212,8 +224,8 @@ def _fake_sdk_modules(write_volume=True):
 
 
 @contextlib.contextmanager
-def _fake_sdk(write_volume=True):
-    mods = _fake_sdk_modules(write_volume)
+def _fake_sdk(write_volume=True, model_service=True):
+    mods = _fake_sdk_modules(write_volume, model_service)
     old = {k: sys.modules.get(k) for k in mods}
     sys.modules.update(mods)
     try:
@@ -619,6 +631,29 @@ def test_check_bundle_passes_the_real_app_yaml():
 def test_check_bundle_refuses_drift():
     _check_bundle_raises(_set_value("VS_INDEX", "dev.cas.other_index"), "VS_INDEX")
     _check_bundle_raises(_set_value("OPENAI_MODEL", "databricks-gpt-oss-120b"), "OPENAI_MODEL")
+    # The route as well as the model: an App on another route than the notebook tested
+    _check_bundle_raises(_set_value("VS_EMBEDDING_SERVICE", ""), "VS_EMBEDDING_SERVICE")
+    _check_bundle_raises(_set_value("OPENAI_BASE_PATH", "/serving-endpoints"), "OPENAI_BASE_PATH")
+    _check_bundle_raises(lambda t: re.sub(r'  - name: OPENAI_BASE_PATH\n\s*value: "[^"]*"\n', "", t),
+                         "OPENAI_BASE_PATH")
+
+
+def test_check_bundle_accepts_the_legacy_route_when_the_notebook_runs_it():
+    """The revert: pay-per-token names, no service, no base path (or /serving-endpoints)."""
+    def legacy(t):
+        t = re.sub(r'  - name: (VS_EMBEDDING_SERVICE|OPENAI_BASE_PATH)\n\s*value: "[^"]*".*\n', "", t)
+        return _set_value("OPENAI_MODEL", LEGACY["OPENAI_MODEL"])(t)
+
+    for edit in (legacy, lambda t: _set_value("OPENAI_BASE_PATH", "serving-endpoints/")(
+            _set_value("VS_EMBEDDING_SERVICE", "")(
+                _set_value("OPENAI_MODEL", LEGACY["OPENAI_MODEL"])(t)))):
+        with _cell2(), _patched(cfg, **LEGACY):
+            ns = _load09()
+            with tempfile.TemporaryDirectory() as tmp:
+                _yaml_with(tmp, edit)
+                ns["APP_BUNDLE"] = tmp
+                with _quiet():
+                    ns["_check_bundle"]()  # raises on any disagreement
 
 
 def test_check_bundle_refuses_a_wrong_or_missing_memo_dir():
@@ -756,8 +791,8 @@ def _resources(app):
              getattr(getattr(r, "uc_securable", None), "permission", None)) for r in app.resources]
 
 
-def _create(spark, ws, write_volume=True, bundle_env=None):
-    with _fake_sdk(write_volume), _cell2(), tempfile.TemporaryDirectory() as tmp:
+def _create(spark, ws, write_volume=True, bundle_env=None, model_service=True, **cfg_values):
+    with _fake_sdk(write_volume, model_service), _cell2(), _patched(cfg, **cfg_values),             tempfile.TemporaryDirectory() as tmp:
         ns = _nb09_with_fakes(spark, ws, Path(tmp) / "llm_memo")
         if bundle_env is not None:  # app.yaml's env as the notebook would read it
             ns["_bundle_env"] = lambda: dict(bundle_env)
@@ -772,12 +807,43 @@ def test_app_create_appends_the_memo_volume():
     out, made = _create(spark, ws)
     assert len(ws.created) == 1
     assert _resources(ws.created[0]) == [
-        ("llm-endpoint", None, None), ("embedding-endpoint", None, None),
+        ("llm-model", "system.ai.qwen3-next-80b-a3b-instruct", "EXECUTE"),
+        ("embedding-model", "system.ai.gte-large-en", "EXECUTE"),
         ("catalog-volume", "dev.cas.raw", "READ_VOLUME"),
         ("memo-volume", MEMO_VOLUME, "WRITE_VOLUME")]
     # The volume exists before the resource that names it, and its folder is made
     assert spark.log[0].startswith(f"CREATE VOLUME IF NOT EXISTS {MEMO_VOLUME} ")
     assert made and f"PASS  CREATE VOLUME IF NOT EXISTS {MEMO_VOLUME}" in out
+
+
+def test_app_create_legacy_names_get_serving_endpoint_resources():
+    """The revert: databricks-* endpoints are attached as serving endpoints, Can query."""
+    ws = FakeWorkspace()
+    _create(FakeSpark(), ws, **LEGACY)
+    got = ws.created[0].resources
+    assert [(r.name, r.serving_endpoint.name, r.serving_endpoint.permission) for r in got[:2]] == [
+        ("llm-endpoint", "databricks-qwen3-next-80b-a3b-instruct", "CAN_QUERY"),
+        ("embedding-endpoint", "databricks-gte-large-en", "CAN_QUERY")]
+    assert [r.name for r in got[2:]] == ["catalog-volume", "memo-volume"]
+
+
+def test_app_create_without_model_service_attaches_no_model():
+    # A databricks-sdk older than 0.151.0: no MODEL_SERVICE, so no model resource (the App
+    # then relies on EXECUTE its principal holds), and both volumes still ship
+    ws = FakeWorkspace()
+    out, _ = _create(FakeSpark(), ws, model_service=False)
+    assert [r[0] for r in _resources(ws.created[0])] == ["catalog-volume", "memo-volume"]
+    assert "no MODEL_SERVICE app resource" in out
+
+
+def test_app_create_model_service_refusal_falls_back_to_the_volumes():
+    ws = FakeWorkspace(create_errors=[RuntimeError(
+        "PERMISSION_DENIED: cannot add model service system.ai.gte-large-en")])
+    out, _ = _create(FakeSpark(), ws)
+    assert [[r[0] for r in _resources(a)] for a in ws.created] == [
+        ["llm-model", "embedding-model", "catalog-volume", "memo-volume"],
+        ["catalog-volume", "memo-volume"]]
+    assert "Model > Unity Gateway, Can execute" in out
 
 
 def test_app_create_endpoint_fallback_keeps_both_volumes():
@@ -794,7 +860,7 @@ def test_app_create_drops_a_refused_memo_volume_resource():
         RuntimeError(f"PERMISSION_DENIED: User does not have MANAGE on Volume '{MEMO_VOLUME}'")])
     out, _ = _create(FakeSpark(), ws)
     assert [[r[0] for r in _resources(a)] for a in ws.created] == [
-        ["llm-endpoint", "embedding-endpoint", "catalog-volume", "memo-volume"],
+        ["llm-model", "embedding-model", "catalog-volume", "memo-volume"],
         ["catalog-volume", "memo-volume"], ["catalog-volume"]]
     assert "app_grant() grants READ + WRITE VOLUME" in out
 
@@ -810,8 +876,8 @@ def test_app_create_memo_refusal_then_endpoint_refusal():
         _memo_refusal(), _PermissionDenied("no CAN MANAGE on serving endpoint")])
     out, _ = _create(FakeSpark(), ws)
     assert [[r[0] for r in _resources(a)] for a in ws.created] == [
-        ["llm-endpoint", "embedding-endpoint", "catalog-volume", "memo-volume"],
-        ["llm-endpoint", "embedding-endpoint", "catalog-volume"], ["catalog-volume"]]
+        ["llm-model", "embedding-model", "catalog-volume", "memo-volume"],
+        ["llm-model", "embedding-model", "catalog-volume"], ["catalog-volume"]]
     assert "memo volume resource refused" in out and "retrying with the Volumes only" in out
     # Each fallback fires once: a third refusal is raised, not retried for ever
     ws = FakeWorkspace(create_errors=[
@@ -863,7 +929,7 @@ def test_app_create_with_the_memo_off_skips_the_volume():
     spark, ws = FakeSpark(fail=[r"^CREATE VOLUME"]), FakeWorkspace()
     out, made = _create(spark, ws, bundle_env={"LLM_MEMO": "false"})
     assert [r[0] for r in _resources(ws.created[0])] == [
-        "llm-endpoint", "embedding-endpoint", "catalog-volume"]
+        "llm-model", "embedding-model", "catalog-volume"]
     assert not any("app_state" in q for q in spark.log) and not made
     assert "LLM_MEMO=false" in out and "FAIL" not in out
 
@@ -903,7 +969,7 @@ def test_app_create_without_write_volume_or_volume_skips_the_resource():
     ws = FakeWorkspace()
     out, _ = _create(FakeSpark(fail=[r"^CREATE VOLUME"]), ws)
     assert [r[0] for r in _resources(ws.created[0])] == [
-        "llm-endpoint", "embedding-endpoint", "catalog-volume"]
+        "llm-model", "embedding-model", "catalog-volume"]
     assert f"FAIL  CREATE VOLUME IF NOT EXISTS {MEMO_VOLUME}" in out
 
 
@@ -1023,10 +1089,23 @@ def test_run_app_child_env():
     ra = _run_app()
     for host in ("adb-1.azuredatabricks.net", "https://adb-1.azuredatabricks.net/",
                  " https://adb-1.azuredatabricks.net "):
-        with _env(DATABRICKS_HOST=host, OPENAI_BASE_URL=None, BACKEND_URL="http://elsewhere"):
+        with _env(DATABRICKS_HOST=host, OPENAI_BASE_URL=None, OPENAI_BASE_PATH=None,
+                  BACKEND_URL="http://elsewhere"):
             env = ra._child_env()
         assert env["OPENAI_BASE_URL"] == "https://adb-1.azuredatabricks.net/serving-endpoints", host
         assert env["BACKEND_URL"] == "http://127.0.0.1:8001"
+    # Unity Gateway: app.yaml's OPENAI_BASE_PATH, however its slashes are written
+    for path in ("/ai-gateway/mlflow/v1", "ai-gateway/mlflow/v1/", " /ai-gateway/mlflow/v1 "):
+        with _env(DATABRICKS_HOST="adb-1.azuredatabricks.net", OPENAI_BASE_URL=None,
+                  OPENAI_BASE_PATH=path):
+            assert (ra._child_env()["OPENAI_BASE_URL"]
+                    == "https://adb-1.azuredatabricks.net/ai-gateway/mlflow/v1"), path
+    # and the path app.yaml ships gives the URL the notebook tested (CELL2)
+    with _cell2(), _chdir(ROOT):
+        shipped = _load09()["_bundle_env"]()
+    with _env(DATABRICKS_HOST="adb-1.azuredatabricks.net", OPENAI_BASE_URL=None,
+              OPENAI_BASE_PATH=shipped["OPENAI_BASE_PATH"]):
+        assert ra._child_env()["OPENAI_BASE_URL"] == CELL2["OPENAI_BASE_URL"]
     with _env(DATABRICKS_HOST="adb-1", OPENAI_BASE_URL="https://kept.example/serving-endpoints"):
         assert ra._child_env()["OPENAI_BASE_URL"] == "https://kept.example/serving-endpoints"
     with _env(DATABRICKS_HOST=None, OPENAI_BASE_URL=None):
@@ -1181,7 +1260,7 @@ def _emb(i, vec):
 
 def test_embed_texts_restores_order_and_normalises():
     calls = []
-    with _vs_state(VS_EMBEDDING_MODEL="databricks-gte-large-en"):
+    with _vs_state(VS_EMBEDDING_MODEL="databricks-gte-large-en", VS_EMBEDDING_SERVICE=""):
         VS._workspace[False] = _embedder([_emb(1, [0.0, 2.0]), _emb(0, [3.0, 4.0])], calls=calls)
         vecs, tokens = VS.embed_texts(["a", "b"])
         assert VS.embed_texts([]) == ([], 0)
@@ -1198,13 +1277,90 @@ def test_embed_texts_refuses_short_ragged_empty_and_zero_replies():
            "empty": [_emb(0, [1.0, 0.0]), _emb(1, [])],
            "zero": [_emb(0, [1.0, 0.0]), _emb(1, [0.0, 0.0])]}
     for name, data in bad.items():
-        with _vs_state(VS_EMBEDDING_MODEL="databricks-gte-large-en"):
+        with _vs_state(VS_EMBEDDING_MODEL="databricks-gte-large-en", VS_EMBEDDING_SERVICE=""):
             VS._workspace[False] = _embedder(data)
             try:
                 VS.embed_texts(["a", "b"])
                 raise AssertionError(f"{name} reply accepted")
             except RuntimeError:
                 pass
+        # the same refusals on the Unity Gateway route
+        with _vs_state(VS_EMBEDDING_MODEL="databricks-gte-large-en",
+                       VS_EMBEDDING_SERVICE="system.ai.gte-large-en", AI_GATEWAY_URL="https://g"), \
+                _gateway_fake(data, []):
+            try:
+                VS.embed_texts(["a", "b"])
+                raise AssertionError(f"{name} gateway reply accepted")
+            except RuntimeError as e:
+                assert "system.ai.gte-large-en" in str(e)
+
+
+@contextlib.contextmanager
+def _gateway_fake(data, calls, tokens=5):
+    """The OpenAI client embed_texts builds for Unity Gateway, replaced by a recorder."""
+    def create(model, input):  # noqa: A002 -- the openai keyword
+        calls.append((model, list(input)))
+        return SimpleNamespace(data=data, usage=SimpleNamespace(prompt_tokens=tokens))
+
+    fake = SimpleNamespace(embeddings=SimpleNamespace(create=create))
+    with _patched(VS, _gateway_client=lambda batch=False: fake):
+        yield
+
+
+def test_embed_texts_through_unity_gateway():
+    """VS_EMBEDDING_SERVICE set: the gateway is called by that name, never the endpoint."""
+    calls = []
+
+    def no_endpoint(**kw):
+        raise AssertionError("serving_endpoints.query called on the gateway route")
+
+    with _vs_state(VS_EMBEDDING_MODEL="databricks-gte-large-en",
+                   VS_EMBEDDING_SERVICE="system.ai.gte-large-en", AI_GATEWAY_URL="https://g"), \
+            _gateway_fake([_emb(1, [0.0, 2.0]), _emb(0, [3.0, 4.0])], calls):
+        VS._workspace[False] = SimpleNamespace(serving_endpoints=SimpleNamespace(query=no_endpoint))
+        vecs, tokens = VS.embed_texts(["a", "b"])
+        assert VS.embed_texts([]) == ([], 0)
+    assert calls == [("system.ai.gte-large-en", ["a", "b"])]
+    assert tokens == 5 and vecs == [[0.6, 0.8], [0.0, 1.0]]
+
+
+def test_gateway_url_and_client():
+    """AI_GATEWAY_URL wins; else the SDK host. The token is asked of the SDK per request."""
+    asked, made = [], []
+
+    class Config:
+        host = "https://adb-1.azuredatabricks.net/"
+
+        def authenticate(self):
+            asked.append(1)
+            return {"Authorization": "Bearer tok-1"}
+
+    class FakeOpenAI:
+        def __init__(self, **kw):
+            made.append(kw)
+
+    openai_mod = types.ModuleType("openai")
+    openai_mod.OpenAI = FakeOpenAI
+    saved_mod, saved = sys.modules.get("openai"), dict(VS._gateway)
+    try:
+        sys.modules["openai"] = openai_mod
+        VS._gateway.clear()
+        with _vs_state(AI_GATEWAY_URL=""):
+            VS._workspace[False] = SimpleNamespace(config=Config())
+            assert VS.gateway_url() == "https://adb-1.azuredatabricks.net/ai-gateway/mlflow/v1"
+            c1 = VS._gateway_client()
+            assert VS._gateway_client() is c1 and len(made) == 1  # one client per (batch, URL)
+            assert made[0]["base_url"] == VS.gateway_url() and made[0]["timeout"] == 15
+            assert asked == [] and made[0]["api_key"]() == "tok-1" and asked == [1]
+        with _vs_state(AI_GATEWAY_URL="https://adb-2.azuredatabricks.net/ai-gateway/mlflow/v1"):
+            assert VS.gateway_url() == "https://adb-2.azuredatabricks.net/ai-gateway/mlflow/v1"
+    finally:
+        VS._gateway.clear()
+        VS._gateway.update(saved)
+        if saved_mod is None:
+            sys.modules.pop("openai", None)
+        else:
+            sys.modules["openai"] = saved_mod
 
 
 def test_query_many_embeds_once_and_honours_the_query_mode():
@@ -1340,13 +1496,26 @@ def test_preflight_runs_the_new_rows():
         ns["vs_shim"] = SimpleNamespace(memo_volume_path=lambda: str(vol),
                                         bundle_pins=lambda: _bundle_pins(),
                                         APP_REQUIREMENTS="x")
-        sys.modules["databricks.sdk"].WorkspaceClient = lambda **kw: SimpleNamespace()
-        with _quiet() as out, _chdir(ROOT):
+        got = []
+
+        def get(name):
+            got.append(name)
+
+        sys.modules["databricks.sdk"].WorkspaceClient = lambda **kw: SimpleNamespace(
+            serving_endpoints=SimpleNamespace(get=get))
+        from app import llm_client
+
+        with _quiet() as out, _chdir(ROOT), _cell2(), _patched(
+                llm_client, generate_json=lambda *a, **k: {"ok": True}):
             try:
                 ns["preflight"]()
             except AssertionError:
                 pass  # no workspace here: most rows FAIL
     text = out.getvalue()
+    # Model services are proved by the call rows, never by a serving-endpoint GET
+    assert got == [] and re.search(r"PASS  serving endpoints\s+system\.ai\.gte-large-en "
+                                   r"\(model service", text), text
+    assert re.search(r"PASS  llm call \(JSON mode\)\s+system\.ai\.qwen3", text), text
     assert re.search(r"PASS  App memo volume \(dry write\)\s+.*app_state exists", text), text
     assert re.search(r"(PASS|WARN)  pandas / numpy vs the App\s+pandas ", text), text
 

@@ -277,6 +277,21 @@ VS_VECTORS_TABLE = f"{CAS_CATALOG}.{CAS_SCHEMA}.products_vectors"
 # The pay-per-token serving endpoint that embeds BOTH the catalog (02) and every
 # query (app/vector_search.py) -- the two must match or retrieval is meaningless.
 VS_EMBEDDING_MODEL = os.getenv("VS_EMBEDDING_MODEL", "databricks-gte-large-en")
+# What embed_texts CALLS when the workspace has "Enforce Unity Gateway" on: that
+# setting disables every databricks-* pay-per-token endpoint ("Please use Unity
+# Gateway", 2026-11-13), and the same model is then a Unity Gateway model service
+# ("system.ai.gte-large-en") at AI_GATEWAY_URL/embeddings. "" (default) = call
+# VS_EMBEDDING_MODEL as a pay-per-token endpoint, as before. VS_EMBEDDING_MODEL stays the
+# LABEL of the stored vectors (02 resume() refuses a mismatch), so another route to the
+# same model re-embeds nothing -- once the vector check shows the same vectors.
+VS_EMBEDDING_SERVICE = os.getenv("VS_EMBEDDING_SERVICE", "").strip()
+# The gateway's OpenAI-compatible base, https://<workspace URL>/ai-gateway/mlflow/v1.
+# "" = the databricks-sdk host + that path. Wrong in a NOTEBOOK: its SDK host is the
+# regional control plane (https://eastus-c3...), where /ai-gateway/ answers 404, so
+# Cell 2 sets it from spark.databricks.workspaceUrl (both measured 2026-11-13). In an
+# App the host is the injected DATABRICKS_HOST (assumed the workspace URL: unverified;
+# the App's start-up embedding check says).
+AI_GATEWAY_URL = os.getenv("AI_GATEWAY_URL", "").strip().rstrip("/")
 # "vector": embed the query here and send query_vector -- required by the
 # self-managed index 02 builds. "text": send query_text, only for an index built
 # with MANAGED embeddings (the pre-2026-10-09 index).

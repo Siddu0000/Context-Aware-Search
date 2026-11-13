@@ -58,7 +58,10 @@ def _child_env() -> dict:
                      "OPENAI_BASE_URL to https://<workspace-host>/serving-endpoints.")
         if not host.startswith("http"):
             host = "https://" + host  # the injected value's scheme is not documented
-        env["OPENAI_BASE_URL"] = f"{host}/serving-endpoints"
+        # app.yaml's OPENAI_BASE_PATH: /ai-gateway/mlflow/v1 under Enforce Unity Gateway,
+        # else the pay-per-token /serving-endpoints (the default, and the revert)
+        path = (env.get("OPENAI_BASE_PATH") or "serving-endpoints").strip().strip("/")
+        env["OPENAI_BASE_URL"] = f"{host}/{path}"
     return env
 
 

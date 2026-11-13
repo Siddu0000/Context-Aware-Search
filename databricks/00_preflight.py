@@ -2,8 +2,10 @@
 
 Written for classic clusters (e.g. Retail_DE_cluster), where access mode and
 runtime are whatever the cluster was created with; it also passes on serverless.
-Costs nothing but one ~2-token embedding call (and a tiny probe file written to and
-deleted from the App's memo volume, when it exists). One PASS / WARN / FAIL row per
+Costs nothing but one ~2-token embedding call, one tiny LLM call (~50 tokens; added
+2026-11-13, when Enforce Unity Gateway refused every query while an endpoint GET still
+PASSed) and a tiny probe file written to and deleted from the App's memo volume, when
+it exists. One PASS / WARN / FAIL row per
 check; any FAIL raises, so the cell turns red BEFORE 01/02 spend money.
 
     exec(open("databricks/00_preflight.py").read()); preflight()
@@ -261,9 +263,27 @@ def preflight():
         return "PASS", "system.billing.usage readable (02 costs() works)"
 
     def endpoints():
-        for name in (cfg.VS_EMBEDDING_MODEL, cfg.OPENAI_MODEL):
-            w.serving_endpoints.get(name)
-        return "PASS", f"{cfg.VS_EMBEDDING_MODEL}, {cfg.OPENAI_MODEL}"
+        # A Unity Gateway model service (system.ai.<model>) is no serving endpoint: a GET
+        # would 404. The two call rows below prove both routes; a GET alone never did
+        # (it PASSed while Enforce Unity Gateway refused every query, 2026-11-13).
+        names = [cfg.VS_EMBEDDING_SERVICE or cfg.VS_EMBEDDING_MODEL, cfg.OPENAI_MODEL]
+        for name in names:
+            if name.count(".") != 2:
+                w.serving_endpoints.get(name)
+        return "PASS", ", ".join(n + (" (model service: see the call rows)" if n.count(".") == 2
+                                      else "") for n in names)
+
+    def llm_call():
+        # One tiny call through the app's own client (memo off: a stored reply would
+        # PASS over a refused route). The reply text is never printed.
+        from app import llm_client
+
+        llm_client._singleton = None  # built from Cell 2's values, not a stale client
+        reply = llm_client.generate_json('Reply with the json object {"ok": true}',
+                                         temperature=0.0, memo=False)
+        ok = isinstance(reply, dict) and reply.get("ok") is True
+        return ("PASS" if ok else "WARN"), (f"{cfg.OPENAI_MODEL} at {cfg.OPENAI_BASE_URL}: "
+                                            + ("JSON reply as asked" if ok else "unexpected reply"))
 
     def embed_from_thread():
         # 02 embed() calls the endpoint from worker threads; prove auth works there
@@ -281,7 +301,9 @@ def preflight():
             return "PASS", f"{cfg.VS_ENDPOINT} absent: 02 resume() creates it"
         return "PASS", f"{cfg.VS_ENDPOINT}: {(ep.get('endpoint_status') or {}).get('state')}"
 
-    print(f"preflight: {cfg.CAS_CATALOG}.{cfg.CAS_SCHEMA} | embeddings {cfg.VS_EMBEDDING_MODEL}"
+    emb = (f"{cfg.VS_EMBEDDING_SERVICE} via Unity Gateway (vectors labelled "
+           f"{cfg.VS_EMBEDDING_MODEL})" if cfg.VS_EMBEDDING_SERVICE else cfg.VS_EMBEDDING_MODEL)
+    print(f"preflight: {cfg.CAS_CATALOG}.{cfg.CAS_SCHEMA} | embeddings {emb}"
           f" | llm {cfg.OPENAI_MODEL}\n")
     for name, fn in [("python", python), ("runtime", runtime), ("packages", packages),
                      ("databricks-sdk", sdk), ("pandas / numpy vs the App", versus_app),
@@ -290,6 +312,7 @@ def preflight():
                      ("App memo volume (dry write)", memo_volume),
                      ("billing tables", billing), ("serving endpoints", endpoints),
                      ("embedding from a worker thread", embed_from_thread),
+                     ("llm call (JSON mode)", llm_call),
                      ("vector search endpoint", vs_endpoint)]:
         _pf_check(rows, name, fn)
 
