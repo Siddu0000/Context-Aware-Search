@@ -199,8 +199,10 @@ def _use_seed() -> bool:
 
 
 def _openai_endpoint_takes_seed() -> bool:
-    # Databricks FM APIs reject unknown fields: `seed` 400s the whole call
-    return "serving-endpoints" not in (cfg.OPENAI_BASE_URL or "").lower()
+    # Databricks rejects unknown fields: `seed` 400s the whole call, on the pay-per-token
+    # FM APIs and on Unity Gateway alike ('json: unknown field "seed"', 2026-11-13)
+    base = (cfg.OPENAI_BASE_URL or "").lower()
+    return "serving-endpoints" not in base and "/ai-gateway/" not in base
 
 
 def seed_sent() -> bool:
@@ -284,7 +286,8 @@ def _databricks_token_provider():
     if not host or not (cfg.OPENAI_BASE_URL or "").lower().startswith(host + "/"):
         # cfg's DEFAULT base URL is Groq: never hand a workspace token to another host
         raise LLMError("OPENAI_AUTH=databricks needs OPENAI_BASE_URL on the workspace host "
-                       f"({host or 'unknown'}), e.g. {host or 'https://<host>'}/serving-endpoints.")
+                       f"({host or 'unknown'}), e.g. {host or 'https://<host>'}/ai-gateway/mlflow/v1 "
+                       "(Unity Gateway) or /serving-endpoints (pay-per-token).")
 
     def token() -> str:
         return sdk.authenticate()["Authorization"].split(" ", 1)[1]

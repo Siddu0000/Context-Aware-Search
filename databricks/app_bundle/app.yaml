@@ -14,8 +14,15 @@
 #   app's service principal (DATABRICKS_CLIENT_ID/SECRET); a DATABRICKS_TOKEN next
 #   to them is a conflicting auth method and breaks every SDK call
 #   (.../dev-tools/auth/oauth-m2m). OPENAI_AUTH=databricks mints LLM tokens from it.
-# - OPENAI_BASE_URL: run_app.py derives it from the injected DATABRICKS_HOST, so the
-#   workspace URL is never hard-coded (app.yaml values are not shell-expanded).
+# - OPENAI_BASE_URL: run_app.py derives it from the injected DATABRICKS_HOST +
+#   OPENAI_BASE_PATH, so the workspace URL is never hard-coded (app.yaml values are not
+#   shell-expanded). The embeddings take the same host (vector_search.gateway_url).
+#
+# Unity Gateway (2026-11-13): the workspace has "Enforce Unity Gateway" on, which
+# disables the databricks-* pay-per-token endpoints. Both models are reached as model
+# services (system.ai.*) at <host>/ai-gateway/mlflow/v1. REVERT (enforcement off):
+# OPENAI_MODEL "databricks-qwen3-next-80b-a3b-instruct", VS_EMBEDDING_SERVICE "",
+# OPENAI_BASE_PATH "/serving-endpoints" (and the same in notebook Cell 2).
 command: ["python", "run_app.py"]
 env:
   - name: SEARCH_BACKEND
@@ -25,7 +32,9 @@ env:
   - name: CAS_SCHEMA
     value: "cas"
   - name: VS_EMBEDDING_MODEL
-    value: "databricks-gte-large-en"   # must be the model 02 embedded the catalog with
+    value: "databricks-gte-large-en"   # LABEL of the vectors 02 embedded the catalog with
+  - name: VS_EMBEDDING_SERVICE
+    value: "system.ai.gte-large-en"    # what the App calls: the same model via Unity Gateway
   - name: VS_INDEX
     value: "dev.cas.products_index"    # the index 09 app_grant() grants SELECT on
   - name: VS_QUERY_MODE
@@ -36,7 +45,9 @@ env:
   - name: LLM_PROVIDER
     value: "openai"                    # the PROTOCOL; the endpoint is Databricks-hosted
   - name: OPENAI_MODEL
-    value: "databricks-qwen3-next-80b-a3b-instruct"
+    value: "system.ai.qwen3-next-80b-a3b-instruct"
+  - name: OPENAI_BASE_PATH
+    value: "/ai-gateway/mlflow/v1"
   - name: OPENAI_AUTH
     value: "databricks"
   - name: TRANSLATOR_MODE

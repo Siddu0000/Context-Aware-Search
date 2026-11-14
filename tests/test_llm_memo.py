@@ -189,6 +189,13 @@ def test_openai_backend_keys_what_it_sends():
     with patched(cfg, {**groq, "OPENAI_BASE_URL": "https://adb-1.azuredatabricks.net/serving-endpoints"}):
         req3 = b.memo_request("p", 0.2)
         assert req3["seed"] is None and req3["reasoning_format"] is None   # never sent there
+    # Unity Gateway 400s on `seed` too ('json: unknown field "seed"', 2026-11-13)
+    with patched(cfg, {**groq, "OPENAI_BASE_URL":
+                       "https://adb-1.azuredatabricks.net/ai-gateway/mlflow/v1"}):
+        assert b.memo_request("p", 0.2)["seed"] is None and "seed" not in b._params("p", 0.2, True)
+        assert llm_client.seed_sent() is False
+    with patched(cfg, groq):
+        assert llm_client.seed_sent() is True   # Groq stays seeded
     # Gemini and Anthropic describe their own calls the same way
     g = object.__new__(llm_client._GeminiBackend)
     g.model = "models/g"

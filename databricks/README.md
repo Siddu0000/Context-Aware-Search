@@ -94,7 +94,17 @@ dbutils.library.restartPython()
 - If a bad install already broke the notebook: **detach and re-attach it** (that resets
   notebook-scoped libraries), then run Cell 1 again.
 Cell 2 — env, including MLflow. Both LLMs named below are open-weight
-(Apache-2.0) models served by Databricks pay-per-token; nothing leaves the workspace:
+(Apache-2.0) models served by Databricks; nothing leaves the workspace.
+
+**Unity Gateway (2026-11-13).** The workspace now has "Enforce Unity Gateway" on: every
+`databricks-*` pay-per-token endpoint refuses calls ("Please use Unity Gateway"), and the
+same models are model services (`system.ai.*`) at `<workspace URL>/ai-gateway/mlflow/v1`.
+That route answers ONLY on the workspace URL (`adb-....azuredatabricks.net`, from
+`spark.databricks.workspaceUrl`); the SDK's notebook host (`https://eastus-c3...`, the
+regional control plane) answers 404 there. `seed` is refused (400), so the app never sends
+it to `/ai-gateway/`. `VS_EMBEDDING_MODEL` stays the LABEL of the stored vectors (no
+re-embed); `VS_EMBEDDING_SERVICE` is what is called. REVERT (enforcement off): the
+commented legacy lines below instead of the gateway ones.
 ```python
 import os, sys
 from databricks.sdk import WorkspaceClient
@@ -104,21 +114,35 @@ sys.path.insert(0, REPO); os.chdir(REPO)
 # the older getContext().apiToken() call is not documented for Standard access mode
 _w = WorkspaceClient()
 HOST = _w.config.host.rstrip("/")
+WS = "https://" + spark.conf.get("spark.databricks.workspaceUrl")   # the gateway's host
 TOKEN = _w.config.authenticate()["Authorization"].split(" ", 1)[1]
 ME = _w.current_user.me().user_name
 os.environ.update({
     "CAS_CATALOG": "dev", "CAS_SCHEMA": "cas",
     "DATABRICKS_TOKEN": TOKEN, "DATABRICKS_HOST": HOST,
     "LLM_PROVIDER": "openai", "OPENAI_API_KEY": TOKEN,
-    "OPENAI_BASE_URL": HOST + "/serving-endpoints",
-    # Query expansion + rerank. Chosen 2026-09-24 (latency). Alternative: "databricks-gpt-oss-120b"
-    "OPENAI_MODEL": "databricks-qwen3-next-80b-a3b-instruct",
-    "VS_EMBEDDING_MODEL": "databricks-gte-large-en",
+    # Unity Gateway: LLM and embeddings on the workspace URL
+    "OPENAI_BASE_URL": WS + "/ai-gateway/mlflow/v1",
+    "AI_GATEWAY_URL": WS + "/ai-gateway/mlflow/v1",
+    # Query expansion + rerank. Chosen 2026-09-24 (latency)
+    "OPENAI_MODEL": "system.ai.qwen3-next-80b-a3b-instruct",
+    "VS_EMBEDDING_SERVICE": "system.ai.gte-large-en",
+    # Legacy pay-per-token route (enforcement off), instead of the four lines above:
+    # "OPENAI_BASE_URL": HOST + "/serving-endpoints",
+    # "OPENAI_MODEL": "databricks-qwen3-next-80b-a3b-instruct",
+    "VS_EMBEDDING_MODEL": "databricks-gte-large-en",   # the stored vectors' label
     "VS_QUERY_MODE": "vector",
     "MLFLOW_ENABLED": "true",
     "MLFLOW_EXPERIMENT": f"/Users/{ME}/cas-evals",
 })
 ```
+The App's `app.yaml` carries the same route (`OPENAI_BASE_PATH`, `VS_EMBEDDING_SERVICE`,
+the `system.ai` model name), and `09 stage()` refuses it if it disagrees with Cell 2. A new
+App gets "Unity Gateway model service" resources (Can execute); the existing `cas-app` keeps
+its old endpoint resources, so its service principal needs EXECUTE on both `system.ai`
+services (account users hold it by default) or the resources added in the App UI (Edit >
+Resources > Model). `02 costs()` does not see gateway charges (they are recorded under
+`usage_metadata.ai_gateway`).
 `app.config` reads this env ONCE, at the first `import app...`. Changed Cell 2
 later? `dbutils.library.restartPython()` and re-run it. Before reading any number,
 check the model the run ACTUALLY used: run_eval's summary line `llm = <model>`

@@ -201,20 +201,58 @@ def _workspace_client(batch: bool = False):
     return _workspace[batch]
 
 
+_GATEWAY_PATH = "/ai-gateway/mlflow/v1"
+_gateway = {}  # (batch, base URL) -> OpenAI client
+
+
+def gateway_url() -> str:
+    """Unity Gateway's OpenAI-compatible base URL (cfg.AI_GATEWAY_URL explains the default)."""
+    if cfg.AI_GATEWAY_URL:
+        return cfg.AI_GATEWAY_URL
+    return (_workspace_client().config.host or "").rstrip("/") + _GATEWAY_PATH
+
+
+def _gateway_client(batch: bool = False):
+    """OpenAI client on Unity Gateway, authenticated as the SDK's identity.
+
+    The token is asked of databricks-sdk before every request (openai>=1.106 calls a
+    callable api_key; the App and Cell 1 pin 2.42.0): an App service principal's token
+    lasts an hour. Sent only to AI_GATEWAY_URL, which an operator sets, or the SDK's own
+    host. The openai SDK retries 429 / 5xx itself; the timeouts follow _workspace_client.
+    """
+    base = gateway_url()
+    key = (batch, base)
+    if key not in _gateway:
+        from openai import OpenAI
+
+        sdk = _workspace_client(batch).config
+
+        def token() -> str:
+            return sdk.authenticate()["Authorization"].split(" ", 1)[1]
+
+        _gateway[key] = OpenAI(api_key=token, base_url=base,
+                               timeout=60 if batch else 15, max_retries=2)
+    return _gateway[key]
+
+
 def embed_texts(texts: List[str], batch: bool = False) -> Tuple[List[List[float]], int]:
-    """(unit vectors in input order, prompt tokens billed) from VS_EMBEDDING_MODEL.
+    """(unit vectors in input order, prompt tokens billed) from the embedding model.
 
     The ONLY embedding call on the Databricks path: the catalog (02 embed()) and
-    every query go through it. Vectors are L2-normalised because gte-large-en
-    "does not generate normalized embeddings" while the index ranks by L2
-    distance (score 1/(1+d^2)); on unit vectors that ranking equals cosine:
+    every query go through it. It calls VS_EMBEDDING_SERVICE through Unity Gateway
+    when that is set, else the pay-per-token endpoint VS_EMBEDDING_MODEL. Vectors are
+    L2-normalised because gte-large-en "does not generate normalized embeddings" while
+    the index ranks by L2 distance (score 1/(1+d^2)); on unit vectors that ranking
+    equals cosine:
     https://learn.microsoft.com/en-us/azure/databricks/machine-learning/foundation-model-apis/supported-models
     """
     if not texts:
         return [], 0
-    resp = _workspace_client(batch).serving_endpoints.query(
-        name=cfg.VS_EMBEDDING_MODEL, input=list(texts)
-    )
+    model = cfg.VS_EMBEDDING_SERVICE or cfg.VS_EMBEDDING_MODEL
+    if cfg.VS_EMBEDDING_SERVICE:
+        resp = _gateway_client(batch).embeddings.create(model=model, input=list(texts))
+    else:
+        resp = _workspace_client(batch).serving_endpoints.query(name=model, input=list(texts))
     import numpy as np
 
     data = list(resp.data or [])
@@ -225,13 +263,13 @@ def embed_texts(texts: List[str], batch: bool = False) -> Tuple[List[List[float]
     if len(vecs) != len(texts) or not all(vecs) or len({len(v) for v in vecs}) != 1:
         # A short, empty or ragged reply would silently mis-align vectors and products
         raise RuntimeError(
-            f"{cfg.VS_EMBEDDING_MODEL} returned {len(vecs)} embeddings "
+            f"{model} returned {len(vecs)} embeddings "
             f"({sum(1 for v in vecs if not v)} empty) for {len(texts)} inputs"
         )
     arr = np.asarray(vecs, dtype=np.float64)
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
     if not np.all(norms > 0):
-        raise RuntimeError(f"{cfg.VS_EMBEDDING_MODEL} returned a zero vector")
+        raise RuntimeError(f"{model} returned a zero vector")
     usage = getattr(resp, "usage", None)
     # Plain Python floats: the request body is json.dumps'ed (no numpy, no NaN)
     return (arr / norms).tolist(), int(getattr(usage, "prompt_tokens", 0) or 0)

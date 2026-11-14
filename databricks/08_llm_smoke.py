@@ -302,8 +302,10 @@ def _backend(p):
     p.prefer(cfg.LLM_PROVIDER != "openai" or not env or env == cfg.OPENAI_MODEL,
              f"env OPENAI_MODEL={env!r} but cfg has {cfg.OPENAI_MODEL!r}: app.config was "
              "imported before Cell 2 changed -- restartPython, or set cfg.OPENAI_MODEL")
-    p.prefer("serving-endpoints" in (cfg.OPENAI_BASE_URL or "").lower(),
-             "OPENAI_BASE_URL is not <host>/serving-endpoints: not the Databricks FM API path")
+    base = (cfg.OPENAI_BASE_URL or "").lower()
+    p.prefer("serving-endpoints" in base or "/ai-gateway/" in base,
+             "OPENAI_BASE_URL is neither <host>/serving-endpoints nor <workspace URL>/ai-gateway/"
+             "mlflow/v1: not a Databricks model route")
     return f"{cfg.LLM_PROVIDER} / {model}"
 
 

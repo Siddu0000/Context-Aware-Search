@@ -790,6 +790,23 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
   passed. Set in databricks/README.md Cell 2. Still owed: confirm on the CONTEXT set against
   gpt-oss-120b plus `control()` (05), and fix + re-run the 08 injection row.
   REVERT = `OPENAI_MODEL=databricks-gpt-oss-120b` (one line, restart Python).
+- **Databricks models through Unity Gateway** (2026-11-13; the workspace admin turned on "Enforce
+  Unity Gateway", which refuses every `databricks-*` pay-per-token call: "Please use Unity
+  Gateway"). Same models as `system.ai.qwen3-next-80b-a3b-instruct` / `system.ai.gte-large-en`
+  at `<workspace URL>/ai-gateway/mlflow/v1` (OpenAI-compatible, chat AND embeddings). Measured in
+  the notebook probe: that route answers only on the WORKSPACE URL (`adb-....net`, from
+  `spark.databricks.workspaceUrl`); the SDK's notebook host (regional `eastus-c3`) and
+  `serving_endpoints.query(name="system.ai...")` both 404; JSON mode + temperature accepted, an
+  828-token reply finished `stop`; `seed` 400s ("unknown field"). `cas-search` was created under
+  enforcement (ONLINE). Knobs: `VS_EMBEDDING_SERVICE` (what embed_texts calls, via the openai
+  client; `VS_EMBEDDING_MODEL` stays the stored vectors' LABEL, no re-embed), `AI_GATEWAY_URL`
+  ("" = SDK host + path; Cell 2 sets the workspace URL), app.yaml `OPENAI_BASE_PATH` (run_app);
+  seed never sent to `/ai-gateway/`; 09 attaches MODEL_SERVICE / EXECUTE resources to a NEW App;
+  00 gained an LLM-call row (its endpoint GET had PASSed while every call was refused).
+  Unverified: that the gateway's gte-large-en returns the stored vectors (cosine check owed),
+  the App's DATABRICKS_HOST being the workspace URL, the App principal's EXECUTE. The memo
+  starts cold (new model name and base URL = new keys). REVERT (enforcement off): Cell 2's legacy
+  lines, app.yaml's three values (databricks/README.md Cell 2).
 - **Local-dev LLM = openai/gpt-oss-120b via Groq** (LLM_PROVIDER=openai, OPENAI_BASE_URL=Groq,
   OPENAI_MODEL=openai/gpt-oss-120b). Chosen over Gemini: it matched/beat Gemini on the eval
   (NDCG 0.950 vs ~0.93) and is free with no quota exhaustion. TRADEOFF: it's a reasoning model
