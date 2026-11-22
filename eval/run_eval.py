@@ -145,8 +145,10 @@ def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) ->
             "anthropic": cfg.ANTHROPIC_MODEL,
         }.get(provider, "?"),
         "search_backend": backend,
+        # the embedder that RAN (compare_embeddings swaps it without touching cfg)
         "embedding_model": (
-            cfg.VS_EMBEDDING_MODEL if backend == "databricks" else cfg.EMBEDDING_MODEL
+            cfg.VS_EMBEDDING_MODEL if backend == "databricks"
+            else search_module.get_default_embedder().model_name
         ),
         # vector = self-managed index + app-side query embedding (2026-10-09 on);
         # text = the old managed-embedding index. Runs of the two are not comparable.
@@ -163,6 +165,9 @@ def _run_params(rerank_on: bool, fields: Tuple[str, ...], translate_on: bool) ->
         **_llm_facts(rerank_on, translate_on),
         # What was EMBEDDED (the enriched tags join the default set), not just requested
         "fields": ",".join(search_module.embedded_fields() or fields),
+        # 2026-11-20: "compact_v<N>" = the rows gte-small would cut embed their compact
+        # text (SEARCH_TEXT_COMPACT); runs on either side are not comparable
+        "search_text": search_module.search_text_mode(),
         # Scores on different sets are NOT comparable (keyword set ~0.95 raw, context ~0.3)
         "eval_set": Path(EVAL_QUERIES_JSON).name,
         # The guard's output side can clip, screen or cap what the model wrote, so the
@@ -385,7 +390,14 @@ def _evaluate(
     print(f"  outfits      = {cfg.OUTFIT_BUNDLES_ENABLED} (OUTFIT_BUNDLES_ENABLED; general "
           f"prompt {general})")
     print(f"  rerank_on    = {rerank_on}")
-    print(f"  fields       = {search_module.embedded_fields() or fields}")
+    print(f"  fields       = {search_module.embedded_fields() or fields} "
+          f"({search_module.search_text_mode()} text)")
+    if (getattr(cfg, "SEARCH_TEXT_COMPACT", False)
+            and (cfg.SEARCH_BACKEND or "local").lower() == "local"
+            and search_module.search_text_mode() == "default"):
+        print("  !! SEARCH_TEXT_COMPACT is on but this run embedded the DEFAULT text (another "
+              "field list, or the compact files do not fit: see the log): do not compare it "
+              "with a compact run")
     print(f"  saved to     = {out_path}")
     return out_path, summary
 

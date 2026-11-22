@@ -301,11 +301,21 @@ def test_non_ascii_and_whitespace_reach_the_llm_byte_identical():
 # loop, not a run_eval CSV (its controls equal run_eval's per query). Also live on the
 # app path (qwen3.8-27b, 24 queries, rerank on, 1 sample: after_summary.md). Not run:
 # the demo model gpt-oss-120b, Databricks Qwen3-Next, rerank-on eval sets.
+# 2026-11-19 (the Databricks App review, query bank tab 2): RECIPE_PROMPT only (was
+# c5e61e9c), a paragraph for a meal or goal that names no dish (up to three simple dishes'
+# ingredients, ONE flat list, never empty): "I need ingredients to prepare a quick, healthy
+# breakfast ..." and "Find groceries that I can use to prepare three different meals
+# without wasting ingredients" -- routed here by the 'ingredients' regex -- fell back on
+# the App (Qwen3-Next, "error LLMError"; an empty list is the likely cause, unconfirmed
+# without the App's log) and the second locally (qwen3.8-27b: an EMPTY list). Its
+# examples are out of sample (no breakfast, no "three meals"). The other six unchanged.
+# PROVENANCE: no eval-set number (recipe_eval / run_eval not run on it); the two review
+# queries re-run live, translator + app path, qwen3.8-27b: CLAUDE.md "Review fixes".
 _PROMPT_SHA256 = {
     "QUERY_EXPANSION_PROMPT": "d3e184c65da52bec5f01ce2c3dba40bcb75b09ec85a119122d0961a21f4ad4fd",
     "QUERY_EXPANSION_OUTFIT_PROMPT":
         "167a8685d6242b636e0f95dc1107ac66b413698052ecf3127792c03cca695460",
-    "RECIPE_PROMPT": "c5e61e9cc288e6fcca13cdfdefa8fd44289b92357bf1ec055d35a4b521db3ecd",
+    "RECIPE_PROMPT": "9b2ac554b759559970fab0228ed43e2e87d102ea324b7751f9c5cb3f0a7c940c",
     "HYDE_PROMPT": "9a707bf347824e8e4588f317667622e570d32359d2263f7494c1d1662678bed0",
     "HYBRID_PROMPT": "1f708ccf9f9439ff6d6485c6865f081faf678e4f86722896689cbd7052e07b57",
     "OUTFIT_PROMPT": "3feddcf43719fc460f1d54efa4ac224b7cd9dc91fe7cc2bac127ab124e963944",

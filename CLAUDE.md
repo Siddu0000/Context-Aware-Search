@@ -35,6 +35,21 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
   flight, memo restart), `test_databricks_bundle.py` (09's bundle, the 08 / 10 / 12 rows).
   New 2026-11-02, same runner, fakes only: `test_score_complex_queries.py` (the complex query bank
   loads through eval_page_types; its scorer's core / department splits) 4.
+  New 2026-11-19, same runner, fakes only: `test_exclusions.py` (the stated-exclusion reader and row
+  matcher; main.py's use of them is in test_ranking), `test_llm_retry.py` (the one retry on an
+  unusable translator / reranker reply, the tolerant reply shapes; Decisions: Review fixes).
+  2026-11-19 counts: guard 44/1, product_type 46/1, routing 22, ranking 77/1, eval_page_types 7,
+  api_filters 44, search_text 17/2, ui 74, llm_memo 32, determinism 18, databricks_bundle 59,
+  catalog_taxonomy 40/1, device_role 7/1, score_complex_queries 4, exclusions 5, llm_retry 15 (511
+  pass, 7 skips, 0 fail; no CAS_SLOW_TESTS run this round).
+  New 2026-11-20, same runner, fakes only: `test_compact_text.py` (the compaction rules, the
+  sidecar helpers, build -> encode -> load end to end on a fake embedder; Decisions: compact search
+  text). 2026-11-20 counts: guard 44/1, product_type 46/1, routing 22, ranking 78/1,
+  eval_page_types 7, api_filters 44, search_text 20/2, ui 74, llm_memo 32, determinism 19,
+  databricks_bundle 59, catalog_taxonomy 40/1, device_role 7/1, score_complex_queries 4,
+  exclusions 5, llm_retry 15, compact_text 38 (554 pass, 7 skips, 0 fail; the same with
+  SEARCH_TEXT_COMPACT=true in the environment for the index-touching suites; no
+  CAS_SLOW_TESTS run). `python -m eval.eval_page_types --selftest` 3.
   2026-10-27 counts (pass/skip; every skip an opt-in gate: CAS_SLOW_TESTS, CAS_AUDIT_VARIANTS_PY,
   CAS_TRACE_JSON): guard 44/1, product_type 46/1, routing 22, ranking 72/1, eval_page_types 7,
   api_filters 44, search_text 17/2, ui 74, llm_memo 32, determinism 18, databricks_bundle 53,
@@ -55,6 +70,10 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
   the app's memo nor the App's volume). Memo admin, counts only: `python -m app.llm_memo stats`,
   `... purge --query "..."` (or `--stage`, `--older-than-days`, `--expired`, `--to-limit`, `--all`).
 - Load data: `python -m scripts.load_amazon_data` (reads `data/meta_*` JSONL, writes `data/products_amazon.csv`)
+- Compact search text (LOCAL gte-small only, one-time; Decisions: compact search text): `python -m
+  scripts.compact_search_text build` (~11 min, no model encode; `--dry-run` prints the numbers
+  only), then `... encode` (re-encodes the ~121K changed rows only, resumable: ~10-16 h on CPU),
+  then `SEARCH_TEXT_COMPACT=true` and restart the API. Rebuild after any rule or catalog change.
 - Install: `pip install -r requirements.txt`
 
 ## Architecture (the pipeline, in order)
@@ -67,6 +86,11 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
    page (bundle None) since 2026-10-15. Since 2026-10-27 QUERY_EXPANSION has DEVICE and GIFT
    bullets (Decisions: QE and rubric amended), and a reply that is not a JSON object is
    `LLMError "Bad shape: reply is <type>"` (was an AttributeError), as at cross-sell and assistant.
+   Since 2026-11-19 an UNUSABLE reply (`llm_client.UnusableReply`: no text, invalid or truncated
+   JSON, the wrong shape, no phrase) is asked ONCE more -- a regex-routed bundle prompt's by the
+   general prompt, the general prompt's by itself + `_RETRY_NOTE` -- and phrase objects, one list
+   per dish or an "ingredients" list are read (`_coerce_terms` / `_reply_terms`); RECIPE_PROMPT
+   handles an ask naming no single dish (Decisions: Review fixes).
 2. `app/embeddings.py` — sentence-transformers (`thenlper/gte-small`) or OpenAI backend.
 3. `app/search.py` — scatter-gather retrieval across intents, dedup, NaN-safe. TWO
    backends behind one interface (`SEARCH_BACKEND`): `local` = gte-small + numpy
@@ -77,6 +101,9 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
    (case-folded) on both backends (Decisions: display casing). Since 2026-10-27 `load_index` also
    runs `catalog_taxonomy.annotate_catalog` on both backends (cached locally: Gotchas), and result
    rows (whole catalog rows) carry its columns.
+   Since 2026-11-20 the LOCAL backend can embed a compacted text for the rows gte-small would cut
+   (`SEARCH_TEXT_COMPACT`, `app/compact_text.py`; Decisions: compact search text);
+   `search_text_mode()` says which text is loaded ('default' / 'compact_v1').
 4. `app/reranker.py` — LLM reranks the top RERANK_INPUT_K (default 15) candidates with reasons,
    then blends rating. The prompt asks for min(top_k, candidates sent) entries: 15 in /search
    (top_k = max(RERANK_POOL_K, page size) -- it used to ask for "the TOP 30" of 15), 12 in
@@ -103,7 +130,10 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
    ` | role=device|accessory` (`_role_field`; main.py sets it on copies, never cached or served;
    ROW_TEXT_CASE 'original+fine_fields+role'); a blank field reads '' (`_val`: Databricks lines lose
    "None" / "nan", local lines byte-identical); a top-level JSON array reply IS the ranking
-   (Decisions: list-shaped replies).
+   (Decisions: list-shaped replies). Since 2026-11-19 an UNUSABLE ranking (empty, malformed,
+   invalid or truncated JSON, no valid idx) is asked ONCE more with `_RETRY_NOTE` ("every
+   candidate (all n)"); "index" / "id" for idx and a reply's one list of entry objects under
+   another key are read (Decisions: Review fixes).
 5. `app/scoring.py` — Bayesian rating shrinkage + blend into final score.
 6. `app/main.py` — paginates the reranked pool (`?page=`, `top_k`=page size); `GET /product?catalog_index=` powers the per-product detail page (product + its own recs).
    Since 2026-10-15: `page_size` is not in the page_cache key (pool_k is, so only top_k >
@@ -170,7 +200,15 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
   `requested_device(query)` -> `DeviceAsk(family, gift, accessory_asked)` over `FAMILIES`,
   `is_core` / `role` (CORE 0, UNKNOWN 1, ACCESSORY 2) / `addon_rank`, `constraint(ask)` (the
   code-written `[product_type]` text). Lexical, acted on only behind main.py's gate (Decisions:
-  device-role ranking).
+  device-role ranking). `FAMILY_QUERY` (2026-11-19): the generic words main.py's drift top-up
+  retrieves for a family ("smartphone"), never the shopper's.
+- `app/exclusions.py` (2026-11-19) — pure re, no I/O, no LLM: what the shopper said they do NOT
+  want. `requested(query)` -> frozenset of 58 closed-vocabulary keys (patterns, trims, cuts,
+  lengths, colours, materials) named after a negation cue ("isn't floral, isn't too short" ->
+  {floral, mini}; "no-show socks", "non-stick", "flower girl dress" -> none); `matches(row, keys)`
+  (title, `color` / `color_family`, `material`; Grocery rows never); `constraint(keys)` (the
+  code-written `[exclude]` text). main.py drops matching rows from the pool and sends the
+  constraint (Decisions: Review fixes).
 - `app/attributes.py` (2026-10-27) — the data-driven rail registry: `FACETS` (6 sections), `PARAMS`,
   `parse_filters`, `passes`, `facet_sections`, `brand_name`; labels from catalog_taxonomy, never
   seller text.
@@ -673,6 +711,117 @@ keyword matching. Stakeholders: Sai (dev),   Ganesan (LatentView lead).
   tokens, translation replayed): m03 valid, the same 15-row window, page 1 the same 12 cards as BEFORE
   in another order, page 2 identical, blind P@12 0.58 / 1.00 both. Residual: `[{"ranked": [...]}]` is
   not unwrapped. REVERT = git revert.
+- **Review fixes** (2026-11-19; the Databricks App review -- gte-large-en + Qwen3-Next through
+  Unity Gateway -- of the query bank in the "CAS Market Competitors" doc, tab 2, six highlighted
+  queries; PENDING Sai / Niharika confirmation). Ids as in that tab: F5 "Suggest something
+  comfortable for a long flight that still looks presentable when I arrive.", F7 "Find me a
+  summer dress that isn't floral, isn't too short, and is suitable for a brunch date.", G1 "I need
+  ingredients to prepare a quick, healthy breakfast that takes less than 15 minutes.", G5 "Find
+  groceries that I can use to prepare three different meals without wasting ingredients.", E2 "I
+  need a smartphone with a great camera and battery life for travelling, but I don't want a
+  flagship-priced phone.", E6 "Suggest smart home devices that can help me automate lighting and
+  control appliances using my phone." Four changes, each with tests:
+  (1) **One retry on an unusable reply** (`llm_client.UnusableReply`, an LLMError whose `code`
+  stays "LLMError": no text, invalid or truncated JSON, the wrong shape, no phrase or no valid
+  idx). Why: G1 / G5 showed "Query understanding is temporarily unavailable (error LLMError)", E2
+  "AI ranking is temporarily unavailable (error LLMError)": the model answered, unusably (G5
+  reproduced locally on qwen3.8-27b: RECIPE_PROMPT's empty list). Translator
+  (`_expand_with_retry`): a regex-routed bundle prompt's unusable reply asks the GENERAL prompt
+  once (it may keep the bundle or go flat), the general prompt's asks itself again +
+  `_RETRY_NOTE`; reranker: once more + its `_RETRY_NOTE` ("every candidate (all n)", poor ones
+  scored low, none left out). Never a third call; never retried: a provider error (the openai SDK
+  retries those twice), a reply the query guard screened out (an obeyed injection), a clean
+  `no_intent`, a partial ranking. Also read now: translator phrase objects ({"ingredient": ...}),
+  one list per dish, an "ingredients" / "items" list (`_coerce_terms`, 2 levels; screened like
+  any phrase); reranker "index" / "id" and a reply's ONE list of entry objects under another key.
+  Cost: an unusable reply costs 2 calls (was 1 call and a fallback page). Memo: the unusable reply
+  is never pinned and the retry's is, under the retry prompt's key, so after a restart a repeat
+  asks the first prompt again (1 call; check_determinism FAILs such a query: eval.md).
+  (2) **RECIPE_PROMPT amended** (c5e61e9c -> 9b2ac554, pinned in test_query_guard with a
+  provenance comment; the other nine prompts byte-identical; `prompts_sha` 0af957a6337a ->
+  1aee3c86f3aa): an ask naming no single dish (a meal, a goal, several meals) gets up to three
+  simple dishes' ingredients, each once, shared across meals; `search_terms` is always one flat
+  list, never empty for a food request. The regex still routes every "ingredients" ask there.
+  (3) **Stated exclusions** (`app/exclusions.py`; inside TYPE_AWARE_RANKING, flat pages only, no
+  knob of its own, nothing new in the page_cache key: the query and that knob decide it). Why: F7
+  served floral dresses -- an embedding cannot read "not" (the floral rows score highest) and the
+  translator's `other: not floral` reached only the 15 judged rows. main.py `_ranked_pool` drops
+  the rows `exclusions.matches` from the pool before any gate, window, page, facet or ad reads it
+  (`_without_excluded`, never emptying it; logs counts only) and sends the reranker a code-written
+  `[exclude]` constraint for what titles do not name; the response keeps the translator's.
+  (4) **Device-ask drift** (inside DEVICE_ROLE_RANKING). Why: E2's App page was camera batteries
+  and a tripod: on gte-large-en the pool drifted to camera gear (inferred from the screenshot;
+  the App's intents and pool were not recorded), so the gate would read a minority pool and judge
+  no phone. Now, when a strict majority of intents name the device and
+  at least half the raw head is Electronics (`_drifted_device_pool`; "dishwasher tablets" fails
+  it), a pool with fewer than `_DRIFT_MIN_CORE` (3) core rows gets ONE more `search_products`
+  call for `device_role.FAMILY_QUERY[family]` ("smartphone"), new rows merged in raw score order
+  (`_device_top_up`, log "topped up"), and with >= 3 core rows the gate acts on the drifted head
+  (log `drifted_pool`). Cost: one retrieval call, only on such a query.
+  Measured, live LOCALLY (qwen3.8-27b + gte-small, 1 sample each, memo off; not the App's
+  models; BEFORE = the same harness on the pre-fix tree the same day): G5 BEFORE fell back
+  (translate LLMError, the recipe prompt's empty list), AFTER a recipe bundle in 1 translate call,
+  22 results, no error; F7 pages 1-3: floral titles 7 -> 0, too-short 3 -> 0 (title regexes),
+  page 1 judged rows 8 -> 12, results 79 -> 43; G1 a recipe bundle both times, 6 -> 9
+  ingredient slots (its first AFTER try hit Groq's output-tokens-per-minute 429: a provider
+  error, correctly not retried; re-run alone); F5, E2 and E6 pages 1-3 and token counts
+  byte-identical before and after. E2's drift is the App's: gte-small retrieves phones for it
+  (the device ask acted the normal way both times), so (4) never acted live. Offline: test_exclusions 5,
+  test_llm_retry 15 (7 fail with the retries removed), test_ranking +5 (exclusions, drift top-up,
+  drifted gate, the "dishwasher tablets" collision). NOT measured: anything on Databricks (the
+  App needs 09 `stage()` -> `app_deploy()`), the App's log lines for G1 / G5 / E2 ("Translator
+  failed ..." / "Rerank failed ..." carry the exact failure), the demo model, any eval set
+  (recipe_eval on the new RECIPE_PROMPT included), the cross-vertical guard.
+  NOT changed (owner questions): F5 "better results in later pages" and E6 "keyword search does
+  as well": only RERANK_INPUT_K (15) rows are judged, so pages 2+ are raw embedding order (E6
+  locally: "Smart"-branded power supplies, USB hubs, cables and a UPS in the unjudged tail).
+  The same harness with `RERANK_INPUT_K=30` (env, 1 sample each): F5 page 1 judged 11 -> 12 of
+  12, page 2 0 -> 10; E6 page 1 judged 9 -> 12 (all > 40), the unjudged Smartparts power-supply
+  cord off page 1 and the Ring smart bulb, three Wi-Fi power strips and an Echo + smart-plug
+  bundle up from the unjudged page 2; tokens per search 4,918 -> 6,986 (F5), 4,877 -> 6,990 (E6),
+  +42%; the App's latency unmeasured. Owner call: `RERANK_INPUT_K: "30"` in
+  databricks/app_bundle/app.yaml (one env line; 15 was a Groq TPM workaround and owner call 8
+  kept it everywhere), and for E6's brand-token collisions hybrid (BM25 + dense) retrieval.
+  REVERT: (1) and (2) git revert (with their pins); (3) `TYPE_AWARE_RANKING=false`
+  (with the rest of that knob), else git revert; (4) `DEVICE_ROLE_RANKING=false`, else git
+  revert.
+- **Compact search text = `SEARCH_TEXT_COMPACT`** (2026-11-20, Sai: "minimize/summarize the text in
+  the title and description so we dont need to eliminate any data like imp text in description or
+  material and color ... a one time run for all the data"; default FALSE until encoded and
+  measured; `app/config.py`, read when the index loads; LOCAL backend only). Why: a product is ONE
+  string and ONE vector (no chunking); gte-small reads 128 tokens (126 of content) and cut 120,786
+  of 299,972 enriched rows (40.3%) at the TAIL -- the description, then the enriched tags -- so on
+  those rows its read kept the colour 62.8% of the time (of 48,623 real colour values), material 65.9%, occasion 34.4%, use_case
+  30.5%, dietary 76.0%, spec values 54.7% (build report, real tokenizer). Databricks' gte-large-en
+  reads 8,192 tokens: nothing is cut there. Mechanism: `app/compact_text.py`, extractive rules, no
+  LLM, deterministic, ONLY on over-budget rows (a row that fits keeps its text byte for byte and its
+  cached vector): the department once; the title minus parts that only repeat it; every tag that
+  says something new; spec values (the key where the value needs it, the key alone for a yes
+  flag); description sentences and bullets in order, minus seller boilerplate, repeated runs and
+  mostly-said segments, one clipped last segment. `scripts/compact_search_text.py build` writes
+  `data/products_enriched.compact_v1.csv` + `.meta.json` (gitignored; the catalog CSV, its hash and
+  the default cache are untouched); `encode` re-encodes the changed rows only into
+  `.cache/embeddings_<md5>_compact1.npy` + a stamp. Served only when the meta (version, csv hash,
+  rows, model, max_seq_length, fields), the sidecar md5, the stamp, every row's parent_asin and the
+  vector count fit; otherwise the default text with a log line; it never encodes at boot. An
+  ablation field list always gets the default text; BM25 keyword search is unaffected; a flip
+  in-process reloads (`search._ready`) and is in the page_cache and /product keys. Measured
+  (build, changed rows, today's read -> compact): colour 62.8 -> 99.9% of 48,623 real values (375
+  placeholder values such as "default" or "14" skipped on purpose), material 65.9 -> 100%,
+  occasion 34.4 -> 100%, use_case 30.5 -> 99.9%, dietary 76.0 -> 100%, spec values 54.7 -> 93.9%,
+  description words 58.4 -> 57.5% (mean share of distinct words); 0 rows over 126 tokens; mean 297
+  -> 123 tokens. Rules reviewed in five adversarial rounds (rule breakers, LLM judges on sampled
+  rows, a skeptic re-measuring every finding on >= 1,000 over-budget rows with the real tokenizer;
+  a fix applied only where that showed it gains more than it loses). Known residuals, each
+  measured as a net loss to "fix": role keys ('input voltage 240 volts') cost the description
+  tail 2-3 tokens; the 3-before / 8-after cut around boilerplate in a long run still takes some
+  facts; the clip trim leaves a few tokens unused; an 'N count' spec is skipped when N was said as
+  another quantity; tags and specs come before the description, so low-value spec values can push
+  out a description fact today's read had. NOT measured: any retrieval number (nothing encoded
+  yet), the cost of now always embedding the rule-made enrichment tags (some are wrong, e.g.
+  use_case 'audio' on a digitizer: those rules' owner call). Bump `COMPACT_VERSION` when an
+  encoded sidecar's rules change (it names the sidecar and the cache). REVERT =
+  `SEARCH_TEXT_COMPACT=false` (the default).
 - **Deferred from the Oct 27 round (D6; none done)**: a seat cap on the untyped window (live
   evidence: e12 "power bank for camping", "rugged waterproof" took 9 of 15 seats; e14 "gift for a
   photographer", strap rows took 12 of 15), ads applied after the cache lookup, `recommend` /
@@ -987,10 +1136,16 @@ reranker disagree.
   cover much of that. Precision@10 and MRR are the right headline metrics.
 - The old synthetic catalog had label leakage (description templated from the same attrs eval
   checked). The Amazon swap removed it. `--exclude-description` still available as a check.
-- A suspected cache-invalidation bug made all `compare_search_text` variants return identical
-  numbers on 2026-06-10. Cache key verified 2026-10-15: it includes the field list (since v2,
-  2026-06-03), so that is not why the variants were identical; cause still unknown, so keep
-  distrusting that run.
+- All `compare_search_text` variants returned identical numbers on 2026-06-10. CAUSE FOUND
+  2026-11-20 (not the cache key, which includes the field list): the script rebound
+  `search.DEFAULT_SEARCH_FIELDS` and called `evaluate()` without `fields`, but `evaluate()` and
+  `load_index()` bind that default at definition: on the base catalog (2026-06-10) all five
+  variants embedded the same 7 fields; on the enriched catalog the four ablations embedded the
+  7 base fields (the rebind made `effective_fields()` drop the enriched tags) and all_fields the
+  app's 12. Fixed: the fields are passed (`tests/test_search_text.py` fails on the old script);
+  retrieval only by default, `--translate` translates each query once and shares the intents
+  (its LLM cost printed once; the variant CSVs record 0 calls); SEARCH_TEXT_COMPACT is off for
+  the run; local backend only. That run measured nothing; the comparison has never run correctly.
 
 ## Gotchas / things that have bitten us
 - **A new JSON key in any prompt must be added to the schema-key marker in app/query_guard.py**,
@@ -1036,6 +1191,13 @@ reranker disagree.
   against `app.attributes`). English-only and hand-maintained like product_type; never act on
   `requested_device` outside main.py's gate ("dishwasher tablets" reads as a tablet ask, its pool
   does not).
+- **A new exclusion word goes in `app/exclusions.py` AND `tests/test_exclusions.py`** (READ,
+  NOT_READ and the row tables; 2026-11-19). English-only and hand-maintained like product_type. A
+  matching row leaves the WHOLE pool (every page, the facets, the ads), so a misread drops real
+  results: the reader acts only on its closed vocabulary right after a negation cue, Grocery rows
+  never match, and a pool whose every row matches is kept whole. A phrasing it must leave alone (a
+  wanted free-from attribute or a product name: "no-show socks", "non-stick pan", "Not Your
+  Daughter's Jeans", "dress with no sleeves") goes in NOT_READ.
 - **Variant collapse and the rail are hand-kept English word lists** (2026-10-19):
   `search.style_key` strips English colour / size / pack words and drops 1-2 digit numbers, hence
   Fashion-only collapse (elsewhere those numbers name models); main.py `_FABRICS` (28 fabrics) is
@@ -1317,6 +1479,17 @@ reranker disagree.
     principal writes, the assistant stage out, a max age on the App? It pins the first sample, good
     or bad: a default age limit, or pin only full rankings? After the 60 s single-flight bound later
     requests for a stuck key each run their own pipeline (duplicate LLM cost): OK?
+  Raised 2026-11-19 (Decisions: Review fixes):
+  * F5 / E6: `RERANK_INPUT_K` 30 on the App (+42% tokens per first search, latency unmeasured;
+    page 1 fully judged on both, F5's page 2 judged)? Hybrid (BM25 + dense) retrieval for
+    brand-token collisions ("Smart"-named power supplies, hubs and cables on E6)?
+  * The stated-exclusion drop: rows naming an excluded thing leave the whole pool, not only page
+    1 (F7: 79 -> 43 results) -- OK, or demote them after the tail instead?
+  * Retry vs determinism: a request whose FIRST reply is unusable is never fully pinned (each
+    cold run after a restart asks again, 1 call): pin the retry's reply under the first key too?
+  * G5-style asks route to RECIPE_PROMPT on the word "ingredients" and came back as one 22-slot
+    shopping list for three meals ("tortillas" and "flour tortillas" both): cap the slots, or
+    group them by dish?
 
 ## Positioning & priorities (Niharika call, 2026-08-13) — READ BEFORE PLANNING
 - **CAS is NOT a standalone product.** It is an addition that sits INSIDE the

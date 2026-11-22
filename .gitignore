@@ -9,6 +9,10 @@
 # are NOT matched and stay tracked.
 data/*.csv
 data/*.jsonl
+# the compact-text sidecar's metadata (scripts/compact_search_text.py): belongs to its CSV
+data/*.compact_v*.meta.json
+# a stopped compact build leaves <sidecar>.tmp (catalog text) next to it
+data/*.tmp
 
 .cache/
 

@@ -93,7 +93,8 @@ MODES = ("on", "off", "both")
 _ABSENT = object()
 
 COLUMNS = [
-    "arm", "knob", "outfit_bundles", "row_text_case", "rejects_after_tail", "variant_collapse",
+    "arm", "knob", "outfit_bundles", "row_text_case", "search_text", "rejects_after_tail",
+    "variant_collapse",
     "device_role_ranking", "prompts_sha", "repeat", "group", "query", "requested",
     "bundle_expected", "bundle_type", "bundle_ok", "no_match", "n_results", "types_page",
     "mismatch_top4", "mismatch_top12", "first_mismatch", "unknown_top12",
@@ -536,6 +537,16 @@ def _row_text_case() -> str:
     return getattr(search_module, "ROW_TEXT_CASE", "absent")
 
 
+def _search_text() -> str:
+    """Which product text the vectors embed: 'default' or 'compact_v<N>'
+    (SEARCH_TEXT_COMPACT, 2026-11-20); "absent" in an older tree. Read after the search,
+    so it names the index that search loaded."""
+    import app.search as search_module
+
+    mode = getattr(search_module, "search_text_mode", None)
+    return mode() if callable(mode) else "absent"
+
+
 def _prompts_sha() -> str:
     """run_eval's digest of every prompt (the QE and rerank prompts changed 2026-10-19),
     or "absent" in a tree from before it existed (the selftest travels to worktrees)."""
@@ -570,6 +581,8 @@ def _run_one(main, spec, arm, knob, rep, kwargs, memo, relevant) -> dict:
         # The case of the row text the reranker reads; "absent" = code from before
         # 2026-10-15, whose local rows were lowercased (app/search.py ROW_TEXT_CASE)
         "row_text_case": _row_text_case(),
+        # 2026-11-20: SEARCH_TEXT_COMPACT re-embeds ~40% of local rows from compact text
+        "search_text": _search_text(),
         # Display knobs of 2026-10-19 (owner calls 1 and 2): both change page 1 as
         # served -- the band order and the cards (total_results counts cards) -- so an
         # A/B of either, or a before/after pair, must say which page it scored
@@ -800,6 +813,8 @@ def summarise(rows, specs, rerank, out_path) -> dict:
           + ",".join(sorted({str(r.get("outfit_bundles", "absent")) for r in rows})))
     print("  row text     = "
           + ",".join(sorted({str(r.get("row_text_case", "absent")) for r in rows})))
+    print("  search text  = "
+          + ",".join(sorted({str(r.get("search_text", "absent")) for r in rows})))
     print("  display      = " + "; ".join(
         f"{name}=" + ",".join(sorted({str(r.get(column, "absent")) for r in rows}))
         for name, column in (("REJECTS_AFTER_TAIL", "rejects_after_tail"),
@@ -1126,6 +1141,7 @@ def _selftest_run():
     assert len(written) == n_runs and list(written[0]) == COLUMNS
     # provenance columns: what the served page depended on beyond the arm's knob
     assert {r["row_text_case"] for r in written} == {_row_text_case()}
+    assert {r["search_text"] for r in written} == {_search_text()}
     assert {r["rejects_after_tail"] for r in written} ==         {str(getattr(cfg, "REJECTS_AFTER_TAIL", "absent"))}
     assert {r["variant_collapse"] for r in written} ==         {str(getattr(cfg, "VARIANT_COLLAPSE", "absent"))}
     assert {r["prompts_sha"] for r in written} == {_prompts_sha()}

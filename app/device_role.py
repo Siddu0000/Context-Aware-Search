@@ -45,6 +45,15 @@ from typing import NamedTuple, Optional
 
 FAMILIES = ("watch", "laptop", "headphones", "phone", "tablet", "camera", "speaker")
 
+# What main.py retrieves when a device ask's pool DRIFTED to look-alikes (2026-11-19: a
+# smartphone ask with camera and battery words retrieved camera batteries on gte-large-en):
+# the device itself in plain generic words -- never a brand, a model or the shopper's text.
+FAMILY_QUERY = {
+    "watch": "wrist watch", "laptop": "laptop computer", "headphones": "headphones",
+    "phone": "smartphone", "tablet": "tablet computer", "camera": "digital camera",
+    "speaker": "portable speaker",
+}
+
 # Role tiers of a row under a device ask, best first (main.py partitions on them)
 CORE, UNKNOWN, ACCESSORY = 0, 1, 2
 ROLE_NAMES = {CORE: "core", UNKNOWN: "unknown", ACCESSORY: "accessory"}

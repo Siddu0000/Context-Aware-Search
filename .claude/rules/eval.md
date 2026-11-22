@@ -96,6 +96,30 @@ Gemini free tier is ~15 RPM and will throttle. Guidance:
   (+10%; Electronics battery). run_eval sees the QE and rubric edits; the device ask, the role
   fields and the gift reserve (DEVICE_ROLE_RANKING, in the page_cache key) act in main.py, so only
   eval_page_types and the batteries see them.
+- **Nor across 2026-11-19** (CLAUDE.md, Decisions: Review fixes): RECIPE_PROMPT c5e61e9c ->
+  9b2ac554 (a paragraph for an ask that names no single dish; the other nine prompts
+  byte-identical; `prompts_sha` 0af957a6337a -> 1aee3c86f3aa), so recipe-completeness and
+  recipe-routed numbers move with the prompt. And an UNUSABLE reply (`llm_client.UnusableReply`:
+  an empty or malformed phrase list or ranking, invalid or truncated JSON, no text) is now asked
+  ONCE more at translate and rerank before it falls back: `fell_back` counts what still fails
+  after the second call, so fall-back rates on either side of that date are different measures,
+  and such a query costs 2 calls (`llm_calls`). run_eval sees both; the stated exclusions and the
+  device-drift top-up act in main.py, so only eval_page_types and the batteries see them.
+  check_determinism with the memo on: a query whose FIRST reply is unusable is never fully
+  pinned (that reply is never stored; the retry's is, under the retry prompt's key), so every
+  cold run asks the first prompt again -- `calls_after_run1` 1 per run, a FAIL by the checker's
+  rule, with the same page unless the model's first reply turns usable (then that one is pinned).
+- **Nor across 2026-11-20 when SEARCH_TEXT_COMPACT is on** (local backend only; CLAUDE.md,
+  Decisions: compact search text): ~40% of the local vectors are re-encoded from a compacted
+  text (the rows gte-small used to cut at 128 tokens), so retrieval-only and full-pipeline
+  numbers move with it. Read run_eval's `search_text` (MLflow param, when MLFLOW_ENABLED) or
+  the summary's "(default text)" / "(compact_v1 text)" tag (its CSV does not carry it);
+  eval_page_types, and databricks/10 through it, writes a `search_text` CSV column and a
+  "search text" summary line; check_determinism snapshots and the batteries outside the repo
+  record nothing, so state the knob next to their numbers. An
+  ablation (`--exclude-description`, another field list) always gets the default text, and
+  compare_search_text / compare_embeddings turn the knob off for their run, so their arms
+  embed one kind of text. Databricks numbers are unaffected (gte-large-en reads 8,192 tokens).
 - **The LLM reply memo must be OFF in every eval** (LLM_MEMO, 2026-10-27, default ON in the app): a
   memo hit replays the first accepted reply with 0 provider calls, so a repeat, a model / prompt /
   temperature comparison or a stability run would report one pinned sample as the model's behaviour.
@@ -117,9 +141,16 @@ Gemini free tier is ~15 RPM and will throttle. Guidance:
 - `run_eval --no-translate` is the NO-LLM CONTROL. Run it alongside any model
   comparison — without it you cannot tell whether the LLM added anything.
 - `compare_search_text` returned identical numbers across all field variants on
-  2026-06-10. The embedding cache key DOES include the field set (`app/search.py`
-  `_cache_key`, since v2 2026-06-03; verified 2026-10-15), so that was not the cause;
-  the cause is unknown, so don't trust that comparison until it is re-run.
+  2026-06-10. Cause (found 2026-11-20): it rebound `search.DEFAULT_SEARCH_FIELDS` and
+  called `evaluate()` without `fields`, whose default (and load_index's) is bound at
+  definition: on the base catalog all five variants embedded the same 7 fields (on the
+  enriched catalog the four ablations embedded those 7 and all_fields the app's 12). Fixed
+  (the fields are passed); that run is void. A re-run encodes the whole catalog once per
+  non-default variant on CPU (hours each on the enriched catalog). It is retrieval only by
+  default (no LLM); `--translate` translates each query ONCE and gives every variant the same
+  intents (the console line carries that cost; the variant CSVs record 0 LLM calls); `--only`
+  picks variants. SEARCH_TEXT_COMPACT is off for the run, as in compare_embeddings; both are
+  local-backend only (on Databricks every arm reads the one index).
 - Old synthetic catalog had label leakage; the Amazon swap fixed it. The
   `--exclude-description` flag remains as a leakage probe.
 

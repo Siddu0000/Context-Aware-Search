@@ -81,6 +81,15 @@ TRANSLATOR_MODE = os.getenv("TRANSLATOR_MODE", "query_expansion").lower()
 # gte-small won both eval rounds; switching invalidates the on-disk embedding cache
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "thenlper/gte-small")
 
+# Local backend: embed the COMPACT text of the rows the embedder would cut (2026-11-20;
+# app/compact_text.py, built once by scripts/compact_search_text.py build + encode). The
+# local embedder reads 128 tokens and 40% of the enriched catalog was longer, so the tail
+# -- description, then colour / material / use_case / dietary / specs -- was cut. Read
+# at load_index; served only when the sidecar matches the catalog and embedder AND its
+# vectors exist (else a warning and the default text). Off = the default text, byte
+# for byte. Databricks is unaffected (gte-large-en reads 8,192 tokens).
+SEARCH_TEXT_COMPACT = os.getenv("SEARCH_TEXT_COMPACT", "false").lower() in {"1", "true", "yes"}
+
 NUM_INTENTS = int(os.getenv("NUM_INTENTS", "3"))
 
 # Deterministic prompt-injection guard (app/query_guard.py). The prompts' "the query

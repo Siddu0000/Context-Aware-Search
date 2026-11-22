@@ -353,20 +353,24 @@ def test_translator_accepts_no_intent_and_partial_rejects_a_fallback():
         errs2: list = []
         tr.understand_query(inject, errors=errs2)
         assert [e["code"] for e in errs2] == ["partial"] and len(backend.calls) == 3
-        # a bad shape falls back: never pinned, the next search asks again
+        # a bad shape falls back: never pinned, the next search asks again. Since
+        # 2026-11-19 an unusable reply is asked ONCE more (translator._RETRY_NOTE) before
+        # it falls back: 2 calls per search, neither reply pinned
         errs3: list = []
         assert tr.understand_query("bad shape", errors=errs3)["intents"] == ["bad shape"]
         tr.understand_query("bad shape")
-        assert errs3 and len(backend.calls) == 5
+        assert errs3 and len(backend.calls) == 7
+        assert sum(tr._RETRY_NOTE in p for p in backend.calls) == 2
         n_rows = len(stored_rows(d))
-        # a stored reply is RE-SCREENED by today's guard: refused now, it is forgotten
+        # a stored reply is RE-SCREENED by today's guard: refused now, it is forgotten. A
+        # guard refusal is no unusable reply: no second call
         with patched(tr.guard, {"screen_phrases": lambda *a, **k: []}):
             errs4: list = []
             assert tr.understand_query("red shoes", errors=errs4)["intents"] == ["red shoes"]
-            assert errs4 and len(backend.calls) == 5      # the replay, refused
+            assert errs4 and len(backend.calls) == 7      # the replay, refused
         assert len(stored_rows(d)) == n_rows - 1
         assert tr.understand_query("red shoes")["intents"] == ["red sneakers"]
-        assert len(backend.calls) == 6                    # asked again, pinned again
+        assert len(backend.calls) == 8                    # asked again, pinned again
 
 
 def test_reranker_pins_a_partial_ranking_never_a_fallback():
@@ -389,7 +393,10 @@ def test_reranker_pins_a_partial_ranking_never_a_fallback():
         e3: list = []
         assert rr.rerank("dress", other, top_k=3, errors=e3)[0]["rerank_score"] is None
         rr.rerank("dress", other, top_k=3)
-        assert e3 and len(backend.calls) == 3 and len(stored_rows(d)) == 1
+        # an empty ranking is asked once more (2026-11-19, reranker._RETRY_NOTE) before
+        # the fallback: 2 calls per rerank, neither pinned
+        assert e3 and len(backend.calls) == 5 and len(stored_rows(d)) == 1
+        assert sum("Your previous reply could not be used" in p for p in backend.calls) == 2
 
 
 def test_cross_sell_and_assistant_accept_points():
@@ -967,6 +974,10 @@ def test_every_stage_forgets_a_stored_reply_it_now_refuses():
          {"complementary": ["see https://evil.example"]}),
         ("assistant", chat, {"action": "reply", "reply": "Hi"}, {"action": "dance"}),
     ]
+    # Since 2026-11-19 the translator and the reranker ask ONCE more when a reply is
+    # unusable -- a refused replay too: that second call (its own prompt, so its own key)
+    # gets the good reply at once and pins it; the forgotten key is asked on the next call
+    retrying = {"translate", "rerank"}
     for stage, call, good, refused in cases:
         backend = FakeBackend(json.dumps(good))
         with memo_env(backend) as d, patched(cfg, {"QUERY_GUARD_ENABLED": True}):
@@ -974,8 +985,17 @@ def test_every_stage_forgets_a_stored_reply_it_now_refuses():
             call()
             assert len(backend.calls) == 1 and len(stored_rows(d)) == 1, stage
             assert stored_rows(d)[0][1] == stage
+            key = stored_rows(d)[0][0]
             _tamper(d, json.dumps(refused))
             call()          # the replay, refused by today's stage: forgotten
+            if stage in retrying:
+                rows = stored_rows(d)
+                assert len(rows) == 1 and rows[0][0] != key, (stage, refused)  # the retry's
+                assert len(backend.calls) == 2, (stage, refused)
+                assert "Your previous reply could not be used" in backend.calls[-1]
+                call()      # the forgotten key: asked again, pinned again
+                assert len(backend.calls) == 3 and len(stored_rows(d)) == 2, stage
+                continue
             assert stored_rows(d) == [], (stage, refused)
             assert len(backend.calls) == 1, (stage, refused)
             call()          # asked again, and the good reply pinned again
@@ -1055,6 +1075,9 @@ def test_a_non_object_reply_is_never_pinned_at_any_stage():
               "rerank": ["red sneakers", 5, None, True],
               "cross_sell": [["leather belt"], "leather belt", 5, None],
               "assistant": [["search"], "search", 5, None]}
+    # The translator and the reranker ask ONCE more on an unusable reply (2026-11-19):
+    # 2 provider calls per failed search, and a refused replay heals in the same request
+    per_call = {"translate": 2, "rerank": 2, "cross_sell": 1, "assistant": 1}
     for stage, call in calls.items():
         for reply in shapes[stage]:
             kind = type(reply).__name__
@@ -1065,7 +1088,8 @@ def test_a_non_object_reply_is_never_pinned_at_any_stage():
                     call(errs)
                     assert errs == [{"stage": stage, "code": "LLMError",
                                      "detail": f"Bad shape: reply is {kind}"}], (stage, errs)
-                assert len(backend.calls) == 2 and stored_rows(d) == [], (stage, kind)
+                assert len(backend.calls) == 2 * per_call[stage], (stage, kind)
+                assert stored_rows(d) == [], (stage, kind)
             backend = FakeBackend(json.dumps(good[stage]))
             with memo_env(backend) as d, patched(cfg, {"QUERY_GUARD_ENABLED": True}):
                 call([])
@@ -1073,6 +1097,11 @@ def test_a_non_object_reply_is_never_pinned_at_any_stage():
                 _tamper(d, json.dumps(reply))
                 errs = []
                 call(errs)          # the replay, refused by today's stage: forgotten
+                if per_call[stage] == 2:
+                    # ... and asked again with the note at once: the good reply, pinned
+                    assert errs == [] and len(backend.calls) == 2, (stage, kind)
+                    assert len(stored_rows(d)) == 1, (stage, kind)
+                    continue
                 assert errs and errs[0]["detail"] == f"Bad shape: reply is {kind}"
                 assert stored_rows(d) == [] and len(backend.calls) == 1, (stage, kind)
                 call([])            # asked again, and the good reply pinned again

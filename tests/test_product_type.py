@@ -1646,20 +1646,22 @@ def test_search_text_and_cache_key_unchanged_by_annotate():
         assert S._cache_key(fields_plain) == S._cache_key(fields_typed)
 
 
-_INDEX_STATE = ("_df", "_embeddings", "_loaded_backend", "_loaded_fields", "_embedded_fields")
+_INDEX_STATE = ("_df", "_embeddings", "_loaded_backend", "_loaded_fields", "_embedded_fields",
+                "_loaded_compact", "_search_text_mode", "_csv_hash_of")
 
 
 @contextlib.contextmanager
 def _isolated_index():
     """Run a load_index/search test without disturbing a real loaded index."""
     saved = {k: getattr(S, k) for k in _INDEX_STATE}
-    old_backend = cfg.SEARCH_BACKEND
+    old_backend, old_compact = cfg.SEARCH_BACKEND, cfg.SEARCH_TEXT_COMPACT
+    cfg.SEARCH_TEXT_COMPACT, S._loaded_compact = False, False   # .env must not decide it
     try:
         yield
     finally:
         for k, v in saved.items():
             setattr(S, k, v)
-        cfg.SEARCH_BACKEND = old_backend
+        cfg.SEARCH_BACKEND, cfg.SEARCH_TEXT_COMPACT = old_backend, old_compact
 
 
 def test_load_index_local_annotates_before_lowercasing():
