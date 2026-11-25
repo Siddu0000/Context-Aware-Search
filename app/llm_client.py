@@ -111,6 +111,16 @@ class LLMError(Exception):
     """Raised when an LLM call fails after all retries / fallbacks."""
 
 
+class UnusableReply(LLMError):
+    """The model ANSWERED, but nothing in the reply can be used: no text, invalid or
+    truncated JSON, the wrong shape, an empty list. A stage may ask once more (the
+    translator and the reranker do: 2026-11-19); an outage (an HTTP error) and a reply the
+    query guard screened out are not this. `code` keeps errors[].code what it was for
+    these failures ("LLMError"): the UI, the evals' fell_back labels and the tests read it."""
+
+    code = "LLMError"
+
+
 def error_code(exc: Exception) -> str:
     """Short code for an exception: explicit code, else HTTP status, else class name."""
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
@@ -377,7 +387,7 @@ class _OpenAIBackend:
         choice = resp.choices[0]
         # A truncated reply is unparseable JSON; say so instead of "invalid JSON"
         if getattr(choice, "finish_reason", None) == "length":
-            raise LLMError(f"{self.model} reply truncated (hit max_tokens).")
+            raise UnusableReply(f"{self.model} reply truncated (hit max_tokens).")
         return _message_text(choice.message.content)
 
 
@@ -573,7 +583,7 @@ def _reply_text(raw) -> str:
     if not isinstance(raw, str):
         raw = _message_text(raw)
     if not raw.strip():
-        raise LLMError("LLM returned no text content (reasoning-only reply?)")
+        raise UnusableReply("LLM returned no text content (reasoning-only reply?)")
     return raw
 
 
@@ -581,7 +591,7 @@ def _parse_reply(raw: str):
     try:
         return _parse_json_reply(raw)
     except json.JSONDecodeError as e:
-        raise LLMError(f"LLM returned invalid JSON: {raw!r}") from e
+        raise UnusableReply(f"LLM returned invalid JSON: {raw!r}") from e
 
 
 def generate_json(prompt: str, temperature: float = 0.2, *, memo: bool = True,

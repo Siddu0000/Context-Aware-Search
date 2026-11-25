@@ -9,7 +9,7 @@ from app import query_guard
 from app.page_cache import canonical_query
 from app.config import LLM_PROVIDER, RATING_BOOST_WEIGHT, RERANK_INPUT_K
 from app.llm_client import (
-    LLMError, accept_reply, error_code, generate_json, memo_stage, reject_reply,
+    LLMError, UnusableReply, accept_reply, error_code, generate_json, memo_stage, reject_reply,
 )
 from app.product_type import FASHION_TYPES, TYPE_COLUMN
 from app.scoring import bayesian_rating, blend_score, rating_quality_tag
@@ -105,6 +105,22 @@ JSON format:
   ]
 }}
 """
+
+
+# ONE more call when the model answered but its ranking cannot be used (UnusableReply: an
+# empty or malformed list, invalid or truncated JSON). 2026-11-19, the Databricks App
+# review: "I need a smartphone with a great camera and battery life for travelling, but I
+# don't want a flagship-priced phone" showed "AI ranking is temporarily unavailable (error
+# LLMError)" over a window of camera batteries and tripods -- a window where nothing fits,
+# where a model is likeliest to rank nothing at all. The note asks for every candidate, the
+# poor ones scored low (another prompt, so a seeded model does not repeat itself). Not
+# retried: a provider error (the openai SDK already retries those twice).
+_RETRY_NOTE = (
+    "\n\nYour previous reply could not be used. Reply again with ONLY the JSON object in "
+    'the format above: one entry in "ranked" for EVERY candidate (all {n}), each with its '
+    'integer "idx" and "score"; a candidate that fits nothing gets a low score, never '
+    "left out."
+)
 
 
 # The transient row key main.py sets on COPIES of the rerank window under a device ask
@@ -241,6 +257,29 @@ def _entry_idx(value, n: int) -> int | None:
     return idx if 0 <= idx < n else None
 
 
+# An entry's candidate number under another key: "index" / "id" for the prompt's "idx"
+# (2026-11-19). The value is read like idx -- 0-based, in range -- never guessed.
+_IDX_KEYS = ("idx", "index", "id")
+
+
+def _raw_idx(entry: dict):
+    return next((entry[k] for k in _IDX_KEYS if entry.get(k) is not None), None)
+
+
+def _ranked_list(parsed):
+    """The ranking a reply holds: its 'ranked' list; a top-level JSON array (qwen3.8-27b,
+    2026-10-30); or, with no 'ranked' key, the reply's ONE list of entry objects under
+    another name ("rankings", "results": 2026-11-19). Anything else is returned as is for
+    the bad-shape error (a missing list reads as an empty one, as before)."""
+    if not isinstance(parsed, dict):
+        return parsed
+    if "ranked" in parsed:
+        return parsed["ranked"]
+    lists = [v for v in parsed.values()
+             if isinstance(v, list) and v and all(isinstance(e, dict) for e in v)]
+    return lists[0] if len(lists) == 1 else []
+
+
 def _parse_ranked(ranked: list, n: int) -> tuple[list[tuple[int, int, str]], int]:
     """Validate each entry on its own: returns ([(idx, score, reason)], dropped count).
 
@@ -251,7 +290,7 @@ def _parse_ranked(ranked: list, n: int) -> tuple[list[tuple[int, int, str]], int
     for entry in ranked:
         if not isinstance(entry, dict):
             continue
-        idx = _entry_idx(entry.get("idx"), n)
+        idx = _entry_idx(_raw_idx(entry), n)
         score = _as_number(entry.get("score"))
         # First wins on a repeated idx: padding a short list must not duplicate a product
         if idx is None or idx in seen or score is None:
@@ -301,28 +340,41 @@ def rerank(
         )
 
     prompt = render(query)
+    # The LLM memo keys this window on the CANONICAL query (the model still gets the
+    # shopper's text): a case or spacing variant, one page_cache entry within a
+    # process, gets the same ranking after a restart as well
+    key_text = render(canonical_query(query))
 
-    try:
-        # The LLM memo keys this window on the CANONICAL query (the model still gets the
-        # shopper's text): a case or spacing variant, one page_cache entry within a
-        # process, gets the same ranking after a restart as well
-        with memo_stage("rerank", key_text=render(canonical_query(query))):
-            parsed = generate_json(prompt, temperature=0.1)
+    def attempt(note: str = ""):
+        """One call: (ranked list, [(idx, score, reason)], dropped), else UnusableReply."""
+        with memo_stage("rerank", key_text=key_text + note):
+            parsed = generate_json(prompt + note, temperature=0.1)
         # A bare JSON array IS the ranking: qwen3.8-27b sent one twice for "cloths for a
         # beach wedding in summer" (live, 2026-10-30), .get() raised AttributeError and
         # the page fell back to embedding order, two bridal gowns on page 1. Unambiguous:
         # its entries go through _parse_ranked exactly as a 'ranked' array's do. Any other
         # non-object reply (a string, number, bool or null) is the bad-shape error below
-        ranked = parsed.get("ranked", []) if isinstance(parsed, dict) else parsed
+        ranked = _ranked_list(parsed)
         if not isinstance(ranked, list) or not ranked:
             # The type only: the reply's reasons can echo the query (safety.md)
             field = "'ranked'" if isinstance(parsed, dict) else "reply"
-            raise LLMError(f"Bad shape: {field} is {type(ranked).__name__}"
-                           + (" (empty)" if isinstance(ranked, list) else ""))
-
+            raise UnusableReply(f"Bad shape: {field} is {type(ranked).__name__}"
+                                + (" (empty)" if isinstance(ranked, list) else ""))
         entries, dropped = _parse_ranked(ranked, len(candidates))
         if not entries:
-            raise LLMError("Reranker returned no valid indices.")
+            raise UnusableReply("Reranker returned no valid indices.")
+        return ranked, entries, dropped
+
+    try:
+        try:
+            ranked, entries, dropped = attempt()
+        except UnusableReply as e:
+            # The model answered, unusably: ask ONCE more, with the fix spelled out
+            # (_RETRY_NOTE). The reply is never pinned; a replayed one is forgotten
+            reject_reply("rerank")
+            logger.info("Rerank: reply unusable (%s); asking once more.",
+                        query_guard.error_detail(e))
+            ranked, entries, dropped = attempt(_RETRY_NOTE.format(n=len(candidates)))
         # The ranking is USED from here on, a partial one too (main.py caches it): the
         # LLM memo may replay it for the byte-identical window
         accept_reply("rerank", query)

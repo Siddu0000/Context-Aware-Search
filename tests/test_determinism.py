@@ -235,7 +235,8 @@ def det_env(memo=False, memo_dir=None):
     """The real pipeline over frame(), the LLM and the embedder faked; caches cold."""
     df = frame()
     llm = FakeLLM()
-    state = ("_df", "_embeddings", "_loaded_backend", "_loaded_fields", "_embedded_fields")
+    state = ("_df", "_embeddings", "_loaded_backend", "_loaded_fields", "_embedded_fields",
+             "_loaded_compact", "_search_text_mode", "_csv_hash_of")
     saved = {k: getattr(S, k) for k in state}
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         try:
@@ -243,6 +244,9 @@ def det_env(memo=False, memo_dir=None):
             S._embeddings = fake_embed((df["Product_title"] + " " + df["categ_lvl2_name"]).tolist())
             S._loaded_backend, S._loaded_fields = "local", S.DEFAULT_SEARCH_FIELDS
             S._embedded_fields = ("Product_title", "categ_lvl2_name")
+            # the fake index is the default text: SEARCH_TEXT_COMPACT=true in .env must not
+            # make search._ready() load the real catalog over it
+            S._loaded_compact, S._search_text_mode, S._csv_hash_of = False, "default", None
             ads = {AD_ASIN: {"sponsor": "Acme Ads", "bid": 1.0},
                    WINDER_AD_ASIN: {"sponsor": "Quay Ads", "bid": 2.0}}
             # The knobs behind what these tests check, at their shipped defaults: .env must
@@ -253,7 +257,7 @@ def det_env(memo=False, memo_dir=None):
                                "SPONSORED_ENABLED": True, "VARIANT_COLLAPSE": True,
                                "TYPE_AWARE_RANKING": True, "DEVICE_ROLE_RANKING": True,
                                "SPONSORED_MIN_RERANK_SCORE": 40.0,
-                               "RECOMMEND_USE_LLM": True}), \
+                               "RECOMMEND_USE_LLM": True, "SEARCH_TEXT_COMPACT": False}), \
                     patched(S, {"embed_text": fake_embed}), \
                     patched(main, {"MIN_RESULT_RELEVANCE": 0.0,
                                    "sponsored_map": lambda: dict(ads)}), \
@@ -501,6 +505,28 @@ def _flaky_catalog():
     search.calls, search.down = calls, down
     with patched(recs, {"search_products": search}):
         yield search
+
+
+def test_product_recommendations_follow_the_compact_text_flag():
+    """SEARCH_TEXT_COMPACT (2026-11-20): upsell and cross-sell grounding read the vectors,
+    so flipping the knob in-process never serves the other text's picks from the cache."""
+    builds = []
+    real = main.build_recommendations
+
+    def counting(*a, **kw):
+        builds.append(cfg.SEARCH_TEXT_COMPACT)
+        return real(*a, **kw)
+
+    with det_env() as llm, patched(main, {"build_recommendations": counting}):
+        main.product(catalog_index=0, query="summer dress", recommend=True)
+        assert llm.count("cross_sell") == 1 and len(page_cache._recs) == 1
+        # a notebook flip; search._ready() would reload, the fake index stands in for it
+        with patched(cfg, {"SEARCH_TEXT_COMPACT": True}), patched(S, {"_loaded_compact": True}):
+            main.product(catalog_index=0, query="summer dress", recommend=True)
+            assert builds == [False, True], builds
+            assert llm.count("cross_sell") == 2 and len(page_cache._recs) == 2
+        main.product(catalog_index=0, query="summer dress", recommend=True)   # back: cached
+        assert builds == [False, True] and llm.count("cross_sell") == 2
 
 
 def test_a_failed_catalog_search_keeps_the_recommendations_out_of_both_caches():

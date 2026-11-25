@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 import app.config as cfg
-from app import catalog_taxonomy, product_type
+from app import catalog_taxonomy, compact_text, product_type
 from app.config import CACHE_DIR, PRODUCTS_CSV
 from app.embeddings import embed_text, get_default_embedder, search_vectors
 
@@ -61,6 +61,10 @@ _embeddings: Optional[np.ndarray] = None
 _loaded_backend: Optional[str] = None
 _loaded_fields: Tuple[str, ...] = ()
 _embedded_fields: Tuple[str, ...] = ()
+# "default", or "compact_v<N>" when SEARCH_TEXT_COMPACT served the compact text
+_search_text_mode: str = "default"
+# SEARCH_TEXT_COMPACT as load_index read it: a flip in-process reloads (evals mutate cfg)
+_loaded_compact: bool = False
 # (frame, md5[:12]) of the CSV a local load_index read that frame from, when the hash is
 # known to name the bytes read. catalog_fingerprint() returns it: the API's start-up
 # config line hashed the 228 MB file a second time (~0.75-0.8 s per start, 2026-10-30
@@ -82,6 +86,72 @@ def effective_fields(columns, fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS) -
 def embedded_fields() -> Tuple[str, ...]:
     """What the loaded index embedded (for eval provenance); () before load."""
     return _embedded_fields
+
+
+def search_text_mode() -> str:
+    """Which text the loaded local vectors embed (eval provenance): "default", or
+    "compact_v<N>" (SEARCH_TEXT_COMPACT, app/compact_text.py)."""
+    return _search_text_mode
+
+
+def asin_keys(df: pd.DataFrame) -> np.ndarray:
+    """parent_asin per row as text, a missing one as '' (pandas 2 and 3 alike): how the
+    compact sidecar names its rows, on both the writing and the reading side."""
+    return df["parent_asin"].fillna("").astype(str).to_numpy()
+
+
+def _compact_text_cache(df: pd.DataFrame, default_cache: Path, csv_hash: str,
+                        embedded: Tuple[str, ...]) -> Optional[Path]:
+    """SEARCH_TEXT_COMPACT: put the sidecar's compact text into df["search_text"] and
+    return its vectors' cache path, or return None (default text and cache, a log line)
+    when anything does not fit: another catalog, embedder or field list, rows of other
+    products, vectors encoded from another sidecar (the stamp). Never encodes: a missing
+    compact cache would otherwise re-encode ~120K rows at boot; scripts/
+    compact_search_text.py encode builds it."""
+    side, meta_path = compact_text.sidecar_paths(PRODUCTS_CSV)
+    cache = compact_text.compact_cache_path(default_cache)
+    stamp = compact_text.stamp_path(cache)
+    if not all(p.exists() for p in (side, meta_path, cache, stamp)):
+        logger.warning("SEARCH_TEXT_COMPACT is on but its files are missing (run `python -m "
+                       "scripts.compact_search_text build`, then `encode`): default text.")
+        return None
+    why, idx, texts = None, None, None
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        embedder = get_default_embedder()
+        why = compact_text.sidecar_matches(meta, csv_hash, len(df), embedder.model_name,
+                                           embedder.max_seq_length(), embedded)
+        if why is None:
+            side_md5 = compact_text.file_md5(side)
+            built_from = json.loads(stamp.read_text(encoding="utf-8")).get("sidecar_md5")
+            if side_md5 != meta.get("sidecar_md5") or built_from != side_md5:
+                why = "vectors not encoded from this sidecar"
+        if why is None:
+            rows = pd.read_csv(side, keep_default_na=False,
+                               dtype={"parent_asin": str, "embed_text": str})
+            idx = rows["catalog_index"].to_numpy(dtype=np.int64)
+            texts = rows["embed_text"].to_numpy(dtype=object)
+            why = compact_text.check_rows(meta, idx, rows["parent_asin"].to_numpy(),
+                                          asin_keys(df), len(df))
+        if why is None and np.load(cache, mmap_mode="r").shape[0] != len(df):
+            why = "vector count differs"
+    except Exception as e:  # noqa: BLE001 -- a bad sidecar must never fail a boot
+        why = type(e).__name__
+    if why == "fields differs":
+        # an ablation (eval --exclude-description, compare_search_text): the compact text
+        # exists for the app's own field list only
+        logger.info("Compact search text is for the default fields only: default text.")
+        return None
+    if why:
+        logger.warning("SEARCH_TEXT_COMPACT is on but its sidecar does not fit (%s): "
+                       "default text.", why)
+        return None
+    text = df["search_text"].to_numpy(dtype=object).copy()
+    text[idx] = texts
+    df["search_text"] = text
+    logger.info("Compact search text: %d rows replaced (v%s).", len(idx),
+                compact_text.COMPACT_VERSION)
+    return cache
 
 
 def catalog_fingerprint() -> str:
@@ -298,14 +368,21 @@ def _backend() -> str:
 
 
 def _ready() -> bool:
+    """Loaded for the current backend and, locally, for the current SEARCH_TEXT_COMPACT:
+    a flip in-process (a notebook) reloads on the next search instead of serving the
+    other text's vectors."""
     if _df is None or _loaded_backend != _backend():
         return False
-    return _backend() == "databricks" or _embeddings is not None
+    if _backend() == "databricks":
+        return True
+    return (_embeddings is not None
+            and _loaded_compact == bool(getattr(cfg, "SEARCH_TEXT_COMPACT", False)))
 
 
 def load_index(fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS) -> None:
     """Build the in-memory index once. Rebuilds if the field set or backend changes."""
     global _df, _embeddings, _loaded_fields, _loaded_backend, _embedded_fields, _csv_hash_of
+    global _search_text_mode, _loaded_compact
 
     if _backend() == "databricks":
         if _df is not None and _loaded_backend == "databricks":
@@ -325,6 +402,7 @@ def load_index(fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS) -> None:
         _embeddings = None
         _loaded_fields = DEFAULT_SEARCH_FIELDS
         _embedded_fields = embedded
+        _search_text_mode = "default"   # the index holds 01's text; nothing is cut there
         _loaded_backend = "databricks"
         _csv_hash_of = None          # no CSV here: the fingerprint hashes text_hash
         logger.info("Index ready: %d products via Vector Search %s.", len(_df), cfg.VS_INDEX)
@@ -335,6 +413,7 @@ def load_index(fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS) -> None:
         and _embeddings is not None
         and _loaded_fields == fields
         and _loaded_backend == "local"
+        and _loaded_compact == bool(getattr(cfg, "SEARCH_TEXT_COMPACT", False))
     ):
         return
 
@@ -361,6 +440,11 @@ def load_index(fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS) -> None:
     df["search_text"] = _build_search_text(df, embedded)
 
     cache_path = CACHE_DIR / f"embeddings_{_cache_key(embedded, csv_hash)}.npy"
+    text_mode = "default"
+    if getattr(cfg, "SEARCH_TEXT_COMPACT", False):
+        compact_cache = _compact_text_cache(df, cache_path, csv_hash, embedded)
+        if compact_cache is not None:
+            cache_path, text_mode = compact_cache, f"compact_v{compact_text.COMPACT_VERSION}"
     if cache_path.exists():
         logger.info("Cache hit: %s", cache_path.name)
         embeddings = np.load(cache_path)
@@ -378,6 +462,8 @@ def load_index(fields: Tuple[str, ...] = DEFAULT_SEARCH_FIELDS) -> None:
     _embeddings = embeddings
     _loaded_fields = fields
     _embedded_fields = embedded
+    _search_text_mode = text_mode
+    _loaded_compact = bool(getattr(cfg, "SEARCH_TEXT_COMPACT", False))
     _loaded_backend = "local"
     # The verified hash only (taxonomy_hash): when the catalog changed while it was read,
     # catalog_fingerprint() hashes the file as it always did

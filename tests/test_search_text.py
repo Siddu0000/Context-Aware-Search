@@ -19,6 +19,8 @@ Pinned here:
 - catalog_fingerprint() returns the hash load_index took of the bytes it read (no second
   read of the 228 MB file at API start, 2026-10-30), and hashes the file only when that
   hash is unknown; a Databricks load keeps its text_hash fingerprint.
+- eval/compare_search_text.py embeds each variant's own fields (2026-11-20: every variant
+  had embedded the same text since 2026-06).
 - uvicorn_log.json: loads through uvicorn's own Config, creates logs/, sends app and
   uvicorn.error records to logs/api.log, and keeps uvicorn.access (URLs carry the
   query) on the console only.
@@ -207,7 +209,7 @@ class _FakeEmbedder:
 
 
 _INDEX_STATE = ("_df", "_embeddings", "_loaded_backend", "_loaded_fields", "_embedded_fields",
-                "_csv_hash_of")
+                "_csv_hash_of", "_search_text_mode", "_loaded_compact")
 
 
 @contextlib.contextmanager
@@ -340,6 +342,184 @@ def test_catalog_fingerprint_reuses_the_hash_load_index_took():
             expected = hashlib.md5(text_hashes.encode()).hexdigest()[:12]
             assert S.catalog_fingerprint() == expected and hashed == []
 
+
+class _FakeLenEmbedder(_FakeEmbedder):
+    def max_seq_length(self):
+        return 128
+
+
+def test_compact_search_text_is_served_only_when_its_sidecar_fits():
+    """SEARCH_TEXT_COMPACT (2026-11-20, app/compact_text.py): the sidecar's rows replace
+    only their own search_text and the compact cache's vectors are served; anything that
+    does not fit -- another catalog, embedder or field list, rows of other products, no
+    vectors yet, vectors encoded from another sidecar (the stamp) -- serves the default
+    text and vectors with a log line, and nothing is ever encoded at load. The full
+    build -> encode -> load path: tests/test_compact_text.py."""
+    from app import compact_text as ct
+    with tempfile.TemporaryDirectory() as tmp, _isolated_index(),             patched(cfg, {"SEARCH_TEXT_COMPACT": False}):
+        csv = Path(tmp) / "catalog.csv"
+        frame = _frame()
+        frame.loc[3, "parent_asin"] = NAN               # a missing asin reads '' both sides
+        frame.to_csv(csv, index=False)
+        cfg.SEARCH_BACKEND = "local"
+        ones = lambda texts: np.ones((len(texts), 4), dtype=np.float32)  # noqa: E731
+        common = {"PRODUCTS_CSV": csv, "CACHE_DIR": Path(tmp),
+                  "get_default_embedder": lambda: _FakeLenEmbedder()}
+        S._df = None
+        with patched(S, dict(common, embed_text=ones)):
+            S.load_index()                              # the default cache, knob off
+            fields = S.effective_fields(_frame().columns)
+            default_cache = Path(tmp) / f"embeddings_{S._cache_key(fields, S._file_hash(csv))}.npy"
+        assert default_cache.exists()
+        default_text = S._df["search_text"].tolist()
+        assert S.search_text_mode() == "default"
+        side, meta_path = ct.sidecar_paths(csv)
+        compact_cache = ct.compact_cache_path(default_cache)
+        stamp = ct.stamp_path(compact_cache)
+
+        def write_sidecar(asins=("B0001", ""), stamp_md5=None, **meta_over):
+            pd.DataFrame({"catalog_index": [0, 3], "parent_asin": list(asins),
+                          "embed_text": ["compact zero", "compact three"]}).to_csv(side, index=False)
+            md5 = ct.file_md5(side)
+            meta = {"version": ct.COMPACT_VERSION, "csv_hash": S._file_hash(csv), "n_rows": 6,
+                    "model": "fake/model", "max_seq_length": 128, "fields": list(fields),
+                    "n_changed": 2, "sidecar_md5": md5}
+            meta.update(meta_over)
+            meta_path.write_text(json.dumps(meta), encoding="utf-8")
+            stamp.write_text(json.dumps({"sidecar_md5": stamp_md5 or md5}), encoding="utf-8")
+
+        def load_on():
+            S._df = None
+            cfg.SEARCH_TEXT_COMPACT = True
+            with patched(S, dict(common, embed_text=_no_encode)):
+                S.load_index()
+            return S._df["search_text"].tolist()
+
+        write_sidecar()
+        assert load_on() == default_text and S.search_text_mode() == "default"   # no vectors
+        np.save(compact_cache, np.full((6, 4), 2.0, dtype=np.float32))
+
+        text = load_on()
+        assert S.search_text_mode() == f"compact_v{ct.COMPACT_VERSION}"
+        assert text[0] == "compact zero" and text[3] == "compact three"
+        assert [t for i, t in enumerate(text) if i not in (0, 3)] ==             [t for i, t in enumerate(default_text) if i not in (0, 3)]
+        assert (S._embeddings == 2.0).all()
+        assert S._df.at[0, "Product_title"].startswith("KALAWEN")      # display untouched
+
+        # the knob flipped in-process (as evals do): the next load_index reloads
+        cfg.SEARCH_TEXT_COMPACT = False
+        with patched(S, dict(common, embed_text=_no_encode)):
+            S.load_index()
+        assert S.search_text_mode() == "default" and S._df["search_text"].tolist() == default_text
+
+        for bad in ({"asins": ("B0001", "B0099")}, {"csv_hash": "other"},
+                    {"max_seq_length": 256}, {"n_changed": 3}, {"version": "0"},
+                    {"fields": ["Product_title"]}, {"stamp_md5": "0" * 32},
+                    {"sidecar_md5": "f" * 32}):
+            write_sidecar(**bad)
+            assert load_on() == default_text, bad
+            assert S.search_text_mode() == "default" and (S._embeddings == 1.0).all(), bad
+        meta_path.write_text("{not json", encoding="utf-8")
+        assert load_on() == default_text and S.search_text_mode() == "default"
+
+        # an ablation (an explicit field list) never reads the default fields' sidecar
+        write_sidecar()
+        S._df = None
+        with patched(S, dict(common, embed_text=ones)):
+            S.load_index(fields=("Product_title",))
+        assert S.search_text_mode() == "default"
+
+
+def test_compare_search_text_embeds_each_variants_own_fields():
+    """eval/compare_search_text.py rebound S.DEFAULT_SEARCH_FIELDS and called evaluate()
+    without fields, but evaluate() and load_index() bound that default at definition, so
+    the rebind never reached them: the identical numbers of 2026-06-10 (on the enriched
+    catalog the four ablations embedded the 7 base fields and all_fields the app's 12).
+    Drives the real evaluate() with only its query loop (_evaluate) faked after the load."""
+    from eval import compare_search_text as cst
+    from eval import run_eval
+    seen = []
+
+    def fake_evaluate(rerank_on, tag, fields, translate_on):
+        run_eval.load_index(fields=fields)          # what the real _evaluate does first
+        seen.append((tag, S.embedded_fields(), S.get_dataframe()["search_text"].tolist()))
+        return Path(tag + ".csv"), {"n_degraded": 0}
+
+    with tempfile.TemporaryDirectory() as tmp, _isolated_index(), \
+            patched(cfg, {"MLFLOW_ENABLED": False, "LLM_MEMO": cfg.LLM_MEMO}), \
+            patched(run_eval, {"_evaluate": fake_evaluate}):
+        csv = Path(tmp) / "catalog.csv"
+        _frame().to_csv(csv, index=False)
+        cfg.SEARCH_BACKEND = "local"
+        S._df = None
+        fake_embed = lambda texts: np.ones((len(texts), 4), dtype=np.float32)  # noqa: E731
+        with patched(S, {"PRODUCTS_CSV": csv, "CACHE_DIR": Path(tmp), "embed_text": fake_embed,
+                         "get_default_embedder": lambda: _FakeEmbedder()}):
+            for name, fields in cst.VARIANTS.items():
+                cst.run_for_variant(name, fields)
+            assert S.DEFAULT_SEARCH_FIELDS == cst.VARIANTS["all_fields"]   # never rebound
+
+        assert len(seen) == len(cst.VARIANTS)
+        assert len({tag for tag, _, _ in seen}) == len(seen)        # one output name each
+        embedded = {name: fields for name, (_, fields, _) in zip(cst.VARIANTS, seen)}
+        texts = {name: text for name, (_, _, text) in zip(cst.VARIANTS, seen)}
+        assert embedded["title_only"] == ("Product_title",)
+        assert embedded["title_attrs"] == ("Product_title", "color", "material", "occasion")
+        # the app's own text: the default set plus the enriched tags the catalog has
+        assert embedded["all_fields"] == S.effective_fields(_frame().columns)
+        assert "use_case" in embedded["all_fields"]
+        assert len({tuple(t) for t in texts.values()}) == len(cst.VARIANTS)   # all differ
+        assert texts["title_only"][0] == "kalawen watch winder for rolex, black pu leather"
+        assert texts["title_color"][0] == texts["title_only"][0] + " black"
+
+
+
+def test_compare_search_text_main_shares_intents_and_isolates_the_text():
+    """main(): local backend only; SEARCH_TEXT_COMPACT off for the run and restored; with
+    --translate each eval query is translated ONCE and every variant gets those intents
+    (and its errors, so fell_back stays truthful); without it, no translator at all."""
+    from eval import compare_search_text as cst
+    from eval import run_eval
+    calls, runs = [], []
+
+    def fake_translate(query, errors=None):
+        calls.append(query)
+        if errors is not None and query == "q2":
+            errors.append({"stage": "translate", "code": "LLMError"})
+        return [f"{query} intent {len(calls)}"]
+
+    def fake_run(name, fields, translate_on=False):
+        errors = []
+        intents = run_eval.translate_query("q1", errors=errors) if translate_on else None
+        intents2 = run_eval.translate_query("q2", errors=errors) if translate_on else None
+        runs.append((name, translate_on, intents, intents2, len(errors),
+                     cfg.SEARCH_TEXT_COMPACT))
+        return Path(name + ".csv"), 0.0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        queries = Path(tmp) / "q.json"
+        queries.write_text(json.dumps([{"query": "q1"}, {"query": "q2"}]), encoding="utf-8")
+        with patched(cfg, {"SEARCH_BACKEND": "local", "SEARCH_TEXT_COMPACT": True,
+                           "LLM_MEMO": cfg.LLM_MEMO}),                 patched(run_eval, {"translate_query": fake_translate,
+                                   "EVAL_QUERIES_JSON": queries}),                 patched(cst, {"run_for_variant": fake_run}):
+            cst.main(["--only", "all_fields", "title_only", "--translate"])
+            assert calls == ["q1", "q2"]                              # once per query
+            assert [r[0] for r in runs] == ["all_fields", "title_only"]
+            assert runs[0][2:5] == runs[1][2:5] == (["q1 intent 1"], ["q2 intent 2"], 1)
+            assert not any(r[5] for r in runs)                        # compact off in the run
+            assert cfg.SEARCH_TEXT_COMPACT is True                    # and restored after
+            assert run_eval.translate_query is fake_translate         # unpatched after
+
+            del runs[:], calls[:]
+            cst.main(["--only", "title_color"])
+            assert calls == [] and runs == [("title_color", False, None, None, 0, False)]
+
+            cfg.SEARCH_BACKEND = "databricks"
+            try:
+                cst.main([])
+                raise AssertionError("ran on the databricks backend")
+            except SystemExit as e:
+                assert "SEARCH_BACKEND=local" in str(e)
 
 # ------------------------------------------------------------------ title dedup
 # The catalog sells 36 titles under two casings (products_enriched.csv: 297,176 exact vs

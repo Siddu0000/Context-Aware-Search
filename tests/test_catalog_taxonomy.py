@@ -1209,8 +1209,10 @@ def test_a_catalog_rewritten_during_the_load_is_never_cached_under_its_new_hash(
     OLD rows' columns under the NEW catalog's md5 and every later boot served them. A
     file whose size or mtime moved across the read and hash gives the taxonomy no key:
     derive, write nothing, say so. The control: the unchanged (rewritten) catalog caches."""
-    state = ("_df", "_embeddings", "_loaded_backend", "_loaded_fields", "_embedded_fields")
+    state = ("_df", "_embeddings", "_loaded_backend", "_loaded_fields", "_embedded_fields",
+             "_loaded_compact", "_search_text_mode", "_csv_hash_of")
     saved, backend, real_hash = {k: getattr(S, k) for k in state}, cfg.SEARCH_BACKEND, S._file_hash
+    compact = cfg.SEARCH_TEXT_COMPACT
 
     def rewritten_then_hashed(path):
         with open(path, "a", encoding="utf-8") as f:     # after read_csv, before the hash
@@ -1224,7 +1226,7 @@ def test_a_catalog_rewritten_during_the_load_is_never_cached_under_its_new_hash(
         return np.ones((len(texts), 4), dtype=np.float32)
 
     try:
-        cfg.SEARCH_BACKEND = "local"
+        cfg.SEARCH_BACKEND, cfg.SEARCH_TEXT_COMPACT = "local", False
         with tempfile.TemporaryDirectory() as tmp:
             csv = Path(tmp) / "catalog.csv"
             _spark_frame().to_csv(csv, index=False)
@@ -1248,7 +1250,7 @@ def test_a_catalog_rewritten_during_the_load_is_never_cached_under_its_new_hash(
     finally:
         for k, v in saved.items():
             setattr(S, k, v)
-        cfg.SEARCH_BACKEND = backend
+        cfg.SEARCH_BACKEND, cfg.SEARCH_TEXT_COMPACT = backend, compact
 
 
 def test_taxonomy_cache_is_never_served_stale():

@@ -15,7 +15,7 @@ from fastapi.params import Param
 from pydantic import BaseModel, Field
 
 import app.config as cfg
-from app import device_role, llm_memo, page_cache, query_guard, tracking
+from app import device_role, exclusions, llm_memo, page_cache, query_guard, tracking
 from app import product_type as ptype
 from app import attributes as attrs
 # Knobs imported by value are fixed at import. The ones the type-aware ordering reads
@@ -130,6 +130,9 @@ def effective_config() -> dict:
         # (the pay-per-token endpoint embedding_model names, or the local model)
         "embedding_service": ((cfg.VS_EMBEDDING_SERVICE or None) if backend == "databricks"
                               else None),
+        # what the loaded local vectors embed: "default" or "compact_v<N>" (2026-11-20,
+        # SEARCH_TEXT_COMPACT; the knob alone can be on and still serve "default")
+        "search_text": search_module.search_text_mode(),
         "translator_mode": cfg.TRANSLATOR_MODE,
         "query_guard": cfg.QUERY_GUARD_ENABLED,
         "max_intents": cfg.MAX_INTENTS,
@@ -721,32 +724,105 @@ def _effective_ask(query: str, candidates) -> Optional[_Ask]:
 # rows' load-time columns; inside TYPE_AWARE_RANKING (its REVERT covers this too), flat
 # pages only. Offline (0 LLM, the real catalog, the recorded 10-15 intents): the window
 # went from 0 watches to 12 of 15; the cross-vertical guard: build/NOTES_B1.md.
-def _effective_device(query: str, candidates,
-                      enabled: Optional[bool] = None) -> Optional[device_role.DeviceAsk]:
+def _head_share(candidates, family: str) -> float:
+    """Share of the first RERANK_INPUT_K candidates (RAW order) about the family, a device
+    of another family left out of the count (0.0 when nothing counts)."""
+    head = list(candidates[: cfg.RERANK_INPUT_K])
+    named = [device_role.mentions(c, family) for c in head]
+    counted = sum(1 for c, n in zip(head, named) if n or c.get("item_role") != "device")
+    return sum(named) / counted if counted else 0.0
+
+
+def _core_rows(candidates, family: str) -> int:
+    return sum(1 for c in candidates if device_role.is_core(c, family))
+
+
+# A device ask's pool can DRIFT to look-alikes: on the Databricks App (gte-large-en, the
+# 2026-11-19 review) "I need a smartphone with a great camera and battery life for
+# travelling, but I don't want a flagship-priced phone" retrieved camera batteries and
+# tripods for three intents that all named the smartphone, the gate below read a minority
+# pool, no phone reached the reranker -- and its reply was unusable. When MOST INTENTS name
+# the device (the translator read a device ask, so a lexical collision such as "dishwasher
+# tablets" -- whose intents name detergent -- never counts) the drift is not evidence
+# against the ask: with fewer than this many core rows the pool gets one more retrieval of
+# the device itself (_device_top_up), and with at least this many the gate acts on the
+# drifted head too.
+_DRIFT_MIN_CORE = 3
+
+
+def _intents_name_device(intents, family: str) -> bool:
+    """A strict majority of the translator's intents ask for the device itself."""
+    terms = [t for t in dict.fromkeys(intents or []) if isinstance(t, str)]
+    named = sum(1 for t in terms if device_role.names_device(t, family))
+    return bool(terms) and 2 * named > len(terms)
+
+
+def _drifted_device_pool(candidates, family: str, intents) -> bool:
+    """A device ask whose pool DRIFTED rather than collided: the family does not lead the
+    raw head, but at least half of that head is Electronics -- the device's own department
+    -- and most intents name the device. A lexical collision fails the department test
+    even where its intents carry the word: "dishwasher tablets" (its intents read as
+    tablet asks too) retrieves detergent, never an Electronics head."""
+    head = list(candidates[: cfg.RERANK_INPUT_K])
+    electronics = sum(1 for c in head
+                      if str(c.get("bsns_vrtcl_name") or "").strip().casefold() == "electronics")
+    return (bool(head) and 2 * electronics >= len(head)
+            and _intents_name_device(intents, family))
+
+
+def _device_top_up(query: str, candidates, intents,
+                   enabled: Optional[bool] = None) -> list:
+    """The pool plus the device's own rows when a device ask's retrieval drifted: the
+    knob is on, the query asks for the device itself, the family does not lead the raw
+    head, most intents name the device and the pool holds fewer than _DRIFT_MIN_CORE core
+    rows. One more search_products call (device_role.FAMILY_QUERY: generic words, never
+    the shopper's); its new rows join the pool in RAW score order (the gates read that
+    order). Otherwise the pool unchanged, no call. Logs counts only (safety.md)."""
+    if not (cfg.DEVICE_ROLE_RANKING if enabled is None else enabled):
+        return candidates
+    ask = device_role.requested_device(query)
+    if ask is None or ask.accessory_asked or _head_share(candidates, ask.family) >= 0.5:
+        return candidates
+    if (not _drifted_device_pool(candidates, ask.family, intents)
+            or _core_rows(candidates, ask.family) >= _DRIFT_MIN_CORE):
+        return candidates
+    seen = {title_key(c.get("Product_title")) for c in candidates}
+    added = [r for r in search_products([device_role.FAMILY_QUERY[ask.family]],
+                                        top_k=RETRIEVAL_TOP_K)
+             if title_key(r.get("Product_title")) not in seen]
+    if not added:
+        return candidates
+    logger.info("Device-role ranking: drifted pool topped up with %d rows.", len(added))
+    return sorted(list(candidates) + added, key=lambda c: c.get("score") or 0.0, reverse=True)
+
+
+def _effective_device(query: str, candidates, enabled: Optional[bool] = None,
+                      intents=None) -> Optional[device_role.DeviceAsk]:
     """The device the shopper named, kept only where it can be acted on: the knob is on
     (`enabled`: the value search() read once for its cache key; None reads cfg), the ask
     is for the device itself (not an accessory for it), at least half of the first
     RERANK_INPUT_K candidates in RAW order are about the family (the _fashion_majority
-    idiom: "dishwasher tablets" reads as a device, its pool does not), and
-    the pool holds at least one core row ("airtag"-like supply gaps: nothing to promote,
-    and promoting nothing would only demote the substitutes). A DEVICE of another family
-    in the head is no evidence either way and is left out of the share (2026-10-27
-    review): "iphone" with device-only intents ("apple iphone unlocked") retrieved 7 iPads,
-    iPods and MacBooks among its 15 head rows, so only 7 of 15 named a phone, while a
-    lexical collision's head is food, caps or clothing, never devices, so it still
-    fails."""
+    idiom: "dishwasher tablets" reads as a device, its pool does not) -- or, a DRIFTED
+    head (2026-11-19, above), most `intents` name the device and the pool holds at least
+    _DRIFT_MIN_CORE core rows -- and the pool holds at least one core row ("airtag"-like
+    supply gaps: nothing to promote, and promoting nothing would only demote the
+    substitutes). A DEVICE of another family in the head is no evidence either way and
+    is left out of the share (2026-10-27 review): "iphone" with device-only intents
+    ("apple iphone unlocked") retrieved 7 iPads, iPods and MacBooks among its 15 head
+    rows, so only 7 of 15 named a phone, while a lexical collision's head is food, caps
+    or clothing, never devices, so it still fails."""
     if not (cfg.DEVICE_ROLE_RANKING if enabled is None else enabled):
         return None
     ask = device_role.requested_device(query)
     if ask is None or ask.accessory_asked:
         return None
-    head = list(candidates[: cfg.RERANK_INPUT_K])
-    named = [device_role.mentions(c, ask.family) for c in head]
-    counted = sum(1 for c, n in zip(head, named) if n or c.get("item_role") != "device")
-    if not counted or sum(named) / counted < 0.5:
-        # Flags only: the family comes from the query text (safety.md)
-        logger.info("Device-role ranking: device ask dropped (minority_pool).")
-        return None
+    if _head_share(candidates, ask.family) < 0.5:
+        if not (_drifted_device_pool(candidates, ask.family, intents)
+                and _core_rows(candidates, ask.family) >= _DRIFT_MIN_CORE):
+            # Flags only: the family comes from the query text (safety.md)
+            logger.info("Device-role ranking: device ask dropped (minority_pool).")
+            return None
+        logger.info("Device-role ranking: device ask kept on a drifted head (drifted_pool).")
     if not any(device_role.is_core(c, ask.family) for c in candidates):
         logger.info("Device-role ranking: device ask dropped (no_core_rows).")
         return None
@@ -1107,6 +1183,22 @@ def _guest_constraint(query: str) -> Optional[dict]:
     if "swim" in (ptype.requested_subtypes(query) or ()):
         return dict(_GUEST_SWIM_CONSTRAINT)
     return dict(_GUEST_CONSTRAINT)
+
+
+def _without_excluded(candidates, excluded) -> list:
+    """The pool minus the rows that show something the shopper excluded ("a summer dress
+    that isn't floral": exclusions.matches), dropped from every page, the facets and the
+    ads alike. Never empties the pool: if every row matches, the reranker's exclude
+    constraint is all that acts. Counts only in the log: the keys come from the query."""
+    kept = [c for c in candidates if not exclusions.matches(c, excluded)]
+    if not kept:
+        logger.info("Exclusions: every one of %d pool rows matched; none dropped.",
+                    len(candidates))
+        return candidates
+    if len(kept) < len(candidates):
+        logger.info("Exclusions: %d of %d pool rows dropped.",
+                    len(candidates) - len(kept), len(candidates))
+    return kept
 
 
 # A setting is context, not a requirement: the translator turned "summer beach wedding
@@ -1985,6 +2077,12 @@ def _ranked_pool(query, llm_query, translator_mode, rerank, sponsored, pool_k, t
     if not candidates or best_score(candidates) < MIN_RESULT_RELEVANCE:
         return entry
 
+    # What the shopper said they do NOT want (exclusions.py): those rows leave the pool
+    # before anything reads it -- the gates, the window, the display, the facets, the ads
+    excluded = exclusions.requested(llm_query) if (typed and not bundle_type) else frozenset()
+    if excluded:
+        candidates = _without_excluded(candidates, excluded)
+
     # What the reranker is told; the response and the cache keep the translator's
     rerank_constraints = constraints
     requested = None   # flat only: a bundle's slots carry their own types
@@ -1995,12 +2093,16 @@ def _ranked_pool(query, llm_query, translator_mode, rerank, sponsored, pool_k, t
             # Every slot gets reranked options inside RERANK_INPUT_K
             candidates = _round_robin_by_intent(candidates, intents)
         else:
+            # A device ask whose retrieval drifted to look-alikes (a phone ask's pool of
+            # camera batteries) gets the device's own rows first, then the gates below
+            candidates = _device_top_up(llm_query, candidates, intents, enabled=device_roles)
             # Measured on the RAW score order, before the window reorders it. The
             # sanitised query: the shopper's ask is the text before any instruction
             # marker (identical for an ordinary query; '' when guarded names none)
             requested = _effective_request(llm_query, candidates)
             ask = _effective_ask(llm_query, candidates)
-            device = _effective_device(llm_query, candidates, enabled=device_roles)
+            device = _effective_device(llm_query, candidates, enabled=device_roles,
+                                       intents=intents)
             guest = _guest_constraint(llm_query) if ask is not None else None
             candidates = _flat_window(
                 candidates, requested, intents, interleave=not gender_stated, ask=ask,
@@ -2014,6 +2116,10 @@ def _ranked_pool(query, llm_query, translator_mode, rerank, sponsored, pool_k, t
                 # Code-written like the type request: deterministic text per family, never
                 # the shopper's words; the response keeps the translator's constraints
                 rerank_constraints = rerank_constraints + [device_role.constraint(device)]
+            if excluded:
+                # The rows that NAME an excluded thing are gone; this catches the ones that
+                # only show it ("Hawaiian print" for floral) inside the window
+                rerank_constraints = rerank_constraints + [exclusions.constraint(excluded)]
 
     rerank_actually_ran = False
     if rerank and candidates and llm_query:
@@ -2252,14 +2358,19 @@ def search(
     # end). VARIANT_COLLAPSE is applied after the lookup, so it is not in the key.
     # DEVICE_ROLE_RANKING (2026-10-27) orders the window and the display, right after the
     # band-order knob.
+    # SEARCH_TEXT_COMPACT (2026-11-20): search._ready() reloads the index when it flips,
+    # so pools ranked on one text's vectors are never served for the other. The knob,
+    # not search_text_mode(): the key is made before a first search loads the index.
+    # It sits after the LLM identity, before the guard (the tests pin the key's tail).
     rejects_after_tail = cfg.REJECTS_AFTER_TAIL
     device_roles = cfg.DEVICE_ROLE_RANKING
+    compact_text = bool(getattr(cfg, "SEARCH_TEXT_COMPACT", False))
     cache_key = page_cache.make_key(
         query,
         (
             pool_k, rerank, recommend, sponsored,
-            translator_mode or TRANSLATOR_MODE, _llm_identity(), cfg.QUERY_GUARD_ENABLED,
-            rejects_after_tail, device_roles, outfit_bundles, typed,
+            translator_mode or TRANSLATOR_MODE, _llm_identity(), compact_text,
+            cfg.QUERY_GUARD_ENABLED, rejects_after_tail, device_roles, outfit_bundles, typed,
         ),
     )
 
@@ -2557,8 +2668,10 @@ def product(
         # refused reply and a reply that lost the memo race are asked again next open
         rec_key = page_cache.make_recommendations_key(
             catalog_index, title_key(p.get("Product_title")), query,
-            (_llm_identity(), cfg.RECOMMEND_MAX, cfg.RECOMMEND_USE_LLM,
-             cfg.QUERY_GUARD_ENABLED),
+            # the compact flag as in the page_cache key: upsell and cross-sell grounding
+            # read the vectors, so a flip in-process never serves the other text's picks
+            (_llm_identity(), bool(getattr(cfg, "SEARCH_TEXT_COMPACT", False)),
+             cfg.RECOMMEND_MAX, cfg.RECOMMEND_USE_LLM, cfg.QUERY_GUARD_ENABLED),
         )
         cached = page_cache.get_recommendations(rec_key)
         if cached is not None:

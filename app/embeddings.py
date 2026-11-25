@@ -57,6 +57,14 @@ class Embedder:
                     pass
                 logger.info("Sentence-transformer loaded.")
 
+    def max_seq_length(self):
+        """Tokens the model reads per text after the EMBED_MAX_SEQ_LEN cap (with [CLS] and
+        [SEP]); None for an OpenAI model. Loads the model."""
+        if self.is_openai:
+            return None
+        self._ensure_loaded()
+        return self._st_model.max_seq_length
+
     def encode(self, texts: List[str]) -> np.ndarray:
         """Encode a list of texts into a (N, D) float32 array."""
         self._ensure_loaded()

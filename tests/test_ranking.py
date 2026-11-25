@@ -1554,6 +1554,27 @@ def test_outfit_knob_in_cache_key():
     assert keys[0][: -len("False, True))")] == keys[1][: -len("True, True))")]
 
 
+def test_compact_text_knob_is_in_the_cache_key():
+    """SEARCH_TEXT_COMPACT (2026-11-20): pools ranked on one text's vectors are never
+    served for the other. It sits after the LLM identity, 6th from the end."""
+    import ast
+    common = dict(shape="local", intents=BEACH_INTENTS, scores=BEACH_SCORES, clear=False)
+    page_cache.clear()
+    try:
+        run(BEACH_QUERY, BEACH_ROWS, BEACH_HITS, knob_values={"SEARCH_TEXT_COMPACT": False},
+            **common)
+        on = run(BEACH_QUERY, BEACH_ROWS, BEACH_HITS,
+                 knob_values={"SEARCH_TEXT_COMPACT": True}, **common)
+        keys = list(page_cache._store)
+    finally:
+        page_cache.clear()
+    assert len(on.translated) == 1 and len(keys) == 2, keys
+    off_key, on_key = (ast.literal_eval(k)[1] for k in keys)
+    assert len(off_key) == len(on_key)
+    assert [i - len(off_key) for i in range(len(off_key)) if off_key[i] != on_key[i]] == [-6]
+    assert off_key[-6] is False and on_key[-6] is True
+
+
 def test_women_garment_nouns_state_gender():
     stated = ["Wedding dresses for a destination wedding in rajasthan", "maxi dresses",
               "red dress for a party", "wedding dress", "evening gowns", "silk sarees",
@@ -2803,6 +2824,151 @@ def test_replay_of_the_recorded_1015_watch_capture():
         assert led.titles[0] == _CAPTURE_WATCH, led.titles
         # the 3 rows the 10-15 reply returned without a page-1 score stay unjudged here
         assert sum(r.get("rerank_score") is None for r in on.results) == 3
+
+
+# ------------------------------------------------------------------ 2026-11-19 review fixes
+# The Databricks App review (query bank tab 2). Stated exclusions: "Find me a summer dress
+# that isn't floral, isn't too short ..." served floral dresses (app/exclusions.py). Device
+# drift: "I need a smartphone with a great camera and battery life ..." retrieved camera
+# batteries on gte-large-en, the device gate read a minority pool and no phone was judged.
+FLORAL_QUERY = ("Find me a summer dress that isn't floral, isn't too short, and is suitable "
+                "for a brunch date")
+FLORAL_INTENTS = ["solid midi summer dress", "knee-length cotton sundress"]
+FLORALS = [f"Women's Floral Summer Midi Dress Edition {i}" for i in range(6)] + \
+    ["MSBASIC Sunflower Dress Thin Strap V Neck Summer Dress"]
+MINIS = [f"Women's Bodycon Mini Dress Party Edition {i}" for i in range(2)]
+SOLIDS = [f"Women's Solid Linen Midi Dress Casual Edition {i}" for i in range(8)]
+# An embedding cannot read "not": the floral rows score highest
+FLORAL_HITS = {FLORAL_INTENTS[0]: FLORALS + MINIS + SOLIDS[:4],
+               FLORAL_INTENTS[1]: SOLIDS[4:] + FLORALS[:2]}
+
+
+def test_exclusions_drop_what_the_shopper_ruled_out():
+    from app import exclusions as ex
+    ruled_out = {t.casefold() for t in FLORALS + MINIS}
+    said = [{"type": "other", "value": "not floral"}]
+    for shape in SHAPES:
+        rows = [row(t) for t in FLORALS + MINIS + SOLIDS]
+        with captured_logs("app.main") as logs:
+            on = run(FLORAL_QUERY, rows, FLORAL_HITS, shape=shape, intents=FLORAL_INTENTS,
+                     constraints=said, top_k=50)
+        # gone from the window, every page, the facets' pool
+        assert not set(on.rerank.calls[0]["window"]) & ruled_out, on.rerank.calls[0]["window"]
+        assert sorted(on.titles) == sorted(t.casefold() for t in SOLIDS), on.titles
+        assert run.last_entries[0]["full"] and not any(
+            r["Product_title"].casefold() in ruled_out for r in run.last_entries[0]["full"])
+        # the reranker gets the code-written text; the response keeps the translator's
+        sent = on.rerank.calls[0]["constraints"]
+        assert ex.constraint({"floral", "mini"}) in sent, sent
+        assert on.out["constraints"] == said
+        # counts in the log, never the query or the keys (safety.md)
+        assert any("9 of 17 pool rows dropped" in m for m in logs), logs
+        assert not any("floral" in m.lower() or "brunch" in m for m in logs), logs
+        # TYPE_AWARE_RANKING=false is the pre-change pool (its revert covers this)
+        off = run(FLORAL_QUERY, rows, FLORAL_HITS, shape=shape, intents=FLORAL_INTENTS,
+                  constraints=said, top_k=50, typed=False)
+        assert set(off.titles) & ruled_out
+        assert ex.constraint({"floral", "mini"}) not in off.rerank.calls[0]["constraints"]
+
+
+def test_exclusions_never_empty_the_pool_and_skip_bundles_and_plain_asks():
+    from app import exclusions as ex
+    for shape in SHAPES:
+        rows = [row(t) for t in FLORALS]
+        hits = {"summer dress": FLORALS}
+        # every row matches: none dropped, the reranker's constraint is all that acts
+        on = run("a summer dress that isn't floral", rows, hits, shape=shape,
+                 intents=["summer dress"], top_k=50)
+        assert sorted(on.titles) == sorted(t.casefold() for t in FLORALS)
+        assert ex.constraint({"floral"}) in on.rerank.calls[0]["constraints"]
+        # no negation: nothing read, nothing sent
+        plain = run("floral summer dress", rows, hits, shape=shape, intents=["summer dress"],
+                    top_k=50)
+        assert sorted(plain.titles) == sorted(on.titles)
+        assert not any(c.get("type") == "exclude" for c in plain.rerank.calls[0]["constraints"])
+        # a bundle's components are the translator's list: no exclusion there
+        bundle = run("a summer dress that isn't floral", rows, hits, shape=shape,
+                     intents=["summer dress"], bundle_type="setup", top_k=50)
+        assert not any(c.get("type") == "exclude" for c in bundle.rerank.calls[0]["constraints"])
+
+
+DRIFT_QUERY = ("I need a smartphone with a great camera and battery life for travelling, but "
+               "I don't want a flagship-priced phone")
+DRIFT_INTENTS = ["smartphone with excellent camera and long battery life",
+                 "mid-range smartphone for travel with good camera",
+                 "affordable smartphone with high-capacity battery and good photos"]
+CAMERA_BATTERIES = [f"Kastar NB-7L Battery Pack for Canon PowerShot Camera Model {i}"
+                    for i in range(16)]
+PHONES = ["Samsung Galaxy A10 32GB Unlocked Smartphone - Red",
+          "Motorola Moto G Power Unlocked Android Phone 64GB",
+          "Google Pixel 4a 128GB Unlocked Smartphone Just Black",
+          "Samsung Galaxy S10 Factory Unlocked Android Cell Phone 128GB"]
+_PHONES = {t.casefold() for t in PHONES}
+
+
+def _electronics(titles):
+    return [row(t, vertical="Electronics") for t in titles]
+
+
+def test_drifted_device_pool_with_core_rows_is_acted_on():
+    """Three phones deep behind 16 camera batteries, every intent naming the smartphone:
+    the gate keeps the ask (drifted_pool), the phones lead the window, no extra search."""
+    ask = dr.DeviceAsk("phone", False, False)
+    assert dr.requested_device(DRIFT_QUERY) == ask
+    hits = {DRIFT_INTENTS[0]: CAMERA_BATTERIES + PHONES[:3]}
+    for shape in SHAPES:
+        rows = _electronics(CAMERA_BATTERIES + PHONES[:3])
+        with captured_logs("app.main") as logs:
+            on = run(DRIFT_QUERY, rows, hits, shape=shape, intents=DRIFT_INTENTS)
+        off = run(DRIFT_QUERY, rows, hits, shape=shape, intents=DRIFT_INTENTS,
+                  knob_values={"DEVICE_ROLE_RANKING": False})
+        assert set(on.rerank.calls[0]["window"][:3]) == {t.casefold() for t in PHONES[:3]}
+        assert not set(off.rerank.calls[0]["window"]) & _PHONES     # before: none judged
+        assert dr.constraint(ask) in on.rerank.calls[0]["constraints"]
+        assert run.last_entries[0]["device"] is None                 # (the knob-off run's)
+        assert len(on.searches) == len(off.searches)                 # supply was there
+        assert any("drifted_pool" in m for m in logs) and not any(
+            "smartphone" in m or "phone" in m.split("(")[-1] for m in logs), logs
+
+
+def test_drifted_device_pool_without_core_rows_is_topped_up():
+    """One phone behind 16 camera batteries: one more retrieval of the device itself
+    (device_role.FAMILY_QUERY) joins the pool, then the gate acts on it."""
+    ask = dr.DeviceAsk("phone", False, False)
+    hits = {DRIFT_INTENTS[0]: CAMERA_BATTERIES + PHONES[:1],
+            dr.FAMILY_QUERY["phone"]: PHONES[1:]}
+    for shape in SHAPES:
+        rows = _electronics(CAMERA_BATTERIES + PHONES)
+        with captured_logs("app.main") as logs:
+            on = run(DRIFT_QUERY, rows, hits, shape=shape, intents=DRIFT_INTENTS)
+        off = run(DRIFT_QUERY, rows, hits, shape=shape, intents=DRIFT_INTENTS,
+                  knob_values={"DEVICE_ROLE_RANKING": False})
+        assert len(on.searches) == len(off.searches) + 1             # the top-up
+        assert set(on.rerank.calls[0]["window"][:4]) == _PHONES, on.rerank.calls[0]["window"]
+        assert dr.constraint(ask) in on.rerank.calls[0]["constraints"]
+        assert any("topped up with 3 rows" in m for m in logs), logs
+        # without the knob nothing moves: one phone, deep, unjudged
+        assert set(off.rerank.calls[0]["window"]) & _PHONES == set()
+
+
+def test_a_lexical_collision_is_never_topped_up_or_acted_on():
+    """"dishwasher tablets": its intents read as tablet asks too, but its head is Grocery,
+    never an Electronics drift -- no extra search, the knob-off page."""
+    query, intents = "dishwasher tablets", ["dishwasher detergent tablets"]
+    detergent = [f"Finish Powerball Dishwasher Detergent Tablets Pack {i}" for i in range(16)]
+    tablets = ["Samsung Galaxy Tab A 10.1 Android Tablet 32GB", "Fire HD 8 Tablet 32 GB Black"]
+    rows = [row(t, vertical="Grocery") for t in detergent] + _electronics(tablets)
+    hits = {intents[0]: detergent, dr.FAMILY_QUERY["tablet"]: tablets}
+    assert dr.requested_device(query) == dr.DeviceAsk("tablet", False, False)
+    for shape in SHAPES:
+        on = run(query, rows, hits, shape=shape, intents=intents)
+        assert run.last_entries[0]["device"] is None
+        off = run(query, rows, hits, shape=shape, intents=intents,
+                  knob_values={"DEVICE_ROLE_RANKING": False})
+        assert len(on.searches) == len(off.searches)
+        assert on.rerank.calls[0]["window"] == off.rerank.calls[0]["window"]
+        assert on.rerank.calls[0]["constraints"] == off.rerank.calls[0]["constraints"]
+        assert not set(on.titles) & {t.casefold() for t in tablets}
 
 
 # ------------------------------------------------------------------ plain runner
